@@ -1,0 +1,443 @@
+@import "tailwindcss";
+@import "@nuxt/ui";
+
+:root {
+  --bg: #0b0f1a;
+  --bg-elevated: #0f172a;
+  --surface: rgba(8, 12, 20, 0.92);
+  --surface-2: rgba(15, 23, 42, 0.7);
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.12);
+  --text: #e5e7eb;
+  --text-muted: #9ca3af;
+  --text-soft: #cbd5f5;
+  --accent: #2563eb;
+  --accent-soft: rgba(37, 99, 235, 0.12);
+  --shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+  --radius-lg: 18px;
+  --radius-md: 14px;
+  --radius-sm: 10px;
+}
+
+body.theme-light {
+  --bg: #f6f7fb;
+  --bg-elevated: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #f8fafc;
+  --border: rgba(148, 163, 184, 0.35);
+  --border-strong: rgba(148, 163, 184, 0.45);
+  --text: #0f172a;
+  --text-muted: #64748b;
+  --text-soft: #475569;
+  --accent: #2563eb;
+  --accent-soft: rgba(37, 99, 235, 0.12);
+  --shadow: 0 12px 26px rgba(15, 23, 42, 0.08);
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  color-scheme: dark;
+}
+
+body.theme-light {
+  color-scheme: light;
+}
+
+html.light,
+html.light body {
+  --bg: #f6f7fb;
+  --bg-elevated: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #f8fafc;
+  --border: rgba(148, 163, 184, 0.35);
+  --border-strong: rgba(148, 163, 184, 0.45);
+  --text: #0f172a;
+  --text-muted: #64748b;
+  --text-soft: #475569;
+  --accent: #2563eb;
+  --accent-soft: rgba(37, 99, 235, 0.12);
+  --shadow: 0 12px 26px rgba(15, 23, 42, 0.08);
+  color-scheme: light;
+}
+
+body,
+body * {
+  border-radius: 0;
+}
+
+:is(body.theme-light, html.light body) {
+  background: #f6f7fb !important;
+  background-image: none !important;
+}
+
+:is(body.theme-light, html.light body) .app,
+:is(body.theme-light, html.light body) .content,
+:is(body.theme-light, html.light body) .main,
+:is(body.theme-light, html.light body) .page,
+:is(body.theme-light, html.light body) .section-content {
+  background: #f6f7fb !important;
+  background-image: none !important;
+}
+
+body .card,
+body .sub-card,
+body .modal-card,
+body .stat-card,
+body .shop-card,
+body .item-card,
+body .inv-member,
+body .inv-item,
+body .doc-card,
+body .doc-callout,
+body .hero,
+body .panel,
+body .tile,
+body .box,
+body .list-row,
+body .logs-table,
+body .stats,
+body .list,
+body .pagination,
+body .sidebar,
+body .topbar,
+body .cookie-card {
+  border-radius: var(--radius-lg) !important;
+}
+
+body .chip,
+body .pill,
+body .badge,
+body .tag,
+body .tab-pill,
+body .nav-item,
+body .section-toggle,
+body .side-link,
+body .nav-link,
+body .status,
+body .avatar,
+body .locale-select,
+body .locale-menu,
+body .locale-option {
+  border-radius: var(--radius-md) !important;
+}
+
+body button,
+body .u-button,
+body input,
+body select,
+body textarea {
+  border-radius: var(--radius-sm) !important;
+}
+
+body .u-button {
+  border-radius: var(--radius-md) !important;
+  font-weight: 600;
+  min-height: 36px;
+  padding: 8px 14px;
+}
+
+h2 {
+  font-size: clamp(26px, 3vw, 36px);
+  line-height: 1.2;
+  font-weight: 700;
+}
+
+h3 {
+  font-size: clamp(18px, 2.2vw, 24px);
+  line-height: 1.3;
+  font-weight: 700;
+}
+
+.tab-pill {
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.tab-pill.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.modal {
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.modal {
+  background: rgba(2, 6, 23, 0.6) !important;
+}
+
+:is(body.theme-light, html.light body) .modal {
+  background: rgba(15, 23, 42, 0.85) !important;
+}
+
+.modal::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: inherit;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 0;
+}
+
+.modal > * {
+  position: relative;
+  z-index: 1;
+}
+
+:is(body.theme-light, html.light body) .modal-card {
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18) !important;
+}
+
+:is(body.theme-light, html.light body) .u-button {
+  border-color: var(--border-strong) !important;
+  box-shadow: 0 6px 12px rgba(15, 23, 42, 0.08);
+}
+
+:is(body.theme-light, html.light body) .u-button[data-variant=\"outline\"],
+:is(body.theme-light, html.light body) .u-button[data-variant=\"soft\"],
+:is(body.theme-light, html.light body) .u-button[data-variant=\"ghost\"] {
+  background: var(--surface) !important;
+  color: var(--text) !important;
+  border-color: var(--border-strong) !important;
+}
+
+:is(body.theme-light, html.light body) .u-button[data-variant=\"solid\"] {
+  color: #ffffff !important;
+  border-color: transparent !important;
+  box-shadow: 0 10px 18px rgba(37, 99, 235, 0.22);
+}
+
+:is(body.theme-light, html.light body) .u-button:hover {
+  border-color: var(--accent) !important;
+}
+
+:is(body.theme-light, html.light body) .u-badge {
+  background: #eef2ff !important;
+  color: #1e1b4b !important;
+  border: 1px solid rgba(99, 102, 241, 0.35) !important;
+  font-weight: 700;
+  opacity: 1 !important;
+}
+
+:is(body.theme-light, html.light body) .u-badge[data-color=\"success\"] {
+  background: rgba(16, 185, 129, 0.18) !important;
+  color: #065f46 !important;
+  border-color: rgba(16, 185, 129, 0.35) !important;
+}
+
+:is(body.theme-light, html.light body) .u-badge[data-color=\"error\"] {
+  background: rgba(248, 113, 113, 0.2) !important;
+  color: #7f1d1d !important;
+  border-color: rgba(248, 113, 113, 0.4) !important;
+}
+
+:is(body.theme-light, html.light body) .bg-success {
+  background-color: rgba(16, 185, 129, 0.22) !important;
+  color: #065f46 !important;
+}
+
+:is(body.theme-light, html.light body) .bg-error {
+  background-color: rgba(248, 113, 113, 0.24) !important;
+  color: #7f1d1d !important;
+}
+
+:is(body.theme-light, html.light body) .bg-warning {
+  background-color: rgba(245, 158, 11, 0.24) !important;
+  color: #92400e !important;
+}
+
+:is(body.theme-light, html.light body) .bg-primary {
+  background-color: rgba(99, 102, 241, 0.22) !important;
+  color: #312e81 !important;
+}
+
+:is(body.theme-light, html.light body) .bg-info {
+  background-color: rgba(59, 130, 246, 0.2) !important;
+  color: #1e3a8a !important;
+}
+
+:is(body.theme-light, html.light body) .u-select-menu__content,
+:is(body.theme-light, html.light body) .u-popper-content,
+:is(body.theme-light, html.light body) .u-dropdown__content {
+  background: var(--surface) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--border-strong) !important;
+  box-shadow: var(--shadow) !important;
+}
+
+:is(body.theme-light, html.light body) .u-select-menu__item,
+:is(body.theme-light, html.light body) .u-dropdown__item {
+  color: var(--text) !important;
+}
+
+:is(body.theme-light, html.light body) .u-select-menu__item:hover,
+:is(body.theme-light, html.light body) .u-dropdown__item:hover {
+  background: var(--surface-2) !important;
+}
+
+:is(body.theme-light, html.light body) .page,
+:is(body.theme-light, html.light body) .section-content,
+:is(body.theme-light, html.light body) .section-nav {
+  background: var(--bg) !important;
+  color: var(--text) !important;
+}
+
+:is(body.theme-light, html.light body) .card,
+:is(body.theme-light, html.light body) .sub-card,
+:is(body.theme-light, html.light body) .modal-card,
+:is(body.theme-light, html.light body) .stat-card,
+:is(body.theme-light, html.light body) .shop-card,
+:is(body.theme-light, html.light body) .item-card,
+:is(body.theme-light, html.light body) .inv-member,
+:is(body.theme-light, html.light body) .inv-item,
+:is(body.theme-light, html.light body) .doc-card,
+:is(body.theme-light, html.light body) .doc-callout,
+:is(body.theme-light, html.light body) .hero,
+:is(body.theme-light, html.light body) .panel,
+:is(body.theme-light, html.light body) .tile,
+:is(body.theme-light, html.light body) .box,
+:is(body.theme-light, html.light body) .list-row,
+:is(body.theme-light, html.light body) .logs-table,
+:is(body.theme-light, html.light body) .stats,
+:is(body.theme-light, html.light body) .list,
+:is(body.theme-light, html.light body) .pagination {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+  color: var(--text) !important;
+  box-shadow: var(--shadow) !important;
+}
+
+:is(body.theme-light, html.light body) [class*="card"],
+:is(body.theme-light, html.light body) [class*="panel"],
+:is(body.theme-light, html.light body) [class*="tile"],
+:is(body.theme-light, html.light body) [class*="hero"],
+:is(body.theme-light, html.light body) [class*="modal"],
+:is(body.theme-light, html.light body) [class*="sheet"],
+:is(body.theme-light, html.light body) [class*="popover"],
+:is(body.theme-light, html.light body) [class*="dropdown"],
+:is(body.theme-light, html.light body) [class*="menu"],
+:is(body.theme-light, html.light body) [class*="table"] {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+  color: var(--text) !important;
+  box-shadow: var(--shadow) !important;
+}
+
+:is(body.theme-light, html.light body) .sub-card,
+:is(body.theme-light, html.light body) .item-card,
+:is(body.theme-light, html.light body) .list-row,
+:is(body.theme-light, html.light body) .inv-item {
+  background: var(--surface-2) !important;
+}
+
+:is(body.theme-light, html.light body) .muted,
+:is(body.theme-light, html.light body) .item-sub,
+:is(body.theme-light, html.light body) .stat-title,
+:is(body.theme-light, html.light body) .item-subtitle,
+:is(body.theme-light, html.light body) .helper,
+:is(body.theme-light, html.light body) .hint {
+  color: var(--text-muted) !important;
+}
+
+:is(body.theme-light, html.light body) input,
+:is(body.theme-light, html.light body) select,
+:is(body.theme-light, html.light body) textarea {
+  background: var(--bg-elevated) !important;
+  color: var(--text) !important;
+  border-color: var(--border) !important;
+}
+
+:is(body.theme-light, html.light body) .chip,
+:is(body.theme-light, html.light body) .pill,
+:is(body.theme-light, html.light body) .badge,
+:is(body.theme-light, html.light body) .tag {
+  background: var(--surface-2) !important;
+  color: var(--text-soft) !important;
+  border-color: var(--border) !important;
+}
+
+:is(body.theme-light, html.light body) .tab-pill,
+:is(body.theme-light, html.light body) .nav-item,
+:is(body.theme-light, html.light body) .section-toggle,
+:is(body.theme-light, html.light body) .inline .tab-pill {
+  background: var(--surface-2) !important;
+  color: var(--text) !important;
+  border-color: var(--border) !important;
+}
+
+:is(body.theme-light, html.light body) .side-link,
+:is(body.theme-light, html.light body) .nav-link,
+:is(body.theme-light, html.light body) .sidebar a,
+:is(body.theme-light, html.light body) .sidebar button {
+  color: var(--text) !important;
+  border-color: var(--border) !important;
+  background: var(--surface) !important;
+}
+
+:is(body.theme-light, html.light body) .side-link:hover,
+:is(body.theme-light, html.light body) .nav-link:hover,
+:is(body.theme-light, html.light body) .sidebar a:hover,
+:is(body.theme-light, html.light body) .sidebar button:hover {
+  background: var(--surface-2) !important;
+  border-color: var(--border-strong) !important;
+}
+
+:is(body.theme-light, html.light body) .support-link,
+:is(body.theme-light, html.light body) .admin-link,
+:is(body.theme-light, html.light body) .logout-link {
+  background: var(--surface-2) !important;
+  color: var(--text) !important;
+  border-color: var(--border-strong) !important;
+}
+
+:is(body.theme-light, html.light body) .support-link .nav-icon,
+:is(body.theme-light, html.light body) .admin-link .nav-icon,
+:is(body.theme-light, html.light body) .logout-link .nav-icon {
+  background: var(--accent-soft) !important;
+  color: var(--text) !important;
+}
+
+.ghost,
+.primary,
+.danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-weight: 600;
+  border: 1px solid transparent;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.ghost {
+  background: transparent;
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+.primary {
+  background: var(--accent);
+  color: #ffffff;
+  box-shadow: 0 10px 18px rgba(37, 99, 235, 0.25);
+}
+
+.danger {
+  background: #ef4444;
+  color: #ffffff;
+  box-shadow: 0 10px 18px rgba(239, 68, 68, 0.25);
+}
+
+.ghost:disabled,
+.primary:disabled,
+.danger:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  box-shadow: none;
+}

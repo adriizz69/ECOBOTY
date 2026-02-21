@@ -1,0 +1,21 @@
+{
+  "name": "bot-economie-discord",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "bot",
+    "frontend",
+    "shared"
+  ],
+  "scripts": {
+    "backend": "npm --workspace backend run dev",
+    "start": "npm --workspace backend run start",
+    "bot": "npm --workspace bot run start",
+    "frontend": "npm --workspace frontend run dev",
+    "lint": "npm --workspace backend run lint && npm --workspace bot run lint && npm --workspace frontend run lint",
+    "dev:all": "concurrently -k -n backend,bot,frontend -c blue,magenta,green \"npm --workspace backend run dev\" \"npm --workspace bot run start\" \"npm --workspace frontend run dev\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
