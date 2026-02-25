@@ -802,12 +802,13 @@ apiRouter.get("/economy/leaderboard", async (req, res) => {
   const limit = Math.max(1, Math.min(50, Number(req.query.limit || 10)));
   const page = Math.max(1, Number(req.query.page || 1));
   const minBalance = Number(req.query.minBalance || 0);
+  const search = String(req.query.search || "").trim().slice(0, 80);
   const offset = (page - 1) * limit;
   if (!guildId) return res.status(400).json({ error: "missing_params" });
   try {
     const [leaderboard, total] = await Promise.all([
-      getLeaderboard({ guildId, limit, offset, minBalance }),
-      getLeaderboardTotal({ guildId, minBalance })
+      getLeaderboard({ guildId, limit, offset, minBalance, search }),
+      getLeaderboardTotal({ guildId, minBalance, search })
     ]);
     const totalPages = Math.max(1, Math.ceil(total / limit));
     res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");

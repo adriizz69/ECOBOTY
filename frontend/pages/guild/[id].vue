@@ -400,6 +400,26 @@
             <div class="stat-value">{{ leaderboardSummary.year }}</div>
           </div>
         </div>
+        <div class="leaderboard-search-row">
+          <label class="inline-label">{{ $t("adminGuild.leaderboard.searchLabel") }}</label>
+          <div class="inline">
+            <input
+              v-model.trim="leaderboardSearch"
+              class="search leaderboard-search-input"
+              :placeholder="$t('adminGuild.leaderboard.searchPlaceholder')"
+              @input="queueLeaderboardSearch"
+            />
+            <UButton
+              v-if="leaderboardSearch"
+              color="neutral"
+              variant="outline"
+              size="xs"
+              @click="clearLeaderboardSearch"
+            >
+              {{ $t("adminGuild.leaderboard.searchReset") }}
+            </UButton>
+          </div>
+        </div>
         <div v-if="!leaderboard.length" class="muted">{{ $t("common.noData") }}</div>
         <ul class="leaderboard">
           <li v-for="row in leaderboard" :key="row.userId">
@@ -3028,12 +3048,14 @@ const saveAndContinue = async () => {
   }
 };
 let leaderboardTimer = null;
+let leaderboardSearchTimer = null;
 let massBalanceProgressTimer = null;
 
 const leaderboard = ref([]);
 const leaderboardPage = ref(1);
 const leaderboardLimit = ref(10);
 const leaderboardTotal = ref(0);
+const leaderboardSearch = ref("");
 const leaderboardTotalPages = computed(() => {
   const total = Number(leaderboardTotal.value || 0);
   const limit = Math.max(1, Number(leaderboardLimit.value || 10));
@@ -4087,8 +4109,19 @@ const removeItemRole = (roleId) => {
 const loadLeaderboard = async ({ page = leaderboardPage.value } = {}) => {
   const token = getToken();
   const limit = leaderboardLimit.value;
+  const search = String(leaderboardSearch.value || "").trim();
+  const params = new URLSearchParams({
+    guildId: String(id),
+    page: String(page),
+    limit: String(limit),
+    minBalance: "1",
+    ts: String(Date.now())
+  });
+  if (search) {
+    params.set("search", search);
+  }
   const res = await fetch(
-    `${config.public.apiBase}/api/economy/leaderboard?guildId=${id}&page=${page}&limit=${limit}&minBalance=1&ts=${Date.now()}`,
+    `${config.public.apiBase}/api/economy/leaderboard?${params.toString()}`,
     {
       cache: "no-store",
     headers: {
@@ -4096,13 +4129,43 @@ const loadLeaderboard = async ({ page = leaderboardPage.value } = {}) => {
     }
     }
   );
-  const data = await res.json();
+  if (handleUnauthorized(res)) return;
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    leaderboard.value = [];
+    leaderboardTotal.value = 0;
+    leaderboardPage.value = 1;
+    return;
+  }
   leaderboard.value = data.leaderboard || [];
   leaderboardTotal.value = Number(data.total || 0);
   leaderboardLimit.value = Number(data.limit || limit);
   leaderboardPage.value = Number(data.page || page || 1);
   await resolveLeaderboardUsers();
   await loadLeaderboardSummary();
+};
+
+const queueLeaderboardSearch = () => {
+  if (leaderboardSearchTimer) {
+    clearTimeout(leaderboardSearchTimer);
+    leaderboardSearchTimer = null;
+  }
+  leaderboardSearchTimer = setTimeout(async () => {
+    leaderboardPage.value = 1;
+    await loadLeaderboard({ page: 1 });
+    leaderboardSearchTimer = null;
+  }, 260);
+};
+
+const clearLeaderboardSearch = async () => {
+  if (!leaderboardSearch.value) return;
+  if (leaderboardSearchTimer) {
+    clearTimeout(leaderboardSearchTimer);
+    leaderboardSearchTimer = null;
+  }
+  leaderboardSearch.value = "";
+  leaderboardPage.value = 1;
+  await loadLeaderboard({ page: 1 });
 };
 
 const changeLeaderboardPage = async (delta) => {
@@ -4805,7 +4868,7 @@ const confirmMassBalanceAdd = async () => {
 
   const token = getToken();
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 120000);
+  const timeout = setTimeout(() => controller.abort(), 300000);
 
   try {
     const res = await fetch(`${config.public.apiBase}/api/economy/all-balances/add`, {
@@ -4825,38 +4888,53 @@ const confirmMassBalanceAdd = async () => {
       throw new Error(data?.error || t("adminGuild.leaderboard.bulkAddError"));
     }
 
-    massBalancePhase.value = t("adminGuild.leaderboard.bulkAddPhaseRefresh");
-    massBalanceStatus.value = t("adminGuild.leaderboard.bulkAddRefreshing");
-    massBalanceProgress.value = Math.max(massBalanceProgress.value, 86);
-
-    await Promise.all([loadLeaderboard(), loadLeaderboardSummary(), loadGainLogs()]);
-    if (showLeaderboardModal.value && selectedLeaderboardUser.value) {
-      await loadLeaderboardUserStats();
-    }
-
     const synced = Number(data?.affected || 0);
     massBalanceSyncedMembers.value = synced;
     massBalanceTotalMembers.value = synced;
-    massBalancePhase.value = t("adminGuild.leaderboard.bulkAddPhaseDone");
+    massBalancePhase.value = t("adminGuild.leaderboard.bulkAddPhaseRefresh");
     massBalanceStatus.value = t("adminGuild.leaderboard.bulkAddSyncCount", {
       done: synced,
       total: synced
     });
+    massBalanceProgress.value = Math.max(massBalanceProgress.value, 86);
+
+    const refreshTasks = [loadLeaderboard(), loadLeaderboardSummary(), loadGainLogs()];
+    if (showLeaderboardModal.value && selectedLeaderboardUser.value) {
+      refreshTasks.push(loadLeaderboardUserStats());
+    }
+    const refreshResults = await Promise.allSettled(refreshTasks);
+    const refreshFailed = refreshResults.some((result) => result.status === "rejected");
+
+    massBalancePhase.value = t("adminGuild.leaderboard.bulkAddPhaseDone");
+    massBalanceStatus.value = refreshFailed
+      ? t("adminGuild.leaderboard.bulkAddRefreshWarning")
+      : t("adminGuild.leaderboard.bulkAddSyncCount", {
+          done: synced,
+          total: synced
+        });
     massBalanceProgress.value = 100;
 
     await new Promise((resolve) => setTimeout(resolve, 350));
     showMassBalanceModal.value = false;
     notifySaved(
-      t("adminGuild.leaderboard.bulkAddSuccess", {
-        amount: Number(data?.amount || amount),
-        members: synced,
-        total: Number(data?.totalAdded || 0)
-      })
+      refreshFailed
+        ? t("adminGuild.leaderboard.bulkAddSuccessRefreshWarning", {
+            amount: Number(data?.amount || amount),
+            members: synced,
+            total: Number(data?.totalAdded || 0)
+          })
+        : t("adminGuild.leaderboard.bulkAddSuccess", {
+            amount: Number(data?.amount || amount),
+            members: synced,
+            total: Number(data?.totalAdded || 0)
+          })
     );
   } catch (error) {
     massBalanceStatus.value = error?.name === "AbortError"
       ? t("adminGuild.leaderboard.bulkAddTimeout")
-      : error?.message || t("adminGuild.leaderboard.bulkAddError");
+      : error?.message === "Failed to fetch"
+        ? t("adminGuild.leaderboard.bulkAddNetworkError")
+        : error?.message || t("adminGuild.leaderboard.bulkAddError");
   } finally {
     clearTimeout(timeout);
     stopMassBalanceProgress();
@@ -6459,6 +6537,10 @@ onBeforeUnmount(() => {
     clearInterval(leaderboardTimer);
     leaderboardTimer = null;
   }
+  if (leaderboardSearchTimer) {
+    clearTimeout(leaderboardSearchTimer);
+    leaderboardSearchTimer = null;
+  }
   stopMassBalanceProgress();
 });
 </script>
@@ -7923,6 +8005,14 @@ select option:hover {
   flex-wrap: wrap;
   gap: 10px;
   align-items: center;
+}
+.leaderboard-search-row {
+  margin-bottom: 12px;
+  display: grid;
+  gap: 8px;
+}
+.leaderboard-search-input {
+  max-width: 360px;
 }
 .list {
   margin-top: 12px;
