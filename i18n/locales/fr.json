@@ -893,6 +893,9 @@
       "balanceAdd": "Ajouter au solde",
       "balanceRemove": "Retirer du solde",
       "amount": "Montant",
+      "searchLabel": "Recherche classement",
+      "searchPlaceholder": "Nom ou ID Discord",
+      "searchReset": "Effacer",
       "byDay": "Détails par jour",
       "byMonth": "Détails par mois",
       "noGainLogs": "Aucun log de gain trouvé pour cet utilisateur.",
@@ -922,7 +925,10 @@
       "bulkAddPhaseRefresh": "Synchronisation de l'interface",
       "bulkAddPhaseDone": "Synchronisation terminée",
       "bulkAddTimeout": "Le traitement a pris trop de temps. Vérifie les logs puis réessaie.",
-      "bulkAddSyncCount": "Synchronisé: {done}/{total} membres"
+      "bulkAddSyncCount": "Synchronisé: {done}/{total} membres",
+      "bulkAddRefreshWarning": "Ajout appliqué. L'interface n'a pas pu se rafraîchir entièrement.",
+      "bulkAddSuccessRefreshWarning": "{amount} ajouté à {members} membres ({total} au total). Rafraîchis la page pour confirmer l'affichage.",
+      "bulkAddNetworkError": "Connexion impossible pendant la synchronisation. Vérifie le réseau puis réessaie."
     },
     "logs": {
       "tabs": {

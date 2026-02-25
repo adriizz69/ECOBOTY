@@ -893,6 +893,9 @@
       "balanceAdd": "Add to balance",
       "balanceRemove": "Remove from balance",
       "amount": "Amount",
+      "searchLabel": "Leaderboard search",
+      "searchPlaceholder": "Name or Discord ID",
+      "searchReset": "Clear",
       "byDay": "Daily details",
       "byMonth": "Monthly details",
       "noGainLogs": "No gain logs found for this user.",
@@ -922,7 +925,10 @@
       "bulkAddPhaseRefresh": "Syncing interface",
       "bulkAddPhaseDone": "Sync completed",
       "bulkAddTimeout": "The process took too long. Check logs and try again.",
-      "bulkAddSyncCount": "Synced: {done}/{total} members"
+      "bulkAddSyncCount": "Synced: {done}/{total} members",
+      "bulkAddRefreshWarning": "Add applied. The interface could not fully refresh.",
+      "bulkAddSuccessRefreshWarning": "{amount} added to {members} members ({total} total). Refresh the page to confirm display.",
+      "bulkAddNetworkError": "Connection failed during sync. Check network and try again."
     },
     "logs": {
       "tabs": {
