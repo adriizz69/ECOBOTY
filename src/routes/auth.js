@@ -3,8 +3,10 @@ import { SignJWT } from "jose";
 import { db } from "../services/db.js";
 import { saveTwitchSettings } from "../services/twitch.js";
 import { startTwitchListener } from "../services/twitch.js";
+import { recordAchievementEvent } from "../services/achievements.js";
 
 export const authRouter = Router();
+const jwtTtl = String(process.env.API_JWT_TTL || "30d").trim() || "30d";
 
 const encodeState = (payload) =>
   Buffer.from(JSON.stringify(payload)).toString("base64url");
@@ -308,6 +310,19 @@ authRouter.get("/discord/callback", async (req, res) => {
           // ignore fallback to state login
         }
       }
+      if (state?.guildId) {
+        try {
+          await recordAchievementEvent({
+            guildId: String(state.guildId),
+            userId: String(user.id),
+            eventKey: "twitch_authenticated",
+            increment: 1,
+            metadata: { source: "discord_connections" }
+          });
+        } catch {
+          // do not block auth flow
+        }
+      }
       const liveUrl = liveChannel ? `https://www.twitch.tv/${liveChannel}` : "";
       const scopeNote = tokenScopes.includes("guilds")
         ? ""
@@ -339,7 +354,7 @@ authRouter.get("/discord/callback", async (req, res) => {
     })
       .setProtectedHeader({ alg: "HS256" })
       .setIssuedAt()
-      .setExpirationTime("12h")
+      .setExpirationTime(jwtTtl)
       .sign(new TextEncoder().encode(rawSecret));
 
     const redirectUrl = new URL(state?.redirect || process.env.BASE_URL || "http://localhost:3000");

@@ -35,6 +35,15 @@ import {
 } from "../services/admin.js";
 import { stopTwitchListener } from "../services/twitch.js";
 import { sendLogMessage } from "../services/logs.js";
+import { getUserAchievementsPage, recordAchievementEvent } from "../services/achievements.js";
+import {
+  getOrCreateBirthdaySettings,
+  getBirthdayForUser,
+  upsertBirthdayEntry,
+  getUpcomingBirthdays,
+  parseBirthdayDateFromText,
+  normalizeBirthdayDateForStorage
+} from "../services/birthdays.js";
 
 export const botRouter = Router();
 
@@ -45,6 +54,26 @@ const shouldLogAutoGain = (guildId) => {
   if (now - last < 30000) return false;
   autoGainLogState.set(guildId, now);
   return true;
+};
+
+const trackAchievementSafe = async ({
+  guildId,
+  userId,
+  eventKey,
+  increment = 1,
+  metadata = {}
+}) => {
+  try {
+    await recordAchievementEvent({
+      guildId: String(guildId),
+      userId: String(userId),
+      eventKey,
+      increment,
+      metadata
+    });
+  } catch {
+    // do not block feature flow on achievements errors
+  }
 };
 
 botRouter.use((req, res, next) => {
@@ -166,6 +195,14 @@ botRouter.post("/economy/daily", async (req, res) => {
   if (!guildId || !userId) return res.status(400).json({ error: "missing_params" });
   try {
     const result = await applyDaily({ guildId, userId });
+    if (result?.ok) {
+      await trackAchievementSafe({
+        guildId,
+        userId,
+        eventKey: "daily_claims",
+        increment: 1
+      });
+    }
     return res.json(result);
   } catch (error) {
     return res.status(400).json({ error: error.message || "daily_failed" });
@@ -244,9 +281,148 @@ botRouter.post("/games/play", async (req, res) => {
   if (!guildId || !userId || !gameId || !bet) return res.status(400).json({ error: "missing_params" });
   try {
     const result = await playGame({ guildId, userId, gameId, bet, choice, cashout });
+    if (result?.ok) {
+      await trackAchievementSafe({
+        guildId,
+        userId,
+        eventKey: "games_played",
+        increment: 1,
+        metadata: { gameId }
+      });
+      if (result.win) {
+        await trackAchievementSafe({
+          guildId,
+          userId,
+          eventKey: "games_won",
+          increment: 1,
+          metadata: { gameId }
+        });
+      }
+    }
     return res.json(result);
   } catch (error) {
     return res.status(400).json({ error: error.message || "game_failed" });
+  }
+});
+
+botRouter.post("/achievements/event", async (req, res) => {
+  const { guildId, userId, eventKey, increment, metadata } = req.body || {};
+  if (!guildId || !userId || !eventKey) return res.status(400).json({ error: "missing_params" });
+  try {
+    const result = await recordAchievementEvent({
+      guildId: String(guildId),
+      userId: String(userId),
+      eventKey: String(eventKey),
+      increment: Number.isFinite(Number(increment)) ? Number(increment) : 1,
+      metadata: metadata && typeof metadata === "object" ? metadata : {}
+    });
+    return res.json(result);
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "achievement_event_failed" });
+  }
+});
+
+botRouter.get("/achievements/user", async (req, res) => {
+  const guildId = req.query.guildId;
+  const userId = req.query.userId;
+  const page = Number(req.query.page || 1);
+  const limit = Number(req.query.limit || 8);
+  if (!guildId || !userId) return res.status(400).json({ error: "missing_params" });
+  try {
+    const data = await getUserAchievementsPage({
+      guildId: String(guildId),
+      userId: String(userId),
+      page,
+      limit
+    });
+    return res.json(data);
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "achievements_user_failed" });
+  }
+});
+
+botRouter.get("/birthdays/settings", async (req, res) => {
+  const guildId = req.query.guildId;
+  if (!guildId) return res.status(400).json({ error: "missing_params" });
+  try {
+    const settings = await getOrCreateBirthdaySettings(String(guildId));
+    return res.json({ settings });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "birthday_settings_failed" });
+  }
+});
+
+botRouter.get("/birthdays/self", async (req, res) => {
+  const guildId = req.query.guildId;
+  const userId = req.query.userId;
+  if (!guildId || !userId) return res.status(400).json({ error: "missing_params" });
+  try {
+    const payload = await getBirthdayForUser({
+      guildId: String(guildId),
+      userId: String(userId)
+    });
+    return res.json(payload);
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "birthday_self_failed" });
+  }
+});
+
+botRouter.post("/birthdays/self", async (req, res) => {
+  const guildId = req.body?.guildId;
+  const userId = req.body?.userId;
+  const format = String(req.body?.format || "dmy").toLowerCase();
+  const birthDateText = String(req.body?.birthDateText || req.body?.birthDate || "").trim();
+  if (!guildId || !userId || !birthDateText) return res.status(400).json({ error: "missing_params" });
+  try {
+    const current = await getBirthdayForUser({
+      guildId: String(guildId),
+      userId: String(userId)
+    });
+    if (!current?.settings?.enabled) {
+      return res.status(400).json({ error: "birthday_disabled" });
+    }
+    if (current?.entry) {
+      return res.status(400).json({ error: "birthday_user_locked" });
+    }
+
+    const normalizedFromIso = normalizeBirthdayDateForStorage(birthDateText);
+    const normalizedFromText = parseBirthdayDateFromText(birthDateText, format === "ymd" ? "ymd" : "dmy");
+    const birthDate = normalizedFromIso || normalizedFromText || "";
+    if (!birthDate) {
+      return res.status(400).json({ error: "birthday_invalid_date" });
+    }
+
+    const result = await upsertBirthdayEntry({
+      guildId: String(guildId),
+      userId: String(userId),
+      birthDate,
+      source: "command",
+      actorUserId: String(userId),
+      triggerAchievement: true,
+      logChange: true
+    });
+    const payload = await getBirthdayForUser({
+      guildId: String(guildId),
+      userId: String(userId)
+    });
+    return res.json({ ok: true, result, ...payload });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "birthday_save_failed" });
+  }
+});
+
+botRouter.get("/birthdays/upcoming", async (req, res) => {
+  const guildId = req.query.guildId;
+  const limit = Number(req.query.limit || 10);
+  if (!guildId) return res.status(400).json({ error: "missing_params" });
+  try {
+    const payload = await getUpcomingBirthdays({
+      guildId: String(guildId),
+      limit
+    });
+    return res.json(payload);
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "birthday_upcoming_failed" });
   }
 });
 
@@ -317,9 +493,19 @@ botRouter.post("/economy/leaderboard-post", async (req, res) => {
 
 botRouter.get("/shops", async (req, res) => {
   const guildId = req.query.guildId;
+  const userId = req.query.userId;
   if (!guildId) return res.status(400).json({ error: "missing_params" });
   try {
     const shops = await listShops(guildId, { enabledOnly: true });
+    if (userId) {
+      await trackAchievementSafe({
+        guildId,
+        userId,
+        eventKey: "shop_views",
+        increment: 1,
+        metadata: { source: "discord" }
+      });
+    }
     return res.json({ shops });
   } catch (error) {
     return res.status(400).json({ error: error.message || "shops_failed" });
@@ -351,6 +537,14 @@ botRouter.post("/shops/:id/purchase", async (req, res) => {
   if (!guildId || !userId || !itemId) return res.status(400).json({ error: "missing_params" });
   try {
     const result = await purchaseItem({ guildId, userId, itemId });
+    if (result?.ok) {
+      await trackAchievementSafe({
+        guildId,
+        userId,
+        eventKey: "economy_purchases",
+        increment: 1
+      });
+    }
     return res.json(result);
   } catch (error) {
     return res.status(400).json({ error: error.message || "purchase_failed" });

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "../services/db.js";
-import { ensureGuild, getOrCreateSettings, getBalance } from "../services/economy.js";
+import { applyDaily, ensureGuild, getDailyStatus, getOrCreateSettings, getBalance } from "../services/economy.js";
 import {
   listShops,
   listItems,
@@ -14,7 +14,9 @@ import {
   useInventoryItem
 } from "../services/shop.js";
 import { getGamesSettings, playGame } from "../services/games.js";
-import { fetchBotGuilds } from "../services/admin.js";
+import { fetchBotGuilds, getBotSettings } from "../services/admin.js";
+import { getUserAchievements, recordAchievementEvent } from "../services/achievements.js";
+import { getBirthdayForUser, upsertBirthdayEntry } from "../services/birthdays.js";
 
 export const userRouter = Router();
 
@@ -93,6 +95,26 @@ const fetchMemberRoles = async ({ guildId, userId }) => {
   }
 };
 
+const trackAchievementSafe = async ({
+  guildId,
+  userId,
+  eventKey,
+  increment = 1,
+  metadata = {}
+}) => {
+  try {
+    await recordAchievementEvent({
+      guildId: String(guildId),
+      userId: String(userId),
+      eventKey,
+      increment,
+      metadata
+    });
+  } catch {
+    // ignore
+  }
+};
+
 userRouter.get("/servers", async (req, res) => {
   const userId = getActiveUser(req);
   if (!userId) return res.status(401).json({ error: "missing_user" });
@@ -140,6 +162,13 @@ userRouter.get("/guilds/:id/summary", async (req, res) => {
   try {
     const guild = await ensureUserGuildAccess({ guildId, userId });
     const settings = await getOrCreateSettings(guildId, db);
+    let botTimeZone = "UTC";
+    try {
+      const botSettings = await getBotSettings(guildId);
+      botTimeZone = botSettings?.timezone || "UTC";
+    } catch {
+      botTimeZone = "UTC";
+    }
     const balance = await getBalance({ guildId, userId });
     return res.json({
       guild: { id: guild.discord_guild_id, name: guild.name, icon: guild.icon },
@@ -147,6 +176,9 @@ userRouter.get("/guilds/:id/summary", async (req, res) => {
         name: settings?.name || "Monnaie",
         emoji: settings?.emoji_symbol || "💰",
         enabled: Boolean(settings?.enabled)
+      },
+      bot: {
+        timezone: botTimeZone
       },
       balance
     });
@@ -165,6 +197,13 @@ userRouter.get("/guilds/:id/shops", async (req, res) => {
   try {
     await ensureUserGuildAccess({ guildId, userId });
     const shops = await listShops(guildId, { enabledOnly: true });
+    await trackAchievementSafe({
+      guildId,
+      userId,
+      eventKey: "shop_views",
+      increment: 1,
+      metadata: { source: "web" }
+    });
     const { roles } = await fetchMemberRoles({ guildId, userId });
     const normalized = shops.map((shop) => {
       const required = parseRequiredRoles(shop);
@@ -181,6 +220,49 @@ userRouter.get("/guilds/:id/shops", async (req, res) => {
     const payload = { error: error.message || "shops_failed" };
     if (reason) payload.reason = reason;
     return res.status(403).json(payload);
+  }
+});
+
+userRouter.get("/guilds/:id/daily", async (req, res) => {
+  const userId = getActiveUser(req);
+  const guildId = req.params.id;
+  if (!userId || !guildId) return res.status(401).json({ error: "missing_params" });
+  try {
+    await ensureUserGuildAccess({ guildId, userId });
+    const daily = await getDailyStatus({ guildId, userId });
+    return res.json({ daily });
+  } catch (error) {
+    const reason = error?.reason;
+    const payload = { error: error.message || "daily_status_failed" };
+    if (reason) payload.reason = reason;
+    return res.status(403).json(payload);
+  }
+});
+
+userRouter.post("/guilds/:id/daily/claim", async (req, res) => {
+  const userId = getActiveUser(req);
+  const guildId = req.params.id;
+  if (!userId || !guildId) return res.status(401).json({ error: "missing_params" });
+  try {
+    await ensureUserGuildAccess({ guildId, userId });
+    const status = await getDailyStatus({ guildId, userId });
+    if (!status.enabled) return res.status(400).json({ error: "daily_disabled" });
+    const result = await applyDaily({ guildId, userId });
+    if (result?.ok) {
+      await trackAchievementSafe({
+        guildId,
+        userId,
+        eventKey: "daily_claims",
+        increment: 1
+      });
+    }
+    const daily = await getDailyStatus({ guildId, userId });
+    return res.json({ ok: true, result, daily });
+  } catch (error) {
+    const reason = error?.reason;
+    const payload = { error: error.message || "daily_claim_failed" };
+    if (reason) payload.reason = reason;
+    return res.status(400).json(payload);
   }
 });
 
@@ -238,6 +320,14 @@ userRouter.post("/guilds/:id/shops/:shopId/purchase", async (req, res) => {
     const allowed = required.length === 0 || required.every((id) => roles.includes(String(id)));
     if (!allowed) return res.status(403).json({ error: "missing_roles", required });
     const result = await purchaseItem({ guildId, userId, itemId });
+    if (result?.ok) {
+      await trackAchievementSafe({
+        guildId,
+        userId,
+        eventKey: "economy_purchases",
+        increment: 1
+      });
+    }
     return res.json(result);
   } catch (error) {
     return res.status(400).json({ error: error.message || "purchase_failed" });
@@ -353,10 +443,100 @@ userRouter.post("/guilds/:id/games/play", async (req, res) => {
   try {
     await ensureUserGuildAccess({ guildId, userId });
     const result = await playGame({ guildId, userId, gameId, bet, choice, cashout });
+    if (result?.ok) {
+      await trackAchievementSafe({
+        guildId,
+        userId,
+        eventKey: "games_played",
+        increment: 1,
+        metadata: { gameId }
+      });
+      if (result.win) {
+        await trackAchievementSafe({
+          guildId,
+          userId,
+          eventKey: "games_won",
+          increment: 1,
+          metadata: { gameId }
+        });
+      }
+    }
     return res.json(result);
   } catch (error) {
     return res.status(400).json({ error: error.message || "game_failed" });
   }
+});
+
+userRouter.get("/guilds/:id/achievements", async (req, res) => {
+  const userId = getActiveUser(req);
+  const guildId = req.params.id;
+  if (!userId || !guildId) return res.status(400).json({ error: "missing_params" });
+  try {
+    await ensureUserGuildAccess({ guildId, userId });
+    const data = await getUserAchievements({ guildId, userId });
+    return res.json(data);
+  } catch (error) {
+    const reason = error?.reason;
+    const payload = { error: error.message || "achievements_failed" };
+    if (reason) payload.reason = reason;
+    return res.status(403).json(payload);
+  }
+});
+
+userRouter.get("/guilds/:id/birthday", async (req, res) => {
+  const userId = getActiveUser(req);
+  const guildId = req.params.id;
+  if (!userId || !guildId) return res.status(400).json({ error: "missing_params" });
+  try {
+    await ensureUserGuildAccess({ guildId, userId });
+    const payload = await getBirthdayForUser({ guildId, userId });
+    return res.json(payload);
+  } catch (error) {
+    const reason = error?.reason;
+    const payload = { error: error.message || "birthday_fetch_failed" };
+    if (reason) payload.reason = reason;
+    return res.status(403).json(payload);
+  }
+});
+
+userRouter.post("/guilds/:id/birthday", async (req, res) => {
+  const userId = getActiveUser(req);
+  const guildId = req.params.id;
+  const birthDate = String(req.body?.birthDate || req.body?.birth_date || "").trim();
+  if (!userId || !guildId || !birthDate) return res.status(400).json({ error: "missing_params" });
+  try {
+    await ensureUserGuildAccess({ guildId, userId });
+    const existing = await getBirthdayForUser({ guildId, userId });
+    if (!existing?.settings?.enabled) {
+      return res.status(400).json({ error: "birthday_disabled" });
+    }
+    if (existing?.entry) {
+      return res.status(400).json({ error: "birthday_user_locked" });
+    }
+    const result = await upsertBirthdayEntry({
+      guildId,
+      userId,
+      birthDate,
+      source: "user",
+      actorUserId: userId,
+      triggerAchievement: true,
+      logChange: true
+    });
+    const payload = await getBirthdayForUser({ guildId, userId });
+    return res.json({ ok: true, result, ...payload });
+  } catch (error) {
+    const reason = error?.reason;
+    const payload = { error: error.message || "birthday_save_failed" };
+    if (reason) payload.reason = reason;
+    return res.status(400).json(payload);
+  }
+});
+
+userRouter.delete("/guilds/:id/birthday", async (req, res) => {
+  const userId = getActiveUser(req);
+  const guildId = req.params.id;
+  if (!userId || !guildId) return res.status(400).json({ error: "missing_params" });
+  return res.status(400).json({ error: "birthday_user_locked" });
 });
 
 userRouter.get("/guilds/:id/logs", async (req, res) => {
@@ -374,7 +554,14 @@ userRouter.get("/guilds/:id/logs", async (req, res) => {
       .where({ guild_id: guild.id, user_discord_id: String(userId) })
       .orderBy("created_at", "desc")
       .limit(limit);
-    return res.json({ gains, events });
+    let timeZone = "UTC";
+    try {
+      const botSettings = await getBotSettings(guildId);
+      timeZone = botSettings?.timezone || "UTC";
+    } catch {
+      timeZone = "UTC";
+    }
+    return res.json({ gains, events, timeZone });
   } catch (error) {
     const reason = error?.reason;
     const payload = { error: error.message || "logs_failed" };

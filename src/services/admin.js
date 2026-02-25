@@ -247,7 +247,8 @@ export const listGuilds = async ({ withBotPresence = false } = {}) => {
       "guilds.user_ui_disabled as user_ui_disabled",
       "bot_settings.log_channel_id as bot_log_channel_id",
       "bot_settings.api_tab_disabled as api_tab_disabled",
-      "bot_settings.user_ui_disabled as user_ui_global_disabled"
+      "bot_settings.user_ui_disabled as user_ui_global_disabled",
+      "bot_settings.timezone as timezone"
     )
     .orderBy("guilds.name", "asc");
   if (!withBotPresence) return rows;

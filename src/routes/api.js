@@ -40,6 +40,22 @@ import {
   updateInfoMessageMessageId,
   updateInfoMessageMessageIds
 } from "../services/infoMessage.js";
+import {
+  getAchievementConfigPayload,
+  saveAchievementSettings,
+  createAchievement,
+  updateAchievement,
+  deleteAchievement,
+  applyAchievementTemplate,
+  syncAchievementFromDiscord
+} from "../services/achievements.js";
+import {
+  listGuildBirthdays,
+  saveBirthdaySettings,
+  upsertBirthdayEntry,
+  deleteBirthdayEntry,
+  processBirthdayRoleAssignments
+} from "../services/birthdays.js";
 
 export const apiRouter = Router();
 
@@ -69,8 +85,31 @@ const resolveLeaderboardLang = (lang) => {
   return leaderboardI18n[key] ? key : "fr";
 };
 
+const parseFixedTimeZoneOffset = (timeZone) => {
+  const raw = String(timeZone || "").trim();
+  if (!raw) return null;
+  if (/^(utc|gmt)$/i.test(raw)) return 0;
+  const match = raw.match(/^(?:utc|gmt)\s*([+-])\s*(\d{1,2})(?::?(\d{2}))?$/i);
+  if (!match) return null;
+  const hours = Number(match[2]);
+  const minutes = Number(match[3] || 0);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+  if (hours > 23 || minutes > 59) return null;
+  const total = hours * 60 + minutes;
+  return match[1] === "-" ? -total : total;
+};
+
 const formatLeaderboardDate = (lang, timeZone, date) => {
   const i18n = leaderboardI18n[resolveLeaderboardLang(lang)];
+  const fixedOffset = parseFixedTimeZoneOffset(timeZone);
+  if (fixedOffset !== null) {
+    const shifted = new Date(date.getTime() + fixedOffset * 60000);
+    return new Intl.DateTimeFormat(i18n.locale, {
+      dateStyle: "short",
+      timeStyle: "short",
+      timeZone: "UTC"
+    }).format(shifted);
+  }
   try {
     return new Intl.DateTimeFormat(i18n.locale, {
       dateStyle: "short",
@@ -78,8 +117,141 @@ const formatLeaderboardDate = (lang, timeZone, date) => {
       timeZone: timeZone || "UTC"
     }).format(date);
   } catch {
-    return date.toISOString();
+    return new Intl.DateTimeFormat(i18n.locale, {
+      dateStyle: "short",
+      timeStyle: "short",
+      timeZone: "UTC"
+    }).format(date);
   }
+};
+
+const getGuildTimeZone = async (guildId) => {
+  try {
+    const settings = await getBotSettings(guildId);
+    return settings?.timezone || "UTC";
+  } catch {
+    return "UTC";
+  }
+};
+
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const normalizeDiscordId = (value) => String(value || "").trim();
+
+const normalizeDiscordAvatarUrl = (userId, avatar) => {
+  const value = String(avatar || "").trim();
+  if (!value) return "";
+  if (value.startsWith("http://") || value.startsWith("https://")) return value;
+  const ext = value.startsWith("a_") ? "gif" : "png";
+  return `https://cdn.discordapp.com/avatars/${userId}/${value}.${ext}?size=64`;
+};
+
+const parseDiscordRetryAfterMs = async (response) => {
+  const headerValue = Number(response.headers.get("retry-after"));
+  if (Number.isFinite(headerValue) && headerValue >= 0) {
+    return Math.ceil(headerValue * 1000);
+  }
+  const body = await response.clone().json().catch(() => ({}));
+  const bodyRetry = Number(body?.retry_after);
+  if (Number.isFinite(bodyRetry) && bodyRetry >= 0) {
+    return Math.ceil(bodyRetry * 1000);
+  }
+  return 750;
+};
+
+const fetchDiscordUserProfile = async ({ userId, botToken, maxAttempts = 3 }) => {
+  const normalizedUserId = normalizeDiscordId(userId);
+  if (!normalizedUserId) return null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const response = await fetch(`https://discord.com/api/users/${normalizedUserId}`, {
+      headers: { Authorization: `Bot ${botToken}` }
+    });
+    if (response.ok) {
+      const user = await response.json();
+      const username = user?.username || "";
+      const displayName = user?.global_name || username || normalizedUserId;
+      return {
+        displayName,
+        username,
+        avatar: normalizeDiscordAvatarUrl(normalizedUserId, user?.avatar)
+      };
+    }
+    if (response.status === 404 || response.status === 403) return null;
+    if (response.status === 429 && attempt < maxAttempts) {
+      const retryMs = await parseDiscordRetryAfterMs(response);
+      await wait(retryMs + 50);
+      continue;
+    }
+    if (response.status >= 500 && attempt < maxAttempts) {
+      await wait(300 * attempt);
+      continue;
+    }
+    return null;
+  }
+  return null;
+};
+
+const fetchGuildMemberProfile = async ({ guildId, userId, botToken, maxAttempts = 4 }) => {
+  const normalizedGuildId = normalizeDiscordId(guildId);
+  const normalizedUserId = normalizeDiscordId(userId);
+  if (!normalizedGuildId || !normalizedUserId) return null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const response = await fetch(`https://discord.com/api/guilds/${normalizedGuildId}/members/${normalizedUserId}`, {
+      headers: { Authorization: `Bot ${botToken}` }
+    });
+    if (response.ok) {
+      const member = await response.json();
+      const displayName = member.nick || member.user?.global_name || member.user?.username || normalizedUserId;
+      const username = member.user?.username || "";
+      const guildAvatar = member.avatar;
+      const userAvatar = member.user?.avatar;
+      let avatar = "";
+      if (guildAvatar) {
+        const ext = String(guildAvatar).startsWith("a_") ? "gif" : "png";
+        avatar = `https://cdn.discordapp.com/guilds/${normalizedGuildId}/users/${normalizedUserId}/avatars/${guildAvatar}.${ext}?size=64`;
+      } else {
+        avatar = normalizeDiscordAvatarUrl(normalizedUserId, userAvatar);
+      }
+      return { displayName, username, avatar };
+    }
+
+    if (response.status === 404 || response.status === 403) {
+      return fetchDiscordUserProfile({ userId: normalizedUserId, botToken });
+    }
+
+    if (response.status === 429 && attempt < maxAttempts) {
+      const retryMs = await parseDiscordRetryAfterMs(response);
+      await wait(retryMs + 50);
+      continue;
+    }
+
+    if (response.status >= 500 && attempt < maxAttempts) {
+      await wait(300 * attempt);
+      continue;
+    }
+
+    return null;
+  }
+  return fetchDiscordUserProfile({ userId: normalizedUserId, botToken });
+};
+
+const mapWithConcurrency = async (items, limit, worker) => {
+  const safeLimit = Math.max(1, Number(limit || 1));
+  const input = Array.isArray(items) ? items : [];
+  const out = new Array(input.length);
+  let cursor = 0;
+
+  const runners = Array.from({ length: Math.min(safeLimit, input.length) }, async () => {
+    while (true) {
+      const index = cursor;
+      cursor += 1;
+      if (index >= input.length) break;
+      out[index] = await worker(input[index], index);
+    }
+  });
+
+  await Promise.all(runners);
+  return out;
 };
 
 apiRouter.get("/me", (req, res) => {
@@ -347,6 +519,144 @@ apiRouter.post("/guilds/:id/games/settings", async (req, res) => {
     return res.json({ settings });
   } catch (error) {
     return res.status(400).json({ error: error.message || "games_settings_failed" });
+  }
+});
+
+apiRouter.get("/guilds/:id/achievements", async (req, res) => {
+  try {
+    const payload = await getAchievementConfigPayload(req.params.id);
+    return res.json(payload);
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "achievements_fetch_failed" });
+  }
+});
+
+apiRouter.post("/guilds/:id/achievements/settings", async (req, res) => {
+  try {
+    const settings = await saveAchievementSettings(req.params.id, req.body || {});
+    return res.json({ settings });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "achievements_settings_failed" });
+  }
+});
+
+apiRouter.post("/guilds/:id/achievements", async (req, res) => {
+  try {
+    const achievement = await createAchievement(req.params.id, req.body || {});
+    return res.json({ achievement });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "achievement_create_failed" });
+  }
+});
+
+apiRouter.put("/guilds/:id/achievements/:achievementId", async (req, res) => {
+  try {
+    const achievement = await updateAchievement(req.params.id, req.params.achievementId, req.body || {});
+    return res.json({ achievement });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "achievement_update_failed" });
+  }
+});
+
+apiRouter.post("/guilds/:id/achievements/templates/:templateKey", async (req, res) => {
+  try {
+    const achievement = await applyAchievementTemplate(req.params.id, req.params.templateKey);
+    return res.json({ achievement });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "achievement_template_failed" });
+  }
+});
+
+apiRouter.post("/guilds/:id/achievements/:achievementId/sync", async (req, res) => {
+  try {
+    const result = await syncAchievementFromDiscord({
+      guildId: req.params.id,
+      achievementId: req.params.achievementId
+    });
+    return res.json(result);
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "achievement_sync_failed" });
+  }
+});
+
+apiRouter.delete("/guilds/:id/achievements/:achievementId", async (req, res) => {
+  const confirm = String(req.query.confirm || req.body?.confirm || "").trim().toUpperCase();
+  if (confirm !== "DELETE") {
+    return res.status(400).json({ error: "delete_confirmation_required" });
+  }
+  try {
+    const result = await deleteAchievement(req.params.id, req.params.achievementId);
+    return res.json(result);
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "achievement_delete_failed" });
+  }
+});
+
+apiRouter.get("/guilds/:id/birthdays", async (req, res) => {
+  try {
+    const payload = await listGuildBirthdays(req.params.id, { limit: 2000 });
+    return res.json(payload);
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "birthdays_fetch_failed" });
+  }
+});
+
+apiRouter.post("/guilds/:id/birthdays/settings", async (req, res) => {
+  try {
+    const settings = await saveBirthdaySettings(req.params.id, req.body || {});
+    return res.json({ settings });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "birthdays_settings_failed" });
+  }
+});
+
+apiRouter.post("/guilds/:id/birthdays/entries", async (req, res) => {
+  const userId = normalizeDiscordId(req.body?.userId || req.body?.user_id);
+  const birthDate = String(req.body?.birthDate || req.body?.birth_date || "").trim();
+  if (!userId || !birthDate) {
+    return res.status(400).json({ error: "missing_params" });
+  }
+  try {
+    const result = await upsertBirthdayEntry({
+      guildId: req.params.id,
+      userId,
+      birthDate,
+      source: "admin",
+      actorUserId: req.user?.discord_id || "",
+      triggerAchievement: true,
+      logChange: true
+    });
+    return res.json(result);
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "birthday_upsert_failed" });
+  }
+});
+
+apiRouter.delete("/guilds/:id/birthdays/entries/:userId", async (req, res) => {
+  const userId = normalizeDiscordId(req.params.userId);
+  if (!userId) {
+    return res.status(400).json({ error: "missing_params" });
+  }
+  try {
+    const result = await deleteBirthdayEntry({
+      guildId: req.params.id,
+      userId,
+      source: "admin",
+      actorUserId: req.user?.discord_id || "",
+      logChange: true
+    });
+    return res.json(result);
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "birthday_delete_failed" });
+  }
+});
+
+apiRouter.post("/guilds/:id/birthdays/sync-role", async (req, res) => {
+  try {
+    const result = await processBirthdayRoleAssignments({ guildId: req.params.id });
+    return res.json(result);
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "birthday_role_sync_failed" });
   }
 });
 
@@ -805,8 +1115,9 @@ apiRouter.get("/economy/gains", async (req, res) => {
       query.andWhere({ user_discord_id: String(userId) });
     }
     const rows = await query;
+    const timeZone = await getGuildTimeZone(guildId);
     res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
-    return res.json({ logs: rows });
+    return res.json({ logs: rows, timeZone });
   } catch (error) {
     return res.status(400).json({ error: error.message || "gains_failed" });
   }
@@ -899,8 +1210,9 @@ apiRouter.get("/economy/transactions", async (req, res) => {
       .where({ guild_id: guild.id, category: "transaction" })
       .orderBy("created_at", "desc")
       .limit(limit);
+    const timeZone = await getGuildTimeZone(guildId);
     res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
-    return res.json({ logs: rows });
+    return res.json({ logs: rows, timeZone });
   } catch (error) {
     return res.status(400).json({ error: error.message || "transactions_failed" });
   }
@@ -916,8 +1228,9 @@ apiRouter.get("/economy/games", async (req, res) => {
       .where({ guild_id: guild.id, category: "game" })
       .orderBy("created_at", "desc")
       .limit(limit);
+    const timeZone = await getGuildTimeZone(guildId);
     res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
-    return res.json({ logs: rows });
+    return res.json({ logs: rows, timeZone });
   } catch (error) {
     return res.status(400).json({ error: error.message || "game_logs_failed" });
   }
@@ -1157,35 +1470,91 @@ apiRouter.post("/guilds/:id/members", async (req, res) => {
   const botToken = process.env.DISCORD_BOT_TOKEN;
   if (!botToken) return res.status(500).json({ error: "bot_token_missing" });
   const userIds = Array.isArray(req.body?.userIds) ? req.body.userIds : [];
-  const uniqueIds = [...new Set(userIds.map((id) => String(id)).filter(Boolean))];
+  const uniqueIds = [...new Set(userIds.map((id) => normalizeDiscordId(id)).filter(Boolean))];
   try {
-    const results = await Promise.all(
-      uniqueIds.map(async (userId) => {
-        const memberRes = await fetch(
-          `https://discord.com/api/guilds/${req.params.id}/members/${userId}`,
-          { headers: { Authorization: `Bot ${botToken}` } }
-        );
-        if (!memberRes.ok) return [userId, null];
-        const member = await memberRes.json();
-        const displayName = member.nick || member.user?.global_name || member.user?.username || userId;
-        const username = member.user?.username || "";
-        const guildAvatar = member.avatar;
-        const userAvatar = member.user?.avatar;
-        let avatar = "";
-        if (guildAvatar) {
-          const ext = String(guildAvatar).startsWith("a_") ? "gif" : "png";
-          avatar = `https://cdn.discordapp.com/guilds/${req.params.id}/users/${userId}/avatars/${guildAvatar}.${ext}?size=64`;
-        } else if (userAvatar) {
-          const ext = String(userAvatar).startsWith("a_") ? "gif" : "png";
-          avatar = `https://cdn.discordapp.com/avatars/${userId}/${userAvatar}.${ext}?size=64`;
-        }
-        return [userId, { displayName, username, avatar }];
-      })
-    );
-    const users = Object.fromEntries(results.filter(([, value]) => value));
+    const users = {};
+    if (!uniqueIds.length) return res.json({ users });
+
+    const knownUsers = await db("users")
+      .select("discord_id", "username", "avatar")
+      .whereIn("discord_id", uniqueIds);
+    for (const row of knownUsers) {
+      const userId = String(row.discord_id);
+      const username = String(row.username || "");
+      users[userId] = {
+        displayName: username || userId,
+        username,
+        avatar: normalizeDiscordAvatarUrl(userId, row.avatar)
+      };
+    }
+
+    const unresolvedIds = uniqueIds.filter((userId) => !users[userId]);
+    if (unresolvedIds.length) {
+      const fetched = await mapWithConcurrency(unresolvedIds, 5, async (userId) => {
+        const profile = await fetchGuildMemberProfile({
+          guildId: req.params.id,
+          userId,
+          botToken
+        });
+        return [userId, profile];
+      });
+      for (const [userId, profile] of fetched) {
+        if (!profile) continue;
+        users[userId] = profile;
+      }
+    }
+
     return res.json({ users });
   } catch (error) {
     return res.status(500).json({ error: "members_failed" });
+  }
+});
+
+apiRouter.get("/guilds/:id/members/search", async (req, res) => {
+  const botToken = process.env.DISCORD_BOT_TOKEN;
+  if (!botToken) return res.status(500).json({ error: "bot_token_missing" });
+  const query = String(req.query.q || req.query.query || "").trim();
+  const rawLimit = Number(req.query.limit || 10);
+  const limit = Number.isFinite(rawLimit) ? Math.max(1, Math.min(25, rawLimit)) : 10;
+  if (!query || query.length < 2) {
+    return res.json({ members: [] });
+  }
+  try {
+    const params = new URLSearchParams({
+      query,
+      limit: String(limit)
+    });
+    const response = await fetch(
+      `https://discord.com/api/guilds/${req.params.id}/members/search?${params.toString()}`,
+      {
+        headers: { Authorization: `Bot ${botToken}` }
+      }
+    );
+    const payload = await response.json().catch(() => []);
+    if (!response.ok) {
+      return res.status(400).json({ error: "members_search_failed", details: payload });
+    }
+    const members = (Array.isArray(payload) ? payload : [])
+      .map((member) => {
+        const userId = normalizeDiscordId(member?.user?.id);
+        if (!userId) return null;
+        const username = String(member?.user?.username || "").trim();
+        const displayName = String(member?.nick || member?.user?.global_name || username || userId);
+        const guildAvatar = String(member?.avatar || "").trim();
+        const avatar = guildAvatar
+          ? `https://cdn.discordapp.com/guilds/${req.params.id}/users/${userId}/avatars/${guildAvatar}.${guildAvatar.startsWith("a_") ? "gif" : "png"}?size=64`
+          : normalizeDiscordAvatarUrl(userId, member?.user?.avatar);
+        return {
+          id: userId,
+          username: username || userId,
+          displayName,
+          avatar
+        };
+      })
+      .filter(Boolean);
+    return res.json({ members });
+  } catch (error) {
+    return res.status(500).json({ error: "members_search_failed" });
   }
 });
 
