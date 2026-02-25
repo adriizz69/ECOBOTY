@@ -137,7 +137,7 @@ const inviteUrl = computed(() => {
   return `https://discord.com/api/oauth2/authorize?client_id=${clientId}&permissions=${permissions}&scope=${scopes}`;
 });
 
-const { getToken, login } = useAuth();
+const { getToken, login, logout } = useAuth();
 const isLoggedIn = ref(false);
 
 onMounted(async () => {
@@ -154,6 +154,12 @@ onMounted(async () => {
 
     if (res.ok) {
       router.push("/servers");
+      return;
+    }
+
+    if (res.status === 401) {
+      logout();
+      isLoggedIn.value = false;
     }
   } catch {
     // ignore

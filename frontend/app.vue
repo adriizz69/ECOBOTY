@@ -36,6 +36,10 @@
           <span class="nav-icon">🚪</span>
           <span class="nav-label">{{ $t("nav.logout") }}</span>
         </button>
+        <button v-else class="side-link login-link" type="button" @click="handleLogin">
+          <span class="nav-icon">🔐</span>
+          <span class="nav-label">{{ $t("nav.login") }}</span>
+        </button>
         <a
           class="side-link support-link"
           href="https://discord.gg/e6eUHaqyGt"
@@ -160,7 +164,7 @@ useHead({
 const route = useRoute();
 const router = useRouter();
 const config = useRuntimeConfig();
-const { setToken, getToken, logout } = useAuth();
+const { setToken, getToken, logout, logoutAll, login } = useAuth();
 const { locale, locales, setLocale } = useI18n();
 const isLoggedIn = ref(false);
 const me = ref(null);
@@ -223,10 +227,11 @@ const loadSelectedGuild = () => {
   }
 };
 
-const loadMe = async () => {
+const loadMe = async (allowRetry = true) => {
   const token = getToken();
   if (!token) {
     me.value = null;
+    isLoggedIn.value = false;
     return;
   }
   try {
@@ -234,18 +239,32 @@ const loadMe = async () => {
       headers: { Authorization: `Bearer ${token}` }
     });
     if (!res.ok) {
+      if (res.status === 401) {
+        logout();
+        const nextToken = getToken();
+        isLoggedIn.value = Boolean(nextToken);
+        if (allowRetry && nextToken && nextToken !== token) {
+          await loadMe(false);
+          return;
+        }
+      }
       me.value = null;
       return;
     }
     const data = await res.json();
     me.value = data.user || null;
+    isLoggedIn.value = true;
   } catch {
     me.value = null;
   }
 };
 
+const handleLogin = () => {
+  login();
+};
+
 const handleLogout = () => {
-  logout();
+  logoutAll();
   isLoggedIn.value = false;
   me.value = null;
   selectedGuild.value = null;
@@ -491,6 +510,14 @@ watch(
   gap: 10px;
   background: transparent;
   cursor: pointer;
+}
+.login-link {
+  color: #dbeafe;
+  border-color: rgba(59, 130, 246, 0.28);
+  background: rgba(37, 99, 235, 0.16);
+}
+.login-link .nav-icon {
+  background: rgba(59, 130, 246, 0.24);
 }
 .logout-link {
   color: #fecaca;
@@ -812,6 +839,11 @@ watch(
   color: var(--text-soft) !important;
 }
 :global(body.theme-light) .nav-icon {
+  background: rgba(37, 99, 235, 0.12);
+}
+:global(body.theme-light) .login-link {
+  color: #1e3a8a;
+  border-color: rgba(37, 99, 235, 0.36);
   background: rgba(37, 99, 235, 0.12);
 }
 @media (max-width: 1024px) {

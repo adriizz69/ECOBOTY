@@ -14,6 +14,7 @@ import { userRouter } from "./routes/user.js";
 import { startAllTwitchListeners } from "./services/twitch.js";
 import { probeDatabaseConnection } from "./services/db.js";
 import { twitchEventSubRouter } from "./routes/twitch-eventsub.js";
+import { startBirthdayScheduler } from "./services/birthdays.js";
 
 const app = express();
 
@@ -56,6 +57,7 @@ app.listen(port, () => {
       console.error(`[startup] Database not reachable (${probe.code}): ${probe.message}`);
       return;
     }
+    startBirthdayScheduler();
     await startAllTwitchListeners();
   })().catch((error) => {
     const code = error?.code || error?.errno || "UNKNOWN";

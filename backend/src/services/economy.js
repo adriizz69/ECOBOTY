@@ -6,7 +6,33 @@ const addDays = (date, days) => new Date(date.getTime() + days * 86400000);
 const nextDailyAt = (date) =>
   new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + 1));
 
+const parseFixedTimeZoneOffset = (timeZone) => {
+  const raw = String(timeZone || "").trim();
+  if (!raw) return null;
+  if (/^(utc|gmt)$/i.test(raw)) return 0;
+  const match = raw.match(/^(?:utc|gmt)\s*([+-])\s*(\d{1,2})(?::?(\d{2}))?$/i);
+  if (!match) return null;
+  const hours = Number(match[2]);
+  const minutes = Number(match[3] || 0);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+  if (hours > 23 || minutes > 59) return null;
+  const total = hours * 60 + minutes;
+  return match[1] === "-" ? -total : total;
+};
+
 const getDatePartsInTimeZone = (timeZone, date = new Date()) => {
+  const fixedOffset = parseFixedTimeZoneOffset(timeZone);
+  if (fixedOffset !== null) {
+    const shifted = new Date(date.getTime() + fixedOffset * 60000);
+    return {
+      year: shifted.getUTCFullYear(),
+      month: shifted.getUTCMonth() + 1,
+      day: shifted.getUTCDate(),
+      hour: shifted.getUTCHours(),
+      minute: shifted.getUTCMinutes(),
+      second: shifted.getUTCSeconds()
+    };
+  }
   try {
     const parts = new Intl.DateTimeFormat("en-CA", {
       timeZone,
@@ -45,9 +71,11 @@ const addDaysKey = (key, days) => {
 };
 
 const getTimeZoneOffsetMinutes = (timeZone, date = new Date()) => {
+  const fixedOffset = parseFixedTimeZoneOffset(timeZone);
+  if (fixedOffset !== null) return fixedOffset;
   try {
     const parts = getDatePartsInTimeZone(timeZone, date);
-    if (!parts) return -new Date().getTimezoneOffset();
+    if (!parts) return 0;
     const utcTime = Date.UTC(
       parts.year,
       parts.month - 1,
@@ -58,7 +86,7 @@ const getTimeZoneOffsetMinutes = (timeZone, date = new Date()) => {
     );
     return Math.round((utcTime - date.getTime()) / 60000);
   } catch {
-    return -new Date().getTimezoneOffset();
+    return 0;
   }
 };
 
@@ -191,6 +219,43 @@ export const getOrCreateBalance = async (guildId, userId, startBalance = 0, trx 
   };
   await trx("balances").insert(row);
   return row;
+};
+
+export const getDailyStatus = async ({ guildId, userId }) => {
+  return db.transaction(async (trx) => {
+    const userKey = String(userId);
+    const guild = await ensureGuild(guildId, trx);
+    const settings = await trx("economy_settings").where({ guild_id: guild.id }).first();
+    const economy = settings || (await getOrCreateSettings(guildId, trx));
+    const botSettings = await getBotSettingsRow(guildId, trx);
+    const timeZone = botSettings?.timezone || "UTC";
+
+    const baseAmount = Number(economy.daily_amount || 0);
+    const enabled = Boolean(economy.enabled) && baseAmount > 0;
+
+    const current = await getOrCreateBalance(guildId, userKey, economy.start_balance, trx);
+    const now = new Date();
+    const today = todayKeyInTimeZone(timeZone, now);
+    const lastDaily = current.last_daily ? todayKeyInTimeZone(timeZone, new Date(current.last_daily)) : null;
+    const alreadyClaimed = enabled && lastDaily === today;
+    const nextAtDate = alreadyClaimed
+      ? nextDailyAtInTimeZone(timeZone, current.last_daily ? new Date(current.last_daily) : now)
+      : null;
+
+    return {
+      enabled,
+      canClaim: enabled && !alreadyClaimed,
+      reason: !enabled ? "daily_disabled" : alreadyClaimed ? "already_claimed" : "claim_available",
+      streak: Number(current.daily_streak || 0),
+      dailyAmount: baseAmount,
+      nextAt: nextAtDate ? nextAtDate.toISOString() : null,
+      remainingMs: nextAtDate ? Math.max(0, nextAtDate.getTime() - now.getTime()) : 0,
+      nextBonus: computeNextBonusForSettings(Number(current.daily_streak || 0), economy),
+      balance: Number(current.balance || 0),
+      emoji: economy?.emoji_symbol || "💰",
+      timeZone
+    };
+  });
 };
 
 export const applyDaily = async ({ guildId, userId }) => {
@@ -634,6 +699,32 @@ const normalizeRule = (rule = {}) => {
   };
 };
 
+const normalizeBooleanFlag = (value, defaultValue = false) => {
+  if (value === undefined || value === null) return defaultValue;
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  if (typeof value === "string") {
+    const raw = value.trim().toLowerCase();
+    if (raw === "true" || raw === "1" || raw === "yes" || raw === "on") return true;
+    if (raw === "false" || raw === "0" || raw === "no" || raw === "off" || raw === "") return false;
+  }
+  return Boolean(value);
+};
+
+const normalizeMultiplierValue = (value, fallback = 1) => {
+  if (value === undefined || value === null || value === "") return fallback;
+  const raw = typeof value === "string"
+    ? value.trim().replace(/^x/i, "").replace(",", ".")
+    : value;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const toStackableBonus = (multiplier) => {
+  const value = normalizeMultiplierValue(multiplier, 1);
+  return value >= 1 ? value - 1 : value;
+};
+
 export const getAutomationConfig = async (guildId, trx = db) => {
   const guild = await ensureGuild(guildId, trx);
   const rules = await trx("economy_rules").where({ guild_id: guild.id });
@@ -662,15 +753,15 @@ export const getAutomationConfig = async (guildId, trx = db) => {
     },
     roleBoosters: roleBoosters.map((r) => ({
       role_id: r.role_id,
-      multiplier: Number(r.multiplier || 1),
-      enabled: r.enabled !== false,
-      stackable: Boolean(r.stackable)
+      multiplier: normalizeMultiplierValue(r.multiplier, 1),
+      enabled: normalizeBooleanFlag(r.enabled, true),
+      stackable: normalizeBooleanFlag(r.stackable, false)
     })),
     channelBoosters: channelBoosters.map((c) => ({
       channel_id: c.channel_id,
-      multiplier: Number(c.multiplier || 1),
-      enabled: c.enabled !== false,
-      stackable: Boolean(c.stackable)
+      multiplier: normalizeMultiplierValue(c.multiplier, 1),
+      enabled: normalizeBooleanFlag(c.enabled, true),
+      stackable: normalizeBooleanFlag(c.stackable, false)
     })),
     blockedRoles: blockedRoles.map((r) => r.role_id),
     blockedChannels: blockedChannels.map((c) => c.channel_id)
@@ -710,9 +801,9 @@ export const saveAutomationConfig = async (guildId, config = {}) => {
         .map((r) => ({
           guild_id: guild.id,
           role_id: r.role_id,
-          multiplier: Number(r.multiplier || 1),
-          enabled: r.enabled !== false,
-          stackable: Boolean(r.stackable)
+          multiplier: normalizeMultiplierValue(r.multiplier, 1),
+          enabled: normalizeBooleanFlag(r.enabled, true),
+          stackable: normalizeBooleanFlag(r.stackable, false)
         }));
       if (rows.length) await trx("role_modifiers").insert(rows);
     }
@@ -724,9 +815,9 @@ export const saveAutomationConfig = async (guildId, config = {}) => {
         .map((c) => ({
           guild_id: guild.id,
           channel_id: c.channel_id,
-          multiplier: Number(c.multiplier || 1),
-          enabled: c.enabled !== false,
-          stackable: Boolean(c.stackable)
+          multiplier: normalizeMultiplierValue(c.multiplier, 1),
+          enabled: normalizeBooleanFlag(c.enabled, true),
+          stackable: normalizeBooleanFlag(c.stackable, false)
         }));
       if (rows.length) await trx("channel_modifiers").insert(rows);
     }
@@ -771,7 +862,7 @@ export const applyAutoGain = async ({ guildId, userId, type, channelId, roleIds 
     if (!settings.enabled) return { ok: false, reason: "economy_disabled" };
 
     const rule = await trx("economy_rules").where({ guild_id: guild.id, type }).first();
-    if (!rule || rule.enabled === false) return { ok: false, reason: "rule_disabled" };
+    if (!rule || !normalizeBooleanFlag(rule.enabled, true)) return { ok: false, reason: "rule_disabled" };
 
     const minGain = Number(rule.min_gain || 0);
     const maxGain = Number(rule.max_gain || 0);
@@ -832,35 +923,42 @@ export const applyAutoGain = async ({ guildId, userId, type, channelId, roleIds 
     const roleBoosters = await trx("role_modifiers")
       .where({ guild_id: guild.id })
       .whereIn("role_id", roleIds.map(String));
-    const enabledRoleBoosters = roleBoosters.filter((r) => r.enabled !== false);
-    const stackableRoleBoosters = enabledRoleBoosters.filter((r) => r.stackable === true);
-    const nonStackableRoleBoosters = enabledRoleBoosters.filter((r) => r.stackable !== true);
-    const roleMax = nonStackableRoleBoosters.reduce(
-      (max, r) => Math.max(max, Number(r.multiplier || 1)),
-      1
+    const enabledRoleBoosters = roleBoosters.filter((r) => normalizeBooleanFlag(r.enabled, true));
+    const stackableRoleBoosters = enabledRoleBoosters.filter((r) => normalizeBooleanFlag(r.stackable, false));
+    const nonStackableRoleBoosters = enabledRoleBoosters.filter((r) => !normalizeBooleanFlag(r.stackable, false));
+    let hasNonStackableBooster = nonStackableRoleBoosters.length > 0;
+    let nonStackableMax = hasNonStackableBooster
+      ? nonStackableRoleBoosters.reduce(
+          (max, r) => Math.max(max, normalizeMultiplierValue(r.multiplier, 1)),
+          Number.NEGATIVE_INFINITY
+        )
+      : 1;
+    let stackableBonus = stackableRoleBoosters.reduce(
+      (sum, r) => sum + toStackableBonus(r.multiplier),
+      0
     );
-    const roleStackableMultiplier = stackableRoleBoosters.reduce(
-      (acc, r) => acc * Number(r.multiplier || 1),
-      1
-    );
-    const roleMultiplier = roleMax * roleStackableMultiplier;
 
-    let channelMultiplier = 1;
-    let channelStackable = true;
     if (channelId) {
       const channelBooster = await trx("channel_modifiers")
         .where({ guild_id: guild.id, channel_id: String(channelId) })
         .first();
-      if (channelBooster && channelBooster.enabled !== false) {
-        channelMultiplier = Number(channelBooster.multiplier || 1);
-        channelStackable = channelBooster.stackable !== false;
+      if (channelBooster && normalizeBooleanFlag(channelBooster.enabled, true)) {
+        const channelMultiplier = normalizeMultiplierValue(channelBooster.multiplier, 1);
+        const channelStackable = normalizeBooleanFlag(channelBooster.stackable, false);
+        if (channelStackable) {
+          stackableBonus += toStackableBonus(channelMultiplier);
+        } else {
+          nonStackableMax = hasNonStackableBooster
+            ? Math.max(nonStackableMax, channelMultiplier)
+            : channelMultiplier;
+          hasNonStackableBooster = true;
+        }
       }
     }
-    const multiplier = channelStackable
-      ? roleMultiplier * channelMultiplier
-      : Math.max(roleMultiplier, channelMultiplier);
+
+    const multiplier = Math.max(0, (hasNonStackableBooster ? nonStackableMax : 1) + stackableBonus);
     const amount = Math.max(0, Math.floor(base * multiplier));
-    const bonusAmount = Math.max(0, amount - base);
+    const bonusAmount = amount - base;
 
     const balanceRow = await getOrCreateBalance(guildId, userKey, settings.start_balance, trx);
     const maxBalance = Number(settings.max_balance || 0);

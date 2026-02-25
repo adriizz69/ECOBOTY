@@ -9,6 +9,7 @@
     "status": "Status",
     "documentation": "Documentation",
     "logout": "Log out",
+    "login": "Sign in",
     "support": "Support server",
     "adminBot": "BOT ADMIN"
   },
@@ -458,7 +459,8 @@
   },
   "servers": {
     "title": "My servers",
-    "subtitle": "Manage only the servers where you have admin rights.",
+    "subtitle": "Pick a server, check bot status, and jump into admin in one click.",
+    "kicker": "Discord dashboard",
     "logout": "Log out",
     "loading": "Loading...",
     "impersonationTitle": "Impersonation mode",
@@ -466,10 +468,24 @@
     "impersonationQuit": "Stop impersonation",
     "botUnknown": "Bot: check unavailable",
     "botPresent": "Bot present",
-    "botAbsent": "Bot absent",
+    "botAbsent": "BOT absent",
     "botTokenMissing": "Bot token missing (.env)",
     "botTokenInvalid": "Invalid bot token",
-    "configure": "Configure"
+    "configure": "Configure",
+    "ctaManage": "Manage server",
+    "ctaBotAbsent": "BOT absent",
+    "cardPresentText": "The bot is active on this server. You can manage the full setup.",
+    "cardAbsentText": "The bot is not installed here yet. Open admin to finish setup.",
+    "cardUnknownText": "Bot presence could not be confirmed yet.",
+    "statTotal": "Detected servers",
+    "statPresent": "BOT present",
+    "statAbsent": "BOT absent",
+    "searchPlaceholder": "Search by server name or ID...",
+    "filterAll": "All",
+    "filterPresent": "With bot",
+    "filterAbsent": "Without bot",
+    "emptyTitle": "No server found",
+    "emptyText": "Adjust your search or filter to display other servers."
   },
   "status": {
     "title": "Status",
@@ -552,6 +568,18 @@
     "restore": "Restore",
     "edit": "Edit",
     "noData": "No data."
+  },
+  "dailyWidget": {
+    "title": "Daily",
+    "ready": "Daily reward available",
+    "cooldown": "Next claim in {time}",
+    "streak": "Streak: {count}",
+    "reward": "Reward: {amount}",
+    "claim": "Claim",
+    "claiming": "Claiming...",
+    "claimed": "+{amount} {emoji} added",
+    "alreadyClaimed": "Already claimed today.",
+    "claimError": "Unable to claim daily."
   },
   "userHome": {
     "title": "User interface",

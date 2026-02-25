@@ -1,14 +1,33 @@
 <template>
-  <section>
-    <div class="page-head">
-      <div>
+  <section class="servers-page">
+    <div class="hero">
+      <div class="hero-copy">
+        <span class="hero-kicker">{{ $t("servers.kicker") }}</span>
         <h2>{{ $t("servers.title") }}</h2>
         <p>{{ $t("servers.subtitle") }}</p>
       </div>
-      <UButton color="error" variant="solid" @click="handleLogout">{{ $t("servers.logout") }}</UButton>
+      <div class="hero-actions">
+        <UButton
+          color="neutral"
+          variant="outline"
+          :loading="refreshing || loading"
+          :disabled="impersonating"
+          @click="refreshServers"
+        >
+          {{ $t("common.refresh") }}
+        </UButton>
+        <UButton color="error" variant="solid" @click="handleLogout">{{ $t("servers.logout") }}</UButton>
+      </div>
     </div>
-    <div v-if="loading" class="loading">{{ $t("servers.loading") }}</div>
-    <UCard v-else-if="impersonating" class="card warning-card">
+
+    <div v-if="loading" class="loading-shell">
+      <div class="loading-title">{{ $t("servers.loading") }}</div>
+      <div class="loading-grid">
+        <div v-for="n in 6" :key="n" class="loading-card"></div>
+      </div>
+    </div>
+
+    <UCard v-else-if="impersonating" class="warning-card">
       <h3>{{ $t("servers.impersonationTitle") }}</h3>
       <p class="muted">
         {{ $t("servers.impersonationText", { name: impersonatedName }) }}
@@ -17,42 +36,103 @@
         {{ $t("servers.impersonationQuit") }}
       </UButton>
     </UCard>
-    <div v-else class="grid">
-      <UCard v-for="guild in guilds" :key="guild.id" class="card">
-        <div class="card-top">
-          <div
-            class="avatar"
-            :style="guild.icon ? { backgroundImage: `url(${guildIconUrl(guild)})` } : {}"
-          >
-            <span v-if="!guild.icon">{{ guild.name?.slice(0, 1) }}</span>
-          </div>
-          <div>
-            <strong>{{ guild.name }}</strong>
-            <div
-              class="status"
-              :class="guild.botPresent === null ? 'warn' : guild.botPresent ? 'ok' : 'ko'"
-            >
-              {{
-                guild.botPresent === null
-                  ? $t("servers.botUnknown")
-                  : guild.botPresent
-                    ? $t("servers.botPresent")
-                    : $t("servers.botAbsent")
-              }}
-            </div>
-            <div v-if="guild.botCheckError" class="hint">
-              {{
-                guild.botCheckError.type === 'bot_token_missing'
-                  ? $t("servers.botTokenMissing")
-                  : $t("servers.botTokenInvalid")
-              }}
-            </div>
-          </div>
+
+    <div v-else class="servers-shell">
+      <div class="stats-row">
+        <div class="stat-chip">
+          <span>{{ $t("servers.statTotal") }}</span>
+          <strong>{{ guilds.length }}</strong>
         </div>
-        <UButton color="primary" block class="card-cta" :to="`/guild/${guild.id}`" @click="selectGuild(guild)">
-          {{ $t("servers.configure") }}
-        </UButton>
+        <div class="stat-chip ok">
+          <span>{{ $t("servers.statPresent") }}</span>
+          <strong>{{ stats.present }}</strong>
+        </div>
+        <div class="stat-chip ko">
+          <span>{{ $t("servers.statAbsent") }}</span>
+          <strong>{{ stats.absent }}</strong>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <label class="search-wrap">
+          <span>🔎</span>
+          <input v-model.trim="searchQuery" type="text" :placeholder="$t('servers.searchPlaceholder')" />
+        </label>
+        <div class="filters">
+          <button
+            type="button"
+            class="filter-btn"
+            :class="{ active: statusFilter === 'all' }"
+            @click="statusFilter = 'all'"
+          >
+            {{ $t("servers.filterAll") }}
+          </button>
+          <button
+            type="button"
+            class="filter-btn"
+            :class="{ active: statusFilter === 'present' }"
+            @click="statusFilter = 'present'"
+          >
+            {{ $t("servers.filterPresent") }}
+          </button>
+          <button
+            type="button"
+            class="filter-btn"
+            :class="{ active: statusFilter === 'absent' }"
+            @click="statusFilter = 'absent'"
+          >
+            {{ $t("servers.filterAbsent") }}
+          </button>
+        </div>
+      </div>
+
+      <UCard v-if="filteredGuilds.length === 0" class="empty-card">
+        <h3>{{ $t("servers.emptyTitle") }}</h3>
+        <p class="muted">{{ $t("servers.emptyText") }}</p>
       </UCard>
+
+      <div v-else class="servers-grid">
+        <article v-for="guild in filteredGuilds" :key="guild.id" class="server-card">
+          <div class="card-head">
+            <div
+              class="avatar"
+              :style="guild.icon ? { backgroundImage: `url(${guildIconUrl(guild)})` } : {}"
+            >
+              <span v-if="!guild.icon">{{ guild.name?.slice(0, 1) }}</span>
+            </div>
+            <div class="card-main">
+              <strong class="server-name">{{ guild.name }}</strong>
+              <span class="server-id">ID: {{ guild.id }}</span>
+            </div>
+          </div>
+
+          <div class="status-line">
+            <span class="status-dot" :class="statusClass(guild)"></span>
+            <span class="status-text">{{ botStatusLabel(guild) }}</span>
+          </div>
+
+          <p class="card-text">{{ cardText(guild) }}</p>
+
+          <div v-if="guild.botCheckError" class="hint">
+            {{
+              guild.botCheckError.type === "bot_token_missing"
+                ? $t("servers.botTokenMissing")
+                : $t("servers.botTokenInvalid")
+            }}
+          </div>
+
+          <UButton
+            :color="guild.botPresent === false ? 'neutral' : 'primary'"
+            :variant="guild.botPresent === false ? 'soft' : 'solid'"
+            block
+            class="server-cta"
+            :to="`/guild/${guild.id}`"
+            @click="selectGuild(guild)"
+          >
+            {{ guildCtaLabel(guild) }}
+          </UButton>
+        </article>
+      </div>
     </div>
   </section>
 </template>
@@ -61,6 +141,9 @@
 const config = useRuntimeConfig();
 const guilds = ref([]);
 const loading = ref(true);
+const refreshing = ref(false);
+const searchQuery = ref("");
+const statusFilter = ref("all");
 
 const router = useRouter();
 const { getToken, login, logout } = useAuth();
@@ -72,10 +155,74 @@ const impersonatedName = computed(() =>
   me.value?.impersonated_username || me.value?.impersonated || t("account.user")
 );
 
+const stats = computed(() => {
+  let present = 0;
+  let absent = 0;
+  for (const guild of guilds.value) {
+    if (guild.botPresent === true) present += 1;
+    if (guild.botPresent === false) absent += 1;
+  }
+  return { present, absent };
+});
+
+const normalizeText = (value) =>
+  String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+const botRank = (guild) => {
+  if (guild.botPresent === true) return 0;
+  if (guild.botPresent === null) return 1;
+  return 2;
+};
+
+const filteredGuilds = computed(() => {
+  const query = normalizeText(searchQuery.value);
+
+  return [...guilds.value]
+    .filter((guild) => {
+      if (statusFilter.value === "present") return guild.botPresent === true;
+      if (statusFilter.value === "absent") return guild.botPresent === false;
+      return true;
+    })
+    .filter((guild) => {
+      if (!query) return true;
+      const name = normalizeText(guild.name);
+      const id = normalizeText(guild.id);
+      return name.includes(query) || id.includes(query);
+    })
+    .sort((a, b) => {
+      const rankDiff = botRank(a) - botRank(b);
+      if (rankDiff !== 0) return rankDiff;
+      return String(a.name || "").localeCompare(String(b.name || ""), "fr", { sensitivity: "base" });
+    });
+});
+
 const guildIconUrl = (guild) => {
   if (!guild?.icon) return "";
   return `https://cdn.discordapp.com/icons/${guild.id}/${guild.icon}.png`;
 };
+
+const statusClass = (guild) => {
+  if (guild.botPresent === true) return "ok";
+  if (guild.botPresent === false) return "ko";
+  return "warn";
+};
+
+const botStatusLabel = (guild) => {
+  if (guild.botPresent === true) return t("servers.botPresent");
+  if (guild.botPresent === false) return t("servers.botAbsent");
+  return t("servers.botUnknown");
+};
+
+const cardText = (guild) => {
+  if (guild.botPresent === true) return t("servers.cardPresentText");
+  if (guild.botPresent === false) return t("servers.cardAbsentText");
+  return t("servers.cardUnknownText");
+};
+
+const guildCtaLabel = (guild) => (guild.botPresent === false ? t("servers.ctaBotAbsent") : t("servers.ctaManage"));
 
 const loadMe = async () => {
   const token = getToken();
@@ -87,6 +234,9 @@ const loadMe = async () => {
     headers: { Authorization: `Bearer ${token}` }
   });
   if (!res.ok) {
+    if (res.status === 401) {
+      logout();
+    }
     me.value = null;
     return false;
   }
@@ -110,6 +260,7 @@ const fetchServers = async () => {
     });
 
     if (res.status === 401) {
+      logout();
       if (!impersonating.value) login();
       return;
     }
@@ -120,7 +271,14 @@ const fetchServers = async () => {
     guilds.value = [];
   } finally {
     loading.value = false;
+    refreshing.value = false;
   }
+};
+
+const refreshServers = async () => {
+  if (loading.value || refreshing.value || impersonating.value) return;
+  refreshing.value = true;
+  await fetchServers();
 };
 
 const selectGuild = (guild) => {
@@ -165,62 +323,205 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.page-head {
+.servers-page {
+  display: grid;
+  gap: 16px;
+}
+
+.hero {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 18px;
+  background:
+    radial-gradient(circle at top right, rgba(59, 130, 246, 0.2), transparent 48%),
+    linear-gradient(145deg, rgba(15, 23, 42, 0.9), rgba(15, 23, 42, 0.55));
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.hero::before {
+  content: "";
+  position: absolute;
+  right: -120px;
+  top: -120px;
+  width: 260px;
+  height: 260px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.2), transparent 68%);
+  pointer-events: none;
+}
+
+.hero-copy {
+  position: relative;
+  z-index: 1;
+}
+
+.hero-kicker {
+  display: inline-flex;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #93c5fd;
+  font-weight: 700;
+}
+
+.hero h2 {
+  margin: 6px 0;
+}
+
+.hero p {
+  margin: 0;
+  color: var(--text-soft);
+  max-width: 620px;
+}
+
+.hero-actions {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.servers-shell {
+  display: grid;
+  gap: 14px;
+}
+
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.stat-chip {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 14px;
+  padding: 10px 12px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-}
-.page-head p {
-  color: var(--text-muted);
-  margin: 4px 0 0;
-}
-.loading {
-  padding: 32px 0;
-  color: var(--text-muted);
-}
-.grid {
-  display: grid;
-  gap: 16px;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-}
-.card {
-  display: grid;
-  gap: 14px;
-  height: 100%;
-}
-.card-cta {
-  margin-top: auto;
-}
-.card-cta {
-  justify-content: center;
-}
-.card-cta :global(.u-button),
-.card-cta a,
-.card-cta button {
-  border-radius: 14px !important;
+  gap: 10px;
 }
 
-:global(body.theme-light) .card-cta :global(.u-button),
-:global(html.light body) .card-cta :global(.u-button),
-:global(body.theme-light) .card-cta a,
-:global(html.light body) .card-cta a {
-  background: #2563eb !important;
-  color: #ffffff !important;
-  border-color: #1d4ed8 !important;
+.stat-chip span {
+  font-size: 12px;
+  color: var(--text-muted);
 }
-.warning-card {
-  border-color: rgba(245, 158, 11, 0.35);
-  background: rgba(245, 158, 11, 0.08);
+
+.stat-chip strong {
+  font-size: 20px;
+  line-height: 1;
 }
-.card-top {
+
+.stat-chip.ok {
+  border-color: rgba(34, 197, 94, 0.28);
+  background: rgba(34, 197, 94, 0.12);
+}
+
+.stat-chip.ko {
+  border-color: rgba(239, 68, 68, 0.28);
+  background: rgba(239, 68, 68, 0.11);
+}
+
+.toolbar {
   display: flex;
-  gap: 12px;
   align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
 }
+
+.search-wrap {
+  min-width: 260px;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  border-radius: 14px;
+  padding: 10px 12px;
+}
+
+.search-wrap span {
+  font-size: 14px;
+}
+
+.search-wrap input {
+  width: 100%;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  outline: none;
+  font-weight: 500;
+}
+
+.filters {
+  display: flex;
+  gap: 8px;
+}
+
+.filter-btn {
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-soft);
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.filter-btn:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.filter-btn.active {
+  color: #dbeafe;
+  background: rgba(37, 99, 235, 0.18);
+  border-color: rgba(59, 130, 246, 0.45);
+}
+
+.servers-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+}
+
+.server-card {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 18px;
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+  box-shadow: 0 10px 24px rgba(2, 6, 23, 0.2);
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.server-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-strong);
+  box-shadow: 0 16px 34px rgba(2, 6, 23, 0.28);
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .avatar {
-  width: 48px;
-  height: 48px;
+  width: 52px;
+  height: 52px;
   border-radius: 14px;
   background: var(--surface-2);
   display: grid;
@@ -228,65 +529,183 @@ onMounted(async () => {
   background-size: cover;
   background-position: center;
   font-weight: 700;
+  color: var(--text-soft);
+  border: 1px solid var(--border);
 }
-.status {
-  margin-top: 6px;
-  font-size: 12px;
-  padding: 4px 8px;
-  border-radius: 999px;
+
+.card-main {
+  min-width: 0;
+  display: grid;
+}
+
+.server-name {
+  font-size: 15px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.server-id {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.status-line {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  background: rgba(148, 163, 184, 0.18);
+  gap: 8px;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #94a3b8;
+  box-shadow: 0 0 0 4px rgba(148, 163, 184, 0.16);
+}
+
+.status-dot.ok {
+  background: #22c55e;
+  box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.16);
+}
+
+.status-dot.ko {
+  background: #ef4444;
+  box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.16);
+}
+
+.status-dot.warn {
+  background: #f59e0b;
+  box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.16);
+}
+
+.status-text {
+  font-size: 12px;
+  font-weight: 700;
   color: var(--text-soft);
-  border: 1px solid rgba(148, 163, 184, 0.3);
-  font-weight: 600;
-}
-.status.ok {
-  background: rgba(34, 197, 94, 0.2);
-  color: #bbf7d0;
-}
-.status.ko {
-  background: rgba(239, 68, 68, 0.2);
-  color: #fecaca;
-}
-.status.warn {
-  background: rgba(245, 158, 11, 0.2);
-  color: #fde68a;
 }
 
-:global(body.theme-light) .status.ok,
-:global(html.light body) .status.ok {
-  background: #22c55e !important;
-  color: #ffffff !important;
-  border: 1px solid #16a34a !important;
+.card-text {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+  min-height: 36px;
 }
 
-:global(body.theme-light) .status.ko,
-:global(html.light body) .status.ko {
-  background: #ef4444 !important;
-  color: #ffffff !important;
-  border: 1px solid #dc2626 !important;
-}
-
-:global(body.theme-light) .status.warn,
-:global(html.light body) .status.warn {
-  background: rgba(245, 158, 11, 0.18);
-  color: #92400e;
-  border: 1px solid rgba(245, 158, 11, 0.35);
-}
 .hint {
   font-size: 12px;
-  color: var(--text-muted);
-  margin-top: 6px;
-}
-.cta {
-  text-decoration: none;
-  text-align: center;
+  color: #fbbf24;
 }
 
-:global(body.theme-light) .page-head p,
-:global(body.theme-light) .loading {
+.server-cta {
+  margin-top: auto;
+}
+
+.warning-card {
+  border-color: rgba(245, 158, 11, 0.35);
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.empty-card h3 {
+  margin: 0;
+}
+
+.loading-shell {
+  display: grid;
+  gap: 12px;
+}
+
+.loading-title {
   color: var(--text-muted);
+  font-weight: 600;
+}
+
+.loading-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.loading-card {
+  border-radius: 16px;
+  height: 160px;
+  border: 1px solid var(--border);
+  background: linear-gradient(
+    110deg,
+    rgba(148, 163, 184, 0.12) 8%,
+    rgba(148, 163, 184, 0.22) 18%,
+    rgba(148, 163, 184, 0.12) 33%
+  );
+  background-size: 220% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+
+@keyframes shimmer {
+  to {
+    background-position-x: -220%;
+  }
+}
+
+:global(body.theme-light) .hero,
+:global(html.light body) .hero {
+  background:
+    radial-gradient(circle at top right, rgba(59, 130, 246, 0.14), transparent 52%),
+    linear-gradient(145deg, #ffffff, #f8fafc);
+  border-color: rgba(148, 163, 184, 0.4);
+}
+
+:global(body.theme-light) .hero-kicker,
+:global(html.light body) .hero-kicker {
+  color: #1d4ed8;
+}
+
+:global(body.theme-light) .filter-btn.active,
+:global(html.light body) .filter-btn.active {
+  color: #1e3a8a;
+  background: rgba(59, 130, 246, 0.14);
+  border-color: rgba(59, 130, 246, 0.45);
+}
+
+@media (max-width: 920px) {
+  .hero {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .hero-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .stats-row {
+    grid-template-columns: 1fr;
+  }
+
+  .toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .filters {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .filter-btn {
+    width: 100%;
+  }
+
+  .hero-actions {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

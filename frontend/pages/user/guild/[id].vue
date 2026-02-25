@@ -1,13 +1,56 @@
 <template>
   <section class="page">
-    <div class="page-head">
-      <div>
+    <div class="page-head" :class="{ 'page-head--with-daily': dailyEnabled }">
+      <div class="head-main">
+        <span class="head-kicker">PLAYER SPACE</span>
         <h2>{{ greetingText }}</h2>
         <p class="muted">
           <span v-if="summary?.guild?.name">{{ $t("userGuild.serverLabel") }}: {{ summary.guild.name }} · </span>
           {{ $t("userGuild.subtitle") }}
           <span v-if="summary?.economy?.name">{{ $t("userGuild.currencyLabel") }}: {{ summary.economy.name }}</span>
         </p>
+        <div v-if="!loading && !disabled" class="head-stats">
+          <span class="head-stat">
+            <strong>{{ shops.length }}</strong>
+            {{ $t("userGuild.tabs.shops") }}
+          </span>
+          <span class="head-stat">
+            <strong>{{ inventoryItemCount }}</strong>
+            {{ $t("userGuild.tabs.inventory") }}
+          </span>
+          <span class="head-stat">
+            <strong>{{ enabledGames.length }}</strong>
+            {{ $t("userGuild.tabs.games") }}
+          </span>
+        </div>
+      </div>
+      <div v-if="dailyEnabled" class="head-daily">
+        <div class="daily-inline">
+          <div class="daily-inline-head">
+            <span class="daily-inline-title">{{ $t("dailyWidget.title") }}</span>
+            <span class="daily-inline-status">{{ dailyStatusText }}</span>
+          </div>
+          <div class="daily-inline-meta">
+            <span class="daily-inline-pill">{{ $t("dailyWidget.streak", { count: dailyStreak }) }}</span>
+            <span class="daily-inline-pill">
+              {{ $t("dailyWidget.reward", { amount: dailyAmount }) }}
+              <img v-if="dailyEmojiUrl" :src="dailyEmojiUrl" class="daily-inline-emoji" alt="" />
+              <span v-else-if="dailyEmojiLabel">{{ dailyEmojiLabel }}</span>
+            </span>
+          </div>
+          <div class="daily-inline-actions">
+            <UButton
+              color="primary"
+              size="sm"
+              :loading="dailyClaiming"
+              :disabled="dailyLoading || dailyClaiming || !dailyCanClaim"
+              @click="claimDailyAction"
+            >
+              {{ dailyClaiming ? $t("dailyWidget.claiming") : $t("dailyWidget.claim") }}
+            </UButton>
+            <span v-if="dailyStatusMessage" class="muted small">{{ dailyStatusMessage }}</span>
+          </div>
+        </div>
       </div>
       <div class="head-actions">
         <UButton color="neutral" variant="outline" to="/user">{{ $t("common.back") }}</UButton>
@@ -43,6 +86,8 @@
         <button :class="['tab', activeTab === 'inventory' && 'active']" @click="activeTab = 'inventory'">{{ $t("userGuild.tabs.inventory") }}</button>
         <button :class="['tab', activeTab === 'market' && 'active']" @click="activeTab = 'market'">{{ $t("userGuild.tabs.market") }}</button>
         <button :class="['tab', activeTab === 'games' && 'active']" @click="activeTab = 'games'">{{ $t("userGuild.tabs.games") }}</button>
+        <button :class="['tab', activeTab === 'account' && 'active']" @click="activeTab = 'account'">Mon compte</button>
+        <button v-if="achievementsVisible" :class="['tab', activeTab === 'achievements' && 'active']" @click="activeTab = 'achievements'">Succes</button>
         <button :class="['tab', activeTab === 'logs' && 'active']" @click="activeTab = 'logs'">{{ $t("userGuild.tabs.logs") }}</button>
       </div>
 
@@ -332,6 +377,18 @@
             </div>
           </div>
         </UCard>
+      </div>
+
+      <div v-show="activeTab === 'achievements'" class="grid">
+        <UserAchievementsPanel
+          :guild-id="String(guildId)"
+          :refresh-key="achievementsRefreshKey"
+          @visibility="onAchievementsVisibility"
+        />
+      </div>
+
+      <div v-show="activeTab === 'account'" class="grid">
+        <BirthdayUserPanel :guild-id="String(guildId)" />
       </div>
 
       <div v-show="activeTab === 'logs'" class="grid">
@@ -702,7 +759,7 @@
 <script setup>
 const config = useRuntimeConfig();
 const route = useRoute();
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const { getToken, login } = useAuth();
 const guildId = route.params.id;
 
@@ -712,6 +769,13 @@ const loading = ref(true);
 const disabled = ref(false);
 const disabledReason = ref("");
 const activeTab = ref("shops");
+const achievementsVisible = ref(false);
+const achievementsRefreshKey = ref(0);
+const dailyState = ref(null);
+const dailyLoading = ref(false);
+const dailyClaiming = ref(false);
+const dailyStatusMessage = ref("");
+const dailyCountdownMs = ref(0);
 
 const shops = ref([]);
 const shopItems = ref([]);
@@ -745,6 +809,7 @@ const logsLoading = ref(false);
 const logPageSize = 20;
 const gainLogPage = ref(1);
 const eventLogPage = ref(1);
+const logsTimeZoneOverride = ref("");
 
 const gamesSettings = ref(null);
 const gamesLoading = ref(false);
@@ -845,6 +910,77 @@ const loadMe = async () => {
   }
 };
 
+const normalizeDuration = (ms) => {
+  const totalSeconds = Math.max(0, Math.ceil(Number(ms || 0) / 1000));
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${String(minutes).padStart(2, "0")}m`;
+  if (minutes > 0) return `${minutes}m ${String(seconds).padStart(2, "0")}s`;
+  return `${seconds}s`;
+};
+
+const syncDailyCountdown = () => {
+  const remaining = Number(dailyState.value?.remainingMs || 0);
+  dailyCountdownMs.value = Number.isFinite(remaining) ? Math.max(0, remaining) : 0;
+};
+
+const loadDailyStatus = async () => {
+  if (disabled.value) {
+    dailyState.value = null;
+    dailyStatusMessage.value = "";
+    dailyCountdownMs.value = 0;
+    return;
+  }
+  dailyLoading.value = true;
+  const res = await fetchJson(`${config.public.apiBase}/api/user/guilds/${guildId}/daily`);
+  dailyLoading.value = false;
+  if (!res?.ok) {
+    dailyState.value = null;
+    dailyCountdownMs.value = 0;
+    return;
+  }
+  dailyState.value = res.data?.daily || null;
+  syncDailyCountdown();
+};
+
+const claimDailyAction = async () => {
+  if (!dailyCanClaim.value || dailyClaiming.value) return;
+  dailyClaiming.value = true;
+  dailyStatusMessage.value = "";
+  const res = await fetchJson(`${config.public.apiBase}/api/user/guilds/${guildId}/daily/claim`, {
+    method: "POST"
+  });
+  dailyClaiming.value = false;
+  if (!res) return;
+  if (!res.ok) {
+    dailyStatusMessage.value =
+      res.data?.error === "already_claimed" ? t("dailyWidget.alreadyClaimed") : t("dailyWidget.claimError");
+    await loadDailyStatus();
+    return;
+  }
+  const result = res.data?.result || {};
+  if (result.ok === false || result.reason === "already_claimed") {
+    dailyStatusMessage.value = t("dailyWidget.alreadyClaimed");
+    await loadDailyStatus();
+    return;
+  }
+  const amount = Number(result.amount || 0);
+  const emojiToken = parseDiscordEmoji(dailyEmojiSymbol.value) ? "" : dailyEmojiLabel.value;
+  dailyStatusMessage.value = t("dailyWidget.claimed", { amount, emoji: emojiToken })
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  if (summary.value && Number.isFinite(Number(result.balance))) {
+    summary.value = {
+      ...summary.value,
+      balance: Number(result.balance)
+    };
+  }
+  await Promise.all([loadDailyStatus(), loadLogs()]);
+};
+
 const clampPage = (page, total) => Math.min(Math.max(1, page), Math.max(1, total));
 
 const syncShopPageForSelected = () => {
@@ -866,6 +1002,11 @@ const greetingName = computed(() => {
 
 const greetingText = computed(() => {
   return greetingName.value ? `${greetingLabel.value} ${greetingName.value}` : greetingLabel.value;
+});
+
+const botTimeZone = computed(() => {
+  const tz = logsTimeZoneOverride.value || summary.value?.bot?.timezone;
+  return typeof tz === "string" && tz ? tz : "UTC";
 });
 
 const slotSymbols = computed(() => {
@@ -982,6 +1123,14 @@ const loadSummary = async () => {
   disabled.value = false;
   disabledReason.value = "";
   summary.value = res.data;
+  if (process.client && summary.value?.guild?.id) {
+    const payload = {
+      id: String(summary.value.guild.id),
+      name: summary.value.guild.name || String(summary.value.guild.id)
+    };
+    localStorage.setItem("selectedGuild", JSON.stringify(payload));
+    window.dispatchEvent(new CustomEvent("ecoboty:selected-guild"));
+  }
 };
 
 const loadShops = async () => {
@@ -1072,6 +1221,8 @@ const loadLogs = async () => {
   if (res.ok) {
     userLogs.gains = res.data.gains || [];
     userLogs.events = res.data.events || [];
+    const rawTimeZone = String(res.data?.timeZone || "").trim();
+    if (rawTimeZone) logsTimeZoneOverride.value = rawTimeZone;
   } else {
     userLogs.gains = [];
     userLogs.events = [];
@@ -1095,9 +1246,22 @@ const refreshAll = async () => {
   await loadMe();
   await loadSummary();
   if (!disabled.value) {
-    await Promise.all([loadShops(), loadInventory(), loadSales(), loadLogs(), loadGames()]);
+    achievementsRefreshKey.value += 1;
+    await Promise.all([loadShops(), loadInventory(), loadSales(), loadLogs(), loadGames(), loadDailyStatus()]);
+  } else {
+    achievementsVisible.value = false;
+    dailyState.value = null;
+    dailyStatusMessage.value = "";
+    dailyCountdownMs.value = 0;
   }
   loading.value = false;
+};
+
+const onAchievementsVisibility = (visible) => {
+  achievementsVisible.value = Boolean(visible);
+  if (!achievementsVisible.value && activeTab.value === "achievements") {
+    activeTab.value = "shops";
+  }
 };
 
 const selectShop = async (shop) => {
@@ -1609,11 +1773,64 @@ const pickRouletteAngle = (color) => {
   return base + slice / 2;
 };
 
-const formatDate = (value) => {
-  if (!value) return t("common.na");
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return t("common.na");
-  return date.toLocaleString();
+const parseDateValue = (value) => {
+  if (!value) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  const normalized = raw.includes(" ") && !raw.includes("T") ? raw.replace(" ", "T") : raw;
+  const hasExplicitZone = /(?:[zZ]|[+\-]\d{2}:\d{2})$/.test(normalized);
+  const isDateTimeNoZone = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(normalized);
+  if (!hasExplicitZone && isDateTimeNoZone) {
+    const utcDate = new Date(`${normalized}Z`);
+    if (!Number.isNaN(utcDate.getTime())) return utcDate;
+  }
+  const date = new Date(normalized);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const parseFixedTimeZoneOffset = (timeZone) => {
+  const raw = String(timeZone || "").trim();
+  if (!raw) return null;
+  if (/^(utc|gmt)$/i.test(raw)) return 0;
+  const match = raw.match(/^(?:utc|gmt)\s*([+-])\s*(\d{1,2})(?::?(\d{2}))?$/i);
+  if (!match) return null;
+  const hours = Number(match[2]);
+  const minutes = Number(match[3] || 0);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+  if (hours > 23 || minutes > 59) return null;
+  const total = hours * 60 + minutes;
+  return match[1] === "-" ? -total : total;
+};
+
+const formatInBotTimeZone = (date, options = {}) => {
+  const lang = locale.value || "fr-FR";
+  const fixedOffset = parseFixedTimeZoneOffset(botTimeZone.value);
+  if (fixedOffset !== null) {
+    const shifted = new Date(date.getTime() + fixedOffset * 60000);
+    return new Intl.DateTimeFormat(lang, {
+      ...options,
+      timeZone: "UTC"
+    }).format(shifted);
+  }
+  return new Intl.DateTimeFormat(lang, {
+    ...options,
+    timeZone: botTimeZone.value || "UTC"
+  }).format(date);
+};
+
+const formatDate = (value, options = {}) => {
+  const date = parseDateValue(value);
+  if (!date) return t("common.na");
+  try {
+    return formatInBotTimeZone(date, {
+      dateStyle: "short",
+      timeStyle: "medium",
+      ...options
+    });
+  } catch {
+    return date.toLocaleString(locale.value || "fr-FR");
+  }
 };
 
 const formatSigned = (value) => {
@@ -1687,16 +1904,38 @@ const currencySymbol = computed(() => summary.value?.economy?.emoji || "💰");
 
 const parseDiscordEmoji = (value) => {
   const raw = String(value || "");
-  const match = raw.match(/^<a?:\w+:(\d+)>$/);
+  const match = raw.match(/^<a?:[^:>]+:(\d+)>$/);
   if (!match) return null;
   const animated = raw.startsWith("<a:");
   return { id: match[1], animated };
 };
 
-const currencyIconUrl = computed(() => {
-  const parsed = parseDiscordEmoji(currencySymbol.value);
+const discordEmojiUrl = (value) => {
+  const parsed = parseDiscordEmoji(value);
   if (!parsed) return "";
   return `https://cdn.discordapp.com/emojis/${parsed.id}.${parsed.animated ? "gif" : "png"}`;
+};
+
+const currencyIconUrl = computed(() => {
+  return discordEmojiUrl(currencySymbol.value);
+});
+
+const dailyEnabled = computed(() => Boolean(dailyState.value?.enabled));
+const dailyStreak = computed(() => Number(dailyState.value?.streak || 0));
+const dailyAmount = computed(() => Number(dailyState.value?.dailyAmount || 0));
+const dailyEmojiSymbol = computed(() => String(dailyState.value?.emoji || currencySymbol.value || "💰"));
+const dailyEmojiUrl = computed(() => discordEmojiUrl(dailyEmojiSymbol.value));
+const dailyEmojiLabel = computed(() => (dailyEmojiUrl.value ? "" : dailyEmojiSymbol.value));
+const dailyCanClaim = computed(() => {
+  if (!dailyEnabled.value) return false;
+  if (dailyState.value?.canClaim) return true;
+  return Number(dailyCountdownMs.value || 0) <= 0;
+});
+const dailyStatusText = computed(() => {
+  if (!dailyEnabled.value) return "";
+  if (dailyLoading.value) return t("common.loading");
+  if (dailyCanClaim.value) return t("dailyWidget.ready");
+  return t("dailyWidget.cooldown", { time: normalizeDuration(dailyCountdownMs.value) });
 });
 
 const gameDescriptions = computed(() => ({
@@ -1792,6 +2031,9 @@ onMounted(() => {
   refreshAll();
   cooldownTimerId = setInterval(() => {
     cooldownTick.value = Date.now();
+    if (dailyCountdownMs.value > 0) {
+      dailyCountdownMs.value = Math.max(0, dailyCountdownMs.value - 500);
+    }
   }, 500);
 });
 onBeforeUnmount(() => {
@@ -1808,24 +2050,12 @@ onBeforeUnmount(() => {
   padding: 8px 4px 32px;
   font-family: "Space Grotesk", "Sora", "Poppins", sans-serif;
   color: var(--text);
+  background: transparent;
 }
 .page::before,
 .page::after {
-  content: "";
-  position: absolute;
-  inset: -120px -40px auto;
-  height: 360px;
-  background: radial-gradient(circle at 20% 20%, rgba(99, 102, 241, 0.35), transparent 60%),
-    radial-gradient(circle at 80% 0%, rgba(16, 185, 129, 0.25), transparent 55%),
-    radial-gradient(circle at 50% 40%, rgba(236, 72, 153, 0.18), transparent 60%);
-  z-index: 0;
-  pointer-events: none;
-}
-.page::after {
-  inset: auto -40px -180px;
-  height: 320px;
-  background: radial-gradient(circle at 70% 30%, rgba(99, 102, 241, 0.2), transparent 60%),
-    radial-gradient(circle at 10% 50%, rgba(56, 189, 248, 0.18), transparent 60%);
+  content: none;
+  display: none;
 }
 .page > * {
   position: relative;
@@ -3005,7 +3235,6 @@ textarea:focus {
 .reward-image.tier-legendary {
   --tier-color: 245, 158, 11;
 }
-:global(body.theme-light) .page,
 :global(body.theme-light) .card,
 :global(body.theme-light) .sub-card,
 :global(body.theme-light) .modal-card,
@@ -3051,5 +3280,443 @@ textarea:focus {
 }
 :global(body.theme-light) .item-detail-image {
   border-color: rgba(148, 163, 184, 0.25);
+}
+
+/* Playful refresh */
+.page {
+  gap: 16px;
+  background: transparent;
+}
+.page::before,
+.page::after {
+  content: none;
+  display: none;
+}
+.page-head {
+  position: relative;
+  border-radius: 24px;
+  padding: 20px;
+  background: linear-gradient(128deg, rgba(15, 23, 42, 0.95), rgba(29, 78, 216, 0.3), rgba(219, 39, 119, 0.24));
+  border: 1px solid rgba(125, 211, 252, 0.3);
+  box-shadow: 0 24px 44px rgba(2, 6, 23, 0.35);
+  overflow: hidden;
+}
+.page-head::before {
+  content: "";
+  position: absolute;
+  width: 220px;
+  height: 220px;
+  right: -70px;
+  bottom: -100px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(56, 189, 248, 0.26), transparent 72%);
+  pointer-events: none;
+}
+.head-main {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 620px;
+}
+.page-head--with-daily {
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) minmax(340px, 0.95fr) auto;
+  align-items: center;
+  column-gap: 16px;
+}
+.page-head--with-daily .head-main {
+  max-width: none;
+}
+.head-daily {
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+}
+.head-kicker {
+  display: inline-flex;
+  width: fit-content;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.38);
+  background: rgba(15, 23, 42, 0.48);
+  color: #dbeafe;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.head-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 2px;
+}
+.head-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(96, 165, 250, 0.32);
+  background: linear-gradient(125deg, rgba(15, 23, 42, 0.65), rgba(30, 64, 175, 0.22));
+  color: #e2e8f0;
+  font-size: 12px;
+  font-weight: 500;
+}
+.head-stat strong {
+  color: #ffffff;
+  font-size: 13px;
+}
+.daily-inline {
+  margin-top: 0;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(45, 212, 191, 0.36);
+  background: linear-gradient(130deg, rgba(20, 184, 166, 0.2), rgba(37, 99, 235, 0.18));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(100%, 460px);
+}
+.daily-inline-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.daily-inline-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #ccfbf1;
+}
+.daily-inline-status {
+  font-size: 13px;
+  color: #e2e8f0;
+}
+.daily-inline-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.daily-inline-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(125, 211, 252, 0.32);
+  background: rgba(15, 23, 42, 0.45);
+  color: #e2e8f0;
+  font-size: 12px;
+}
+.daily-inline-emoji {
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  object-fit: contain;
+}
+.daily-inline-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.head-actions {
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.page-head--with-daily .head-actions {
+  align-self: flex-start;
+}
+.balance-card {
+  border-radius: 14px;
+  padding: 10px 12px;
+  border-color: rgba(125, 211, 252, 0.34);
+  background: linear-gradient(138deg, rgba(15, 23, 42, 0.62), rgba(14, 116, 144, 0.26), rgba(79, 70, 229, 0.22));
+}
+.tabs {
+  padding: 8px;
+  gap: 10px;
+  border-radius: 18px;
+  border-color: rgba(125, 211, 252, 0.24);
+  background: linear-gradient(130deg, rgba(15, 23, 42, 0.7), rgba(30, 41, 59, 0.55));
+  box-shadow: 0 12px 24px rgba(2, 6, 23, 0.22);
+}
+.tab {
+  padding: 9px 15px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(15, 23, 42, 0.42);
+  font-weight: 600;
+}
+.tab:hover {
+  transform: translateY(-1px);
+  border-color: rgba(125, 211, 252, 0.52);
+}
+.tab.active {
+  border-color: rgba(56, 189, 248, 0.76);
+  background: linear-gradient(130deg, rgba(56, 189, 248, 0.3), rgba(236, 72, 153, 0.25));
+  box-shadow: 0 10px 18px rgba(14, 116, 144, 0.28);
+}
+.grid {
+  gap: 16px;
+}
+.shop-grid,
+.items-grid,
+.games-grid {
+  gap: 14px;
+}
+.card {
+  border-radius: 22px;
+  border-color: rgba(148, 163, 184, 0.24);
+  background: linear-gradient(150deg, rgba(15, 23, 42, 0.86), rgba(30, 41, 59, 0.74));
+  box-shadow: 0 22px 38px rgba(2, 6, 23, 0.26);
+}
+.card-head {
+  margin-bottom: 14px;
+}
+.card-head h3 {
+  font-size: 1.05rem;
+}
+.helper {
+  color: var(--text-soft);
+}
+.shop-card,
+.item-card,
+.game-card,
+.sale-preview,
+.log-row,
+.slot-result,
+.double-result-summary,
+.item-detail,
+.price-symbol {
+  border-color: rgba(125, 211, 252, 0.24);
+  background: linear-gradient(155deg, rgba(15, 23, 42, 0.72), rgba(30, 41, 59, 0.58));
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.08), 0 10px 24px rgba(2, 6, 23, 0.22);
+}
+.shop-card,
+.item-card,
+.game-card {
+  border-radius: 18px;
+}
+.shop-card:hover,
+.item-card:hover,
+.game-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 22px 34px rgba(2, 6, 23, 0.34);
+}
+.shop-card.active {
+  border-color: rgba(56, 189, 248, 0.82);
+  background: linear-gradient(140deg, rgba(56, 189, 248, 0.25), rgba(99, 102, 241, 0.2), rgba(236, 72, 153, 0.16));
+}
+.shop-card.locked {
+  filter: saturate(0.72);
+}
+.shop-thumb,
+.item-image,
+.sale-preview-image,
+.item-detail-image,
+.game-icon,
+.lootbox-icon,
+.reward-image {
+  border: 1px solid rgba(125, 211, 252, 0.35);
+  background: radial-gradient(circle at 24% 20%, rgba(56, 189, 248, 0.46), rgba(30, 41, 59, 0.95));
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  box-shadow: 0 10px 20px rgba(2, 6, 23, 0.36);
+  overflow: hidden;
+}
+.shop-thumb {
+  aspect-ratio: 1 / 1;
+  height: auto;
+}
+.item-image {
+  aspect-ratio: 1 / 1;
+  width: min(100%, 210px);
+  height: auto;
+  margin-inline: auto;
+}
+.item-more {
+  border-radius: 12px;
+  border-color: rgba(45, 212, 191, 0.56);
+  background: linear-gradient(120deg, rgba(45, 212, 191, 0.24), rgba(56, 189, 248, 0.22));
+  color: #ccfbf1;
+}
+.stat-pill {
+  border-color: rgba(125, 211, 252, 0.34);
+  background: linear-gradient(120deg, rgba(56, 189, 248, 0.2), rgba(99, 102, 241, 0.18));
+}
+.pill.neutral {
+  background: linear-gradient(120deg, rgba(148, 163, 184, 0.2), rgba(148, 163, 184, 0.1));
+}
+.pill.info {
+  background: linear-gradient(120deg, rgba(56, 189, 248, 0.26), rgba(59, 130, 246, 0.2));
+}
+.pill.warning {
+  background: linear-gradient(120deg, rgba(251, 191, 36, 0.28), rgba(245, 158, 11, 0.16));
+  color: #fde68a;
+}
+.pill.danger {
+  background: linear-gradient(120deg, rgba(248, 113, 113, 0.28), rgba(239, 68, 68, 0.18));
+}
+.pagination span {
+  font-size: 13px;
+  color: var(--text-soft);
+}
+.log-row {
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 12px;
+}
+select,
+input,
+textarea {
+  border-radius: 14px;
+  border-color: rgba(125, 211, 252, 0.3);
+  background: rgba(15, 23, 42, 0.56);
+}
+select:focus,
+input:focus,
+textarea:focus {
+  border-color: rgba(56, 189, 248, 0.8);
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.22);
+}
+.modal {
+  background: rgba(2, 6, 23, 0.72);
+  backdrop-filter: blur(4px);
+}
+.modal-card {
+  border-radius: 22px;
+  border-color: rgba(125, 211, 252, 0.32);
+  background: linear-gradient(145deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.78));
+}
+.slot-frame,
+.double-window,
+.lootbox-window {
+  border-color: rgba(125, 211, 252, 0.3);
+  box-shadow: inset 0 0 34px rgba(14, 116, 144, 0.2), 0 22px 36px rgba(2, 6, 23, 0.35);
+}
+.slot-line {
+  background: linear-gradient(90deg, transparent, rgba(244, 114, 182, 0.86), transparent);
+  box-shadow: 0 0 12px rgba(244, 114, 182, 0.5);
+}
+.double-pointer,
+.lootbox-marker {
+  background: linear-gradient(180deg, rgba(56, 189, 248, 0.2), rgba(56, 189, 248, 1), rgba(56, 189, 248, 0.2));
+}
+
+:global(body.theme-light) .page {
+  background: transparent;
+}
+:global(body.theme-light) .page-head {
+  background: linear-gradient(130deg, #ffffff, rgba(224, 242, 254, 0.9), rgba(233, 213, 255, 0.74));
+  border-color: rgba(125, 211, 252, 0.4);
+  box-shadow: 0 18px 34px rgba(15, 23, 42, 0.1);
+}
+:global(body.theme-light) .head-kicker {
+  background: rgba(241, 245, 249, 0.95);
+  border-color: rgba(125, 211, 252, 0.4);
+  color: #0f172a;
+}
+:global(body.theme-light) .head-stat {
+  color: #1e293b;
+  border-color: rgba(56, 189, 248, 0.35);
+  background: linear-gradient(120deg, rgba(224, 242, 254, 0.9), rgba(199, 210, 254, 0.6));
+}
+:global(body.theme-light) .head-stat strong {
+  color: #0f172a;
+}
+:global(body.theme-light) .daily-inline {
+  background: linear-gradient(120deg, rgba(204, 251, 241, 0.95), rgba(224, 242, 254, 0.85));
+  border-color: rgba(45, 212, 191, 0.42);
+}
+:global(body.theme-light) .daily-inline-title,
+:global(body.theme-light) .daily-inline-status,
+:global(body.theme-light) .daily-inline-pill {
+  color: #0f172a;
+}
+:global(body.theme-light) .daily-inline-pill {
+  background: rgba(255, 255, 255, 0.9);
+  border-color: rgba(148, 163, 184, 0.3);
+}
+:global(body.theme-light) .balance-card {
+  background: linear-gradient(120deg, rgba(224, 242, 254, 0.95), rgba(219, 234, 254, 0.8));
+  border-color: rgba(56, 189, 248, 0.4);
+}
+:global(body.theme-light) .tabs {
+  background: linear-gradient(120deg, rgba(248, 250, 252, 0.92), rgba(239, 246, 255, 0.85));
+  border-color: rgba(148, 163, 184, 0.24);
+}
+:global(body.theme-light) .tab {
+  background: #ffffff;
+  border-color: rgba(148, 163, 184, 0.28);
+}
+:global(body.theme-light) .tab.active {
+  background: linear-gradient(120deg, rgba(56, 189, 248, 0.2), rgba(244, 114, 182, 0.16));
+  border-color: rgba(56, 189, 248, 0.46);
+}
+:global(body.theme-light) .card {
+  background: linear-gradient(150deg, #ffffff, rgba(240, 249, 255, 0.9));
+  border-color: rgba(148, 163, 184, 0.28);
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.08);
+}
+:global(body.theme-light) .shop-card,
+:global(body.theme-light) .item-card,
+:global(body.theme-light) .game-card,
+:global(body.theme-light) .sale-preview,
+:global(body.theme-light) .log-row,
+:global(body.theme-light) .slot-result,
+:global(body.theme-light) .double-result-summary,
+:global(body.theme-light) .item-detail,
+:global(body.theme-light) .price-symbol,
+:global(body.theme-light) .modal-card {
+  background: linear-gradient(145deg, #ffffff, rgba(241, 245, 249, 0.88));
+  border-color: rgba(148, 163, 184, 0.24);
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.08);
+}
+:global(body.theme-light) .shop-card.active {
+  background: linear-gradient(130deg, rgba(186, 230, 253, 0.62), rgba(224, 231, 255, 0.6), rgba(251, 207, 232, 0.52));
+}
+:global(body.theme-light) .shop-thumb,
+:global(body.theme-light) .item-image,
+:global(body.theme-light) .sale-preview-image,
+:global(body.theme-light) .item-detail-image,
+:global(body.theme-light) .game-icon {
+  border-color: rgba(125, 211, 252, 0.38);
+}
+:global(body.theme-light) select,
+:global(body.theme-light) input,
+:global(body.theme-light) textarea {
+  background: #ffffff;
+  border-color: rgba(148, 163, 184, 0.34);
+}
+:global(body.theme-light) .modal {
+  background: rgba(15, 23, 42, 0.45);
+}
+
+@media (max-width: 960px) {
+  .page-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .page-head--with-daily {
+    grid-template-columns: 1fr;
+    row-gap: 12px;
+  }
+  .page-head--with-daily .head-daily {
+    justify-content: flex-start;
+    width: 100%;
+  }
+  .page-head--with-daily .daily-inline {
+    width: 100%;
+  }
+  .head-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
 }
 </style>

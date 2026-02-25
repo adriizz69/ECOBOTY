@@ -63,7 +63,21 @@ export const probeDatabaseConnection = async (timeoutMs = DEFAULT_DB_TIMEOUT_MS)
   });
 };
 
+const buildDatabaseConnection = () => ({
+  uri: process.env.DATABASE_URL,
+  timezone: "Z"
+});
+
+const setConnectionUtcTimeZone = (connection, done) => {
+  connection.query("SET time_zone = '+00:00'", (error) => {
+    done(error, connection);
+  });
+};
+
 export const db = knex({
   client: "mysql2",
-  connection: process.env.DATABASE_URL
+  connection: buildDatabaseConnection(),
+  pool: {
+    afterCreate: setConnectionUtcTimeZone
+  }
 });
