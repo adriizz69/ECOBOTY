@@ -454,7 +454,7 @@
           </div>
           <div v-if="!adminLogs.length" class="muted">Aucun log.</div>
           <div v-for="log in adminLogs" :key="log.id" class="table-row">
-            <span>{{ formatDate(log.created_at) }}</span>
+            <span>{{ formatDate(log.created_at, guildTimeZoneById[String(log.guild_discord_id)] || "UTC") }}</span>
             <span class="mono">{{ log.action }}</span>
             <span>{{ log.guild_name || log.guild_discord_id || "—" }}</span>
             <span class="muted">{{ formatLogData(log.data) }}</span>
@@ -753,11 +753,54 @@ const impersonateGuildId = ref("");
 const impersonateLoading = ref(false);
 const impersonateStatus = ref("");
 
-const formatDate = (value) => {
+const guildTimeZoneById = computed(() => {
+  const map = {};
+  (guilds.value || []).forEach((guild) => {
+    map[String(guild.discord_guild_id)] = String(guild.timezone || "").trim() || "UTC";
+  });
+  return map;
+});
+
+const parseFixedTimeZoneOffset = (timeZone) => {
+  const raw = String(timeZone || "").trim();
+  if (!raw) return null;
+  if (/^(utc|gmt)$/i.test(raw)) return 0;
+  const match = raw.match(/^(?:utc|gmt)\s*([+-])\s*(\d{1,2})(?::?(\d{2}))?$/i);
+  if (!match) return null;
+  const hours = Number(match[2]);
+  const minutes = Number(match[3] || 0);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+  if (hours > 23 || minutes > 59) return null;
+  const total = hours * 60 + minutes;
+  return match[1] === "-" ? -total : total;
+};
+
+const formatDate = (value, timeZone = "") => {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleString();
+  const rawZone = String(timeZone || "").trim();
+  const fixedOffset = parseFixedTimeZoneOffset(rawZone);
+  try {
+    if (fixedOffset !== null) {
+      const shifted = new Date(date.getTime() + fixedOffset * 60000);
+      return new Intl.DateTimeFormat("fr-FR", {
+        dateStyle: "short",
+        timeStyle: "medium",
+        timeZone: "UTC"
+      }).format(shifted);
+    }
+    if (rawZone) {
+      return new Intl.DateTimeFormat("fr-FR", {
+        dateStyle: "short",
+        timeStyle: "medium",
+        timeZone: rawZone
+      }).format(date);
+    }
+  } catch {
+    // fallback below
+  }
+  return date.toLocaleString("fr-FR");
 };
 
 const formatLogData = (value) => {
@@ -1243,8 +1286,7 @@ onMounted(async () => {
   gap: 16px;
   font-family: "Space Grotesk", "Manrope", "Noto Sans", ui-sans-serif, sans-serif;
   color: #e5e7eb;
-  background: radial-gradient(1200px 400px at 10% 0%, rgba(34, 197, 94, 0.12), transparent 60%),
-    radial-gradient(900px 400px at 90% 10%, rgba(59, 130, 246, 0.12), transparent 60%);
+  background: transparent;
 }
 .page-hero {
   display: flex;
@@ -1567,8 +1609,7 @@ textarea {
 }
 :global(body.theme-light) .page {
   color: var(--text);
-  background: radial-gradient(1200px 400px at 10% 0%, rgba(34, 197, 94, 0.08), transparent 60%),
-    radial-gradient(900px 400px at 90% 10%, rgba(59, 130, 246, 0.08), transparent 60%);
+  background: transparent;
 }
 :global(body.theme-light) .page-hero,
 :global(body.theme-light) .card,

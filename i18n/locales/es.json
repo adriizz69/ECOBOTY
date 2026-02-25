@@ -9,6 +9,7 @@
     "status": "Estado",
     "documentation": "Documentación",
     "logout": "Cerrar sesión",
+    "login": "Iniciar sesión",
     "support": "Servidor de soporte",
     "adminBot": "ADMIN BOT"
   },
@@ -458,7 +459,8 @@
   },
   "servers": {
     "title": "Mis servidores",
-    "subtitle": "Gestiona solo los servidores donde tengas permisos de administración.",
+    "subtitle": "Elige un servidor, revisa el estado del bot y abre la administración en un clic.",
+    "kicker": "Panel de Discord",
     "logout": "Cerrar sesión",
     "loading": "Cargando...",
     "impersonationTitle": "Modo de suplantación",
@@ -466,10 +468,24 @@
     "impersonationQuit": "Salir de la suplantación",
     "botUnknown": "Bot: verificación imposible",
     "botPresent": "Bot presente",
-    "botAbsent": "Bot ausente",
+    "botAbsent": "BOT ausente",
     "botTokenMissing": "Token del bot faltante (.env)",
     "botTokenInvalid": "Token del bot inválido",
-    "configure": "Configurar"
+    "configure": "Configurar",
+    "ctaManage": "Gestionar servidor",
+    "ctaBotAbsent": "BOT ausente",
+    "cardPresentText": "El bot está activo en este servidor. Puedes gestionar toda la configuración.",
+    "cardAbsentText": "El bot aún no está instalado aquí. Abre admin para terminar la configuración.",
+    "cardUnknownText": "No se pudo confirmar la presencia del bot por ahora.",
+    "statTotal": "Servidores detectados",
+    "statPresent": "BOT presente",
+    "statAbsent": "BOT ausente",
+    "searchPlaceholder": "Buscar por nombre del servidor o ID...",
+    "filterAll": "Todos",
+    "filterPresent": "Con bot",
+    "filterAbsent": "Sin bot",
+    "emptyTitle": "No se encontró ningún servidor",
+    "emptyText": "Ajusta la búsqueda o el filtro para mostrar otros servidores."
   },
   "status": {
     "title": "Estado",
@@ -552,6 +568,18 @@
     "restore": "Restaurar",
     "edit": "Editar",
     "noData": "Sin datos."
+  },
+  "dailyWidget": {
+    "title": "Daily",
+    "ready": "Recompensa diaria disponible",
+    "cooldown": "Próximo reclamo en {time}",
+    "streak": "Racha: {count}",
+    "reward": "Recompensa: {amount}",
+    "claim": "Reclamar",
+    "claiming": "Reclamando...",
+    "claimed": "+{amount} {emoji} añadido",
+    "alreadyClaimed": "Ya reclamado hoy.",
+    "claimError": "No se pudo reclamar el daily."
   },
   "userHome": {
     "title": "Interfaz de usuario",

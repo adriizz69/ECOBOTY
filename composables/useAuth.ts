@@ -27,8 +27,14 @@ export const useAuth = () => {
     localStorage.setItem("token", token);
   };
 
-  const logout = () => {
+  const logout = (options = {}) => {
     if (!process.client) return;
+    const clearAll = Boolean(options.all);
+    if (clearAll) {
+      localStorage.removeItem("token");
+      sessionStorage.removeItem("session_token");
+      return;
+    }
     const hasSession = Boolean(sessionStorage.getItem("session_token"));
     const hasLocal = Boolean(localStorage.getItem("token"));
     if (hasSession && hasLocal) {
@@ -39,5 +45,7 @@ export const useAuth = () => {
     sessionStorage.removeItem("session_token");
   };
 
-  return { login, getToken, setToken, logout };
+  const logoutAll = () => logout({ all: true });
+
+  return { login, getToken, setToken, logout, logoutAll };
 };

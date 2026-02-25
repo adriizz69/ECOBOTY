@@ -9,6 +9,7 @@
     "status": "Statuts",
     "documentation": "Documentation",
     "logout": "Déconnexion",
+    "login": "Connexion",
     "support": "Serveur support",
     "adminBot": "ADMIN BOT"
   },
@@ -458,7 +459,8 @@
   },
   "servers": {
     "title": "Mes serveurs",
-    "subtitle": "Gère uniquement les serveurs où tu as les droits d’administration.",
+    "subtitle": "Choisis un serveur, vérifie l’état du bot et ouvre l’administration en un clic.",
+    "kicker": "Tableau Discord",
     "logout": "Se déconnecter",
     "loading": "Chargement...",
     "impersonationTitle": "Mode impersonation",
@@ -466,10 +468,24 @@
     "impersonationQuit": "Quitter l’impersonation",
     "botUnknown": "Bot : vérification impossible",
     "botPresent": "Bot présent",
-    "botAbsent": "Bot absent",
+    "botAbsent": "BOT absent",
     "botTokenMissing": "Bot token manquant (.env)",
     "botTokenInvalid": "Bot token invalide",
-    "configure": "Configurer"
+    "configure": "Configurer",
+    "ctaManage": "Gérer le serveur",
+    "ctaBotAbsent": "BOT absent",
+    "cardPresentText": "Le bot est bien actif sur ce serveur. Tu peux gérer toute la configuration.",
+    "cardAbsentText": "Le bot n’est pas encore installé ici. Ouvre l’admin pour finaliser la mise en place.",
+    "cardUnknownText": "La présence du bot n’a pas pu être confirmée pour le moment.",
+    "statTotal": "Serveurs détectés",
+    "statPresent": "BOT présent",
+    "statAbsent": "BOT absent",
+    "searchPlaceholder": "Rechercher par nom de serveur ou ID...",
+    "filterAll": "Tous",
+    "filterPresent": "Avec bot",
+    "filterAbsent": "Sans bot",
+    "emptyTitle": "Aucun serveur trouvé",
+    "emptyText": "Ajuste la recherche ou le filtre pour afficher d’autres serveurs."
   },
   "status": {
     "title": "Statuts",
@@ -552,6 +568,18 @@
     "restore": "Restaurer",
     "edit": "Modifier",
     "noData": "Aucune donnée."
+  },
+  "dailyWidget": {
+    "title": "Daily",
+    "ready": "Récompense quotidienne disponible",
+    "cooldown": "Prochaine réclamation dans {time}",
+    "streak": "Série : {count}",
+    "reward": "Récompense : {amount}",
+    "claim": "Réclamer",
+    "claiming": "Réclamation...",
+    "claimed": "+{amount} {emoji} crédité",
+    "alreadyClaimed": "Déjà réclamé aujourd’hui.",
+    "claimError": "Impossible de réclamer le daily."
   },
   "userHome": {
     "title": "Interface utilisateur",

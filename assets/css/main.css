@@ -17,6 +17,7 @@
   --radius-lg: 18px;
   --radius-md: 14px;
   --radius-sm: 10px;
+  --block-gap: 16px;
 }
 
 body.theme-light {
@@ -61,11 +62,6 @@ html.light body {
   color-scheme: light;
 }
 
-body,
-body * {
-  border-radius: 0;
-}
-
 :is(body.theme-light, html.light body) {
   background: #f6f7fb !important;
   background-image: none !important;
@@ -103,6 +99,12 @@ body .sidebar,
 body .topbar,
 body .cookie-card {
   border-radius: var(--radius-lg) !important;
+}
+
+body .card > [data-slot="body"] {
+  display: flex;
+  flex-direction: column;
+  gap: var(--block-gap);
 }
 
 body .chip,

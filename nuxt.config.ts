@@ -23,6 +23,24 @@ export default defineNuxtConfig({
     ]
   },
   vite: {
+    plugins: [
+      {
+        // Silence noisy 404 requests made by browser/devtools extensions.
+        // These paths are not real Nuxt assets but can be requested during HMR.
+        name: "ecoboty-ignore-nuxt-index-map",
+        configureServer(server) {
+          server.middlewares.use((req, res, next) => {
+            const url = String(req.url || "").split("?")[0];
+            if (url === "/_nuxt" || url === "/_nuxt/" || url === "/_nuxt/index.map") {
+              res.statusCode = 204;
+              res.end();
+              return;
+            }
+            next();
+          });
+        }
+      }
+    ],
     resolve: {
       dedupe: ["vue", "@vue/runtime-core", "@vue/runtime-dom"]
     },

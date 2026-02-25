@@ -53,6 +53,21 @@
           <button :class="['nav-item games', activeTab === 'games' && 'active']" @click="selectTab('games')">
           🎮 {{ $t("adminGuild.sidebar.items.games") }}
         </button>
+          <button :class="['nav-item achievements', activeTab === 'achievements' && 'active']" @click="selectTab('achievements')">
+          🏅 Succes
+        </button>
+          <button
+            :class="['nav-item achievements-giveaway', activeTab === 'achievementsGiveaway' && 'active']"
+            @click="selectTab('achievementsGiveaway')"
+          >
+            🎉 Giveaway (bientot)
+          </button>
+          <button
+            :class="['nav-item achievements-birthday', activeTab === 'achievementsBirthday' && 'active']"
+            @click="selectTab('achievementsBirthday')"
+          >
+            🎂 Anniversaire
+          </button>
           <div class="nav-divider"></div>
           <div class="nav-group">{{ $t("adminGuild.sidebar.groups.system") }}</div>
           <button
@@ -79,8 +94,16 @@
       <div v-if="!guildBan?.banned" class="section-content" :class="`theme-${activeTab}`">
       <div class="hero">
         <div class="hero-info">
+          <span class="hero-kicker">{{ $t("adminGuild.sidebar.title") }}</span>
           <div class="hero-title">{{ $t("adminGuild.hero.title") }}</div>
           <div class="hero-sub">{{ $t("adminGuild.hero.subtitle") }}</div>
+          <div class="hero-badges">
+            <span class="hero-badge hero-badge-id">ID: {{ id }}</span>
+            <span class="hero-badge" :class="form.enabled ? 'ok' : 'ko'">
+              {{ form.enabled ? $t("adminGuild.status.enabled") : $t("adminGuild.status.disabled") }}
+            </span>
+            <span class="hero-badge">{{ $t("adminGuild.status.saved") }}</span>
+          </div>
         </div>
         <div class="hero-actions">
           <UButton color="neutral" variant="outline">
@@ -554,7 +577,7 @@
             </div>
             <div class="list">
               <div v-for="log in paginatedLogs" :key="log.id" class="list-row log-row">
-                <span>{{ new Date(log.created_at).toLocaleString() }}</span>
+                <span>{{ formatDateTime(log.created_at) }}</span>
                 <template v-if="logsCategoryTab === 'gains'">
                   <span class="source-pill" :class="sourceMeta(log.source).kind">
                     {{ sourceMeta(log.source).icon }} {{ formatGainSource(log.source) }}
@@ -1679,6 +1702,25 @@
         </div>
       </UCard>
 
+      <AchievementsAdminPanel v-show="activeTab === 'achievements'" :guild-id="String(id)" />
+
+      <UCard v-show="activeTab === 'achievementsGiveaway'" class="card">
+        <div class="card-head">
+          <h3>Giveaway</h3>
+        </div>
+        <div class="sub-card">
+          <h4>Fonctionnalite a venir</h4>
+          <p class="muted">
+            Cet onglet est reserve au futur module de succes lies aux giveaway.
+          </p>
+          <p class="muted small">
+            Rien n'est configure ici pour le moment.
+          </p>
+        </div>
+      </UCard>
+
+      <BirthdayAdminPanel v-show="activeTab === 'achievementsBirthday'" :guild-id="String(id)" />
+
       <UCard v-show="activeTab === 'automation'" class="card">
         <div class="card-head">
           <h3>{{ $t("adminGuild.automation.title") }}</h3>
@@ -1746,7 +1788,12 @@
               <option v-for="role in allRoles" :key="role.id" :value="role.id">{{ role.name }}</option>
             </select>
             <UButton color="neutral" variant="outline" @click="refreshRoles">{{ $t("adminGuild.automation.refreshRoles") }}</UButton>
-            <input v-model.number="newRoleBooster.multiplier" type="number" step="0.1" :placeholder="$t('adminGuild.automation.multiplierPlaceholder')" />
+            <input
+              v-model="newRoleBooster.multiplier"
+              type="text"
+              inputmode="decimal"
+              :placeholder="$t('adminGuild.automation.multiplierPlaceholder')"
+            />
             <div class="switch-field compact">
               <span>{{ $t("common.active") }}</span>
               <label class="switch">
@@ -1767,9 +1814,9 @@
             <div v-for="(booster, index) in roleBoosters" :key="`${booster.role_id}-${index}`" class="list-row">
               <span>{{ roleName(booster.role_id) }}</span>
               <input
-                v-model.number="booster.multiplier"
-                type="number"
-                step="0.1"
+                v-model="booster.multiplier"
+                type="text"
+                inputmode="decimal"
                 class="inline-input"
                 :placeholder="$t('adminGuild.automation.multiplierDefault')"
               />
@@ -1803,7 +1850,12 @@
             </select>
             <label class="inline-label">
               {{ $t("adminGuild.automation.multiplier") }}
-              <input v-model.number="newChannelBooster.multiplier" type="number" step="0.1" :placeholder="$t('adminGuild.automation.multiplierPlaceholderChannel')" />
+              <input
+                v-model="newChannelBooster.multiplier"
+                type="text"
+                inputmode="decimal"
+                :placeholder="$t('adminGuild.automation.multiplierPlaceholderChannel')"
+              />
             </label>
             <div class="switch-field compact">
               <span>{{ $t("common.active") }}</span>
@@ -1827,9 +1879,9 @@
               <label class="inline-label">
                 {{ $t("adminGuild.automation.multiplier") }}
                 <input
-                  v-model.number="booster.multiplier"
-                  type="number"
-                  step="0.1"
+                  v-model="booster.multiplier"
+                  type="text"
+                  inputmode="decimal"
                   class="inline-input"
                   :placeholder="$t('adminGuild.automation.multiplierDefault')"
                 />
@@ -2622,6 +2674,8 @@ const pendingTab = ref(null);
 const isDirty = ref(false);
 const suppressDirty = ref(true);
 const isSavingChanges = ref(false);
+const tabDataLoadDepth = ref(0);
+const isTabDataHydrating = computed(() => tabDataLoadDepth.value > 0);
 let savedTimer = null;
 const botLogChannelId = ref("");
 const botSettingsLoaded = ref(false);
@@ -2652,9 +2706,25 @@ const timezoneOptions = ref([
   "Asia/Singapore",
   "Australia/Sydney"
 ]);
-const getTimeZoneOffsetMinutes = (timeZone) => {
+const parseFixedTimeZoneOffset = (timeZone) => {
+  const raw = String(timeZone || "").trim();
+  if (!raw) return null;
+  if (/^(utc|gmt)$/i.test(raw)) return 0;
+  const match = raw.match(/^(?:utc|gmt)\s*([+-])\s*(\d{1,2})(?::?(\d{2}))?$/i);
+  if (!match) return null;
+  const hours = Number(match[2]);
+  const minutes = Number(match[3] || 0);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+  if (hours > 23 || minutes > 59) return null;
+  const total = hours * 60 + minutes;
+  return match[1] === "-" ? -total : total;
+};
+const getTimeZoneOffsetMinutes = (timeZone, date = new Date()) => {
+  const fixedOffset = parseFixedTimeZoneOffset(timeZone);
+  if (fixedOffset !== null) return fixedOffset;
   try {
-    const now = new Date();
+    const sourceDate = date instanceof Date ? date : new Date(date);
+    if (Number.isNaN(sourceDate.getTime())) return 0;
     const parts = new Intl.DateTimeFormat("en-US", {
       timeZone,
       hour12: false,
@@ -2665,7 +2735,7 @@ const getTimeZoneOffsetMinutes = (timeZone) => {
       minute: "2-digit",
       second: "2-digit"
     })
-      .formatToParts(now)
+      .formatToParts(sourceDate)
       .reduce((acc, part) => {
         acc[part.type] = part.value;
         return acc;
@@ -2678,9 +2748,9 @@ const getTimeZoneOffsetMinutes = (timeZone) => {
       Number(parts.minute),
       Number(parts.second)
     );
-    return Math.round((utcTime - now.getTime()) / 60000);
+    return Math.round((utcTime - sourceDate.getTime()) / 60000);
   } catch {
-    return -new Date().getTimezoneOffset();
+    return 0;
   }
 };
 const formatTzOffset = (minutes) => {
@@ -2703,6 +2773,77 @@ const timezoneOptionRows = computed(() => {
     label: buildTimezoneLabel(tz)
   }));
 });
+const displayTimeZone = computed(() => {
+  const tz = String(botTimezone.value || browserTimezone.value || "UTC").trim();
+  return tz || "UTC";
+});
+const formatInDisplayTimeZone = (date, options = {}, formatLocale = locale.value || "fr-FR") => {
+  const fixedOffset = parseFixedTimeZoneOffset(displayTimeZone.value);
+  if (fixedOffset !== null) {
+    const shifted = new Date(date.getTime() + fixedOffset * 60000);
+    return new Intl.DateTimeFormat(formatLocale, {
+      ...options,
+      timeZone: "UTC"
+    }).format(shifted);
+  }
+  return new Intl.DateTimeFormat(formatLocale, {
+    ...options,
+    timeZone: displayTimeZone.value
+  }).format(date);
+};
+const formatPartsInDisplayTimeZone = (date, options = {}) => {
+  const fixedOffset = parseFixedTimeZoneOffset(displayTimeZone.value);
+  if (fixedOffset !== null) {
+    const shifted = new Date(date.getTime() + fixedOffset * 60000);
+    return new Intl.DateTimeFormat("en-GB", {
+      ...options,
+      timeZone: "UTC"
+    }).formatToParts(shifted);
+  }
+  return new Intl.DateTimeFormat("en-GB", {
+    ...options,
+    timeZone: displayTimeZone.value
+  }).formatToParts(date);
+};
+const parseDateTimeValue = (value) => {
+  if (!value) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  const normalized = raw.includes(" ") && !raw.includes("T") ? raw.replace(" ", "T") : raw;
+  const hasExplicitZone = /(?:[zZ]|[+\-]\d{2}:\d{2})$/.test(normalized);
+  const isDateTimeNoZone = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(normalized);
+  if (!hasExplicitZone && isDateTimeNoZone) {
+    const utcDate = new Date(`${normalized}Z`);
+    if (!Number.isNaN(utcDate.getTime())) return utcDate;
+  }
+  const date = new Date(normalized);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+const formatDateTime = (value, options = {}) => {
+  const date = parseDateTimeValue(value);
+  if (!date) return t("common.na");
+  try {
+    return formatInDisplayTimeZone(date, {
+      dateStyle: "short",
+      timeStyle: "medium",
+      ...options
+    });
+  } catch {
+    return date.toLocaleString(locale.value || "fr-FR");
+  }
+};
+const parseDateBoundaryInTimeZone = (dateValue, endOfDay = false) => {
+  if (!dateValue) return null;
+  const [year, month, day] = String(dateValue).split("-").map(Number);
+  if (!year || !month || !day) return null;
+  const hour = endOfDay ? 23 : 0;
+  const minute = endOfDay ? 59 : 0;
+  const second = endOfDay ? 59 : 0;
+  const utcGuess = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
+  const offset = getTimeZoneOffsetMinutes(displayTimeZone.value, utcGuess);
+  return new Date(utcGuess.getTime() - offset * 60000);
+};
 const applyTimezoneInput = () => {
   const raw = String(timezoneInput.value || "").trim();
   if (!raw) return;
@@ -2743,6 +2884,9 @@ const loadedTabs = reactive({
   communityMessage: false,
   twitch: false,
   games: false,
+  achievements: false,
+  achievementsGiveaway: false,
+  achievementsBirthday: false,
   api: false,
   bot: false,
   sensitive: false
@@ -2773,6 +2917,11 @@ const selectTab = (tab) => {
 };
 const markSaved = () => {
   isDirty.value = false;
+};
+const markDirtyIfAllowed = () => {
+  if (!suppressDirty.value && !isTabDataHydrating.value) {
+    isDirty.value = true;
+  }
 };
 const continueWithoutSaving = () => {
   showUnsavedModal.value = false;
@@ -3078,8 +3227,8 @@ const roleBoosters = ref([]);
 const channelBoosters = ref([]);
 const blockedRoles = ref([]);
 const blockedChannels = ref([]);
-const newRoleBooster = reactive({ role_id: "", multiplier: 1, enabled: true, stackable: false });
-const newChannelBooster = reactive({ channel_id: "", multiplier: 1, enabled: true, stackable: false });
+const newRoleBooster = reactive({ role_id: "", multiplier: "1", enabled: true, stackable: false });
+const newChannelBooster = reactive({ channel_id: "", multiplier: "1", enabled: true, stackable: false });
 const selectedBlockedRole = ref("");
 const selectedBlockedChannel = ref("");
 const guildEmojis = ref([]);
@@ -3409,8 +3558,8 @@ const parseEventData = (value) => {
 const filteredGainLogs = computed(() => {
   const sourceFilter = String(logsSourceTab.value || "all");
   const search = String(logsSearch.value || "").toLowerCase();
-  const from = logsDateFrom.value ? new Date(`${logsDateFrom.value}T00:00:00`) : null;
-  const to = logsDateTo.value ? new Date(`${logsDateTo.value}T23:59:59`) : null;
+  const from = parseDateBoundaryInTimeZone(logsDateFrom.value, false);
+  const to = parseDateBoundaryInTimeZone(logsDateTo.value, true);
 
   return (gainLogs.value || []).filter((log) => {
     const source = String(log.source || "").toLowerCase();
@@ -3423,7 +3572,8 @@ const filteredGainLogs = computed(() => {
     }
 
     if (from || to) {
-      const created = new Date(log.created_at);
+      const created = parseDateTimeValue(log.created_at);
+      if (!created) return true;
       if (from && created < from) return false;
       if (to && created > to) return false;
     }
@@ -3441,8 +3591,8 @@ const filteredGainLogs = computed(() => {
 
 const filteredTransactionLogs = computed(() => {
   const search = String(logsSearch.value || "").toLowerCase();
-  const from = logsDateFrom.value ? new Date(`${logsDateFrom.value}T00:00:00`) : null;
-  const to = logsDateTo.value ? new Date(`${logsDateTo.value}T23:59:59`) : null;
+  const from = parseDateBoundaryInTimeZone(logsDateFrom.value, false);
+  const to = parseDateBoundaryInTimeZone(logsDateTo.value, true);
   const userFilter = logsFilterUserId.value ? String(logsFilterUserId.value) : "";
 
   return (transactionLogs.value || []).filter((log) => {
@@ -3456,7 +3606,8 @@ const filteredTransactionLogs = computed(() => {
     }
 
     if (from || to) {
-      const created = new Date(log.created_at);
+      const created = parseDateTimeValue(log.created_at);
+      if (!created) return true;
       if (from && created < from) return false;
       if (to && created > to) return false;
     }
@@ -3477,8 +3628,8 @@ const filteredTransactionLogs = computed(() => {
 
 const filteredGameLogs = computed(() => {
   const search = String(logsSearch.value || "").toLowerCase();
-  const from = logsDateFrom.value ? new Date(`${logsDateFrom.value}T00:00:00`) : null;
-  const to = logsDateTo.value ? new Date(`${logsDateTo.value}T23:59:59`) : null;
+  const from = parseDateBoundaryInTimeZone(logsDateFrom.value, false);
+  const to = parseDateBoundaryInTimeZone(logsDateTo.value, true);
   const userFilter = logsFilterUserId.value ? String(logsFilterUserId.value) : "";
 
   return (gameLogs.value || []).filter((log) => {
@@ -3487,7 +3638,8 @@ const filteredGameLogs = computed(() => {
     if (userFilter && userId !== userFilter) return false;
 
     if (from || to) {
-      const created = new Date(log.created_at);
+      const created = parseDateTimeValue(log.created_at);
+      if (!created) return true;
       if (from && created < from) return false;
       if (to && created > to) return false;
     }
@@ -3575,7 +3727,7 @@ const sortedGainLogs = computed(() => {
     if (key === "source") {
       return String(a.source || "").localeCompare(String(b.source || "")) * dir;
     }
-    return (new Date(a.created_at) - new Date(b.created_at)) * dir;
+    return ((parseDateTimeValue(a.created_at)?.getTime() || 0) - (parseDateTimeValue(b.created_at)?.getTime() || 0)) * dir;
   });
 });
 
@@ -3595,7 +3747,7 @@ const sortedTransactionLogs = computed(() => {
     if (key === "type") {
       return String(formatTransactionType(a.type)).localeCompare(String(formatTransactionType(b.type))) * dir;
     }
-    return (new Date(a.created_at) - new Date(b.created_at)) * dir;
+    return ((parseDateTimeValue(a.created_at)?.getTime() || 0) - (parseDateTimeValue(b.created_at)?.getTime() || 0)) * dir;
   });
 });
 
@@ -3615,7 +3767,7 @@ const sortedGameLogs = computed(() => {
     if (key === "type") {
       return String(formatGameName(a.type)).localeCompare(String(formatGameName(b.type))) * dir;
     }
-    return (new Date(a.created_at) - new Date(b.created_at)) * dir;
+    return ((parseDateTimeValue(a.created_at)?.getTime() || 0) - (parseDateTimeValue(b.created_at)?.getTime() || 0)) * dir;
   });
 });
 
@@ -3783,10 +3935,8 @@ const formatAvailability = (item) => {
   }
   const fromLabel = t("adminGuild.shopItems.availableFromShort");
   const toLabel = t("adminGuild.shopItems.availableToShort");
-  const from = item?.available_from
-    ? new Date(item.available_from).toLocaleString(locale.value || "fr-FR")
-    : "";
-  const to = item?.available_to ? new Date(item.available_to).toLocaleString(locale.value || "fr-FR") : "";
+  const from = item?.available_from ? formatDateTime(item.available_from) : "";
+  const to = item?.available_to ? formatDateTime(item.available_to) : "";
   if (from && to) return `${fromLabel} ${from} • ${toLabel} ${to}`;
   if (from) return `${fromLabel} ${from}`;
   if (to) return `${toLabel} ${to}`;
@@ -3894,8 +4044,15 @@ const changeLeaderboardPage = async (delta) => {
   await loadLeaderboard({ page: next });
 };
 
-const resolveUserIds = async (ids) => {
-  const unique = Array.from(new Set((ids || []).filter(Boolean).map(String)));
+const resolveUserIds = async (ids, attempt = 1) => {
+  const unique = Array.from(
+    new Set(
+      (ids || [])
+        .filter(Boolean)
+        .map((value) => String(value).trim())
+        .filter(Boolean)
+    )
+  );
   const missing = unique.filter((userId) => {
     const entry = leaderboardUsers.value[userId];
     return !entry || !Object.prototype.hasOwnProperty.call(entry, "avatar");
@@ -3907,9 +4064,18 @@ const resolveUserIds = async (ids) => {
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify({ userIds: missing })
   });
+  if (!res.ok) return;
   const data = await res.json();
   const users = data.users || {};
   leaderboardUsers.value = { ...leaderboardUsers.value, ...users };
+  if (attempt >= 2) return;
+  const unresolved = missing.filter((userId) => {
+    const entry = leaderboardUsers.value[userId];
+    return !entry || !Object.prototype.hasOwnProperty.call(entry, "avatar");
+  });
+  if (!unresolved.length) return;
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  await resolveUserIds(unresolved, attempt + 1);
 };
 
 const inventoryDisplayName = (user) => {
@@ -4129,6 +4295,22 @@ const getLogsFetchLimit = () => {
   return Math.min(10000, perPage * 100);
 };
 
+const applyTimeZoneFromApi = (value) => {
+  const raw = String(value || "").trim();
+  if (!raw) return;
+  const fixedOffset = parseFixedTimeZoneOffset(raw);
+  if (fixedOffset !== null) {
+    botTimezone.value = raw;
+    return;
+  }
+  try {
+    const resolved = new Intl.DateTimeFormat("en-US", { timeZone: raw }).resolvedOptions().timeZone;
+    botTimezone.value = resolved || raw;
+  } catch {
+    // ignore invalid timezone values from API
+  }
+};
+
 const loadGainLogs = async () => {
   const token = getToken();
   const params = new URLSearchParams({
@@ -4139,6 +4321,7 @@ const loadGainLogs = async () => {
     headers: { Authorization: `Bearer ${token}` }
   });
   const data = await res.json();
+  applyTimeZoneFromApi(data.timeZone);
   gainLogs.value = data.logs || [];
   const ids = (gainLogs.value || []).map((log) => log.user_discord_id);
   await resolveUserIds(ids);
@@ -4154,6 +4337,7 @@ const loadTransactionLogs = async () => {
     headers: { Authorization: `Bearer ${token}` }
   });
   const data = await res.json();
+  applyTimeZoneFromApi(data.timeZone);
   transactionLogs.value = (data.logs || []).map((row) => ({
     ...row,
     data: parseEventData(row.data)
@@ -4178,6 +4362,7 @@ const loadGameLogs = async () => {
     headers: { Authorization: `Bearer ${token}` }
   });
   const data = await res.json();
+  applyTimeZoneFromApi(data.timeZone);
   gameLogs.value = (data.logs || []).map((row) => ({
     ...row,
     data: parseEventData(row.data)
@@ -4199,8 +4384,7 @@ const refreshLogs = async () => {
     await loadLinkedTwitchUsers();
     return;
   }
-  await loadLinkedTwitchUsers();
-  await loadGainLogs();
+  await Promise.allSettled([loadGainLogs(), loadLinkedTwitchUsers()]);
 };
 
 const buildCommunityMessagePayload = () => ({
@@ -4387,15 +4571,24 @@ const formatCommunityPreview = (raw) => {
 const loadLinkedTwitchUsers = async () => {
   const token = getToken();
   linkedUsersLoading.value = true;
-  const res = await fetch(`${config.public.apiBase}/api/guilds/${id}/twitch/linked-users`, {
-    headers: { Authorization: `Bearer ${token}` }
-  });
-  const data = await res.json();
-  linkedTwitchUsers.value = data.users || [];
-  linkedUsersPage.value = 1;
-  linkedUsersLoading.value = false;
-  const ids = (linkedTwitchUsers.value || []).map((row) => row.discord_id).filter(Boolean);
-  await resolveUserIds(ids);
+  try {
+    const res = await fetch(`${config.public.apiBase}/api/guilds/${id}/twitch/linked-users`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!res.ok) {
+      linkedTwitchUsers.value = [];
+      return;
+    }
+    const data = await res.json();
+    linkedTwitchUsers.value = data.users || [];
+    linkedUsersPage.value = 1;
+    const ids = (linkedTwitchUsers.value || []).map((row) => row.discord_id).filter(Boolean);
+    await resolveUserIds(ids);
+  } catch {
+    linkedTwitchUsers.value = [];
+  } finally {
+    linkedUsersLoading.value = false;
+  }
 };
 
 const unlinkTwitchUser = async (user) => {
@@ -4521,8 +4714,15 @@ const confirmResetCoins = async () => {
 
 const formatDate = (value) => {
   if (!value) return "";
-  const date = new Date(value);
-  return date.toLocaleDateString("fr-FR");
+  const date = parseDateTimeValue(value);
+  if (!date) return "";
+  try {
+    return formatInDisplayTimeZone(date, {
+      dateStyle: "short"
+    });
+  } catch {
+    return date.toLocaleDateString(locale.value || "fr-FR");
+  }
 };
 
 const formatMonth = (value) => {
@@ -4535,14 +4735,28 @@ const formatMonth = (value) => {
 
 const toDateTimeLocal = (value) => {
   if (!value) return "";
-  const raw = String(value);
-  const normalized = raw.includes("T") ? raw : raw.replace(" ", "T");
-  const date = new Date(normalized);
-  if (Number.isNaN(date.getTime())) return "";
-  const pad = (num) => String(num).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(
-    date.getHours()
-  )}:${pad(date.getMinutes())}`;
+  const date = parseDateTimeValue(value);
+  if (!date) return "";
+  try {
+    const parts = formatPartsInDisplayTimeZone(date, {
+      hour12: false,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit"
+    })
+      .reduce((acc, part) => {
+        acc[part.type] = part.value;
+        return acc;
+      }, {});
+    return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+  } catch {
+    const pad = (num) => String(num).padStart(2, "0");
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(
+      date.getHours()
+    )}:${pad(date.getMinutes())}`;
+  }
 };
 
 const loadShops = async () => {
@@ -4603,13 +4817,13 @@ const loadAutomation = async () => {
   };
   roleBoosters.value = (configData.roleBoosters || []).map((b) => ({
     ...b,
-    enabled: b.enabled !== false,
-    stackable: b.stackable === true
+    enabled: normalizeBooleanInput(b.enabled, true),
+    stackable: normalizeBooleanInput(b.stackable, false)
   }));
   channelBoosters.value = (configData.channelBoosters || []).map((b) => ({
     ...b,
-    enabled: b.enabled !== false,
-    stackable: b.stackable === true
+    enabled: normalizeBooleanInput(b.enabled, true),
+    stackable: normalizeBooleanInput(b.stackable, false)
   }));
   blockedRoles.value = configData.blockedRoles || [];
   blockedChannels.value = configData.blockedChannels || [];
@@ -4950,16 +5164,34 @@ const saveGamesSettings = async ({ notify = true } = {}) => {
   return true;
 };
 
+const normalizeMultiplierInput = (value, fallback = 1) => {
+  if (value === undefined || value === null || value === "") return fallback;
+  const raw = String(value).trim().replace(/^x/i, "").replace(",", ".");
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+const normalizeBooleanInput = (value, fallback = false) => {
+  if (value === undefined || value === null) return fallback;
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  if (typeof value === "string") {
+    const raw = value.trim().toLowerCase();
+    if (raw === "true" || raw === "1" || raw === "yes" || raw === "on") return true;
+    if (raw === "false" || raw === "0" || raw === "no" || raw === "off" || raw === "") return false;
+  }
+  return Boolean(value);
+};
+
 const addRoleBooster = () => {
   if (!newRoleBooster.role_id) return;
   roleBoosters.value.push({
     role_id: newRoleBooster.role_id,
-    multiplier: Number(newRoleBooster.multiplier || 1),
+    multiplier: normalizeMultiplierInput(newRoleBooster.multiplier, 1),
     enabled: newRoleBooster.enabled !== false,
     stackable: newRoleBooster.stackable === true
   });
   newRoleBooster.role_id = "";
-  newRoleBooster.multiplier = 1;
+  newRoleBooster.multiplier = "1";
   newRoleBooster.enabled = true;
   newRoleBooster.stackable = false;
 };
@@ -4972,12 +5204,12 @@ const addChannelBooster = () => {
   if (!newChannelBooster.channel_id) return;
   channelBoosters.value.push({
     channel_id: newChannelBooster.channel_id,
-    multiplier: Number(newChannelBooster.multiplier || 1),
+    multiplier: normalizeMultiplierInput(newChannelBooster.multiplier, 1),
     enabled: newChannelBooster.enabled !== false,
     stackable: newChannelBooster.stackable === true
   });
   newChannelBooster.channel_id = "";
-  newChannelBooster.multiplier = 1;
+  newChannelBooster.multiplier = "1";
   newChannelBooster.enabled = true;
   newChannelBooster.stackable = false;
 };
@@ -5822,73 +6054,78 @@ const loadBotSettingsOnce = async () => {
 
 const loadTabData = async (tab, { force = false } = {}) => {
   if (!force && loadedTabs[tab]) return;
-  if (tab === "economy" || tab === "daily") {
-    await loadSettingsOnce();
-    await loadBotSettingsOnce();
-    await loadGuildSummary();
-    await loadChannelsOnce();
-    loadedTabs.economy = true;
-    loadedTabs.daily = true;
-    return;
+  tabDataLoadDepth.value += 1;
+  try {
+    if (tab === "economy" || tab === "daily") {
+      await loadSettingsOnce();
+      await loadBotSettingsOnce();
+      await loadGuildSummary();
+      await loadChannelsOnce();
+      loadedTabs.economy = true;
+      loadedTabs.daily = true;
+      return;
+    }
+    if (tab === "leaderboard") {
+      await loadChannelsOnce();
+      await loadLeaderboard();
+      await loadLeaderboardPost();
+      loadedTabs.leaderboard = true;
+      return;
+    }
+    if (tab === "shops") {
+      await loadShops();
+      await loadRolesOnce();
+      await loadEmojisOnce();
+      await loadBotEmojisOnce();
+      loadedTabs.shops = true;
+      return;
+    }
+    if (tab === "inventories") {
+      await loadInventories({ force: true });
+      return;
+    }
+    if (tab === "automation") {
+      await loadAutomation();
+      await loadRolesOnce();
+      await loadChannelsOnce();
+      loadedTabs.automation = true;
+      return;
+    }
+    if (tab === "logs") {
+      await loadChannelsOnce();
+      await refreshLogs();
+      loadedTabs.logs = true;
+      return;
+    }
+    if (tab === "communityMessage") {
+      await loadChannelsOnce();
+      await loadShops();
+      await loadCommunityMessage({ force: true });
+      loadedTabs.communityMessage = true;
+      return;
+    }
+    if (tab === "twitch") {
+      await loadTwitchAutomation();
+      await loadTwitchDailySettings();
+      await loadTwitchStatus();
+      loadedTabs.twitch = true;
+      return;
+    }
+    if (tab === "games") {
+      await loadGamesSettings();
+      loadedTabs.games = true;
+      return;
+    }
+    if (tab === "bot") {
+      await loadBotSettingsOnce();
+      await loadChannelsOnce();
+      loadedTabs.bot = true;
+      return;
+    }
+    loadedTabs[tab] = true;
+  } finally {
+    tabDataLoadDepth.value = Math.max(0, tabDataLoadDepth.value - 1);
   }
-  if (tab === "leaderboard") {
-    await loadChannelsOnce();
-    await loadLeaderboard();
-    await loadLeaderboardPost();
-    loadedTabs.leaderboard = true;
-    return;
-  }
-  if (tab === "shops") {
-    await loadShops();
-    await loadRolesOnce();
-    await loadEmojisOnce();
-    await loadBotEmojisOnce();
-    loadedTabs.shops = true;
-    return;
-  }
-  if (tab === "inventories") {
-    await loadInventories({ force: true });
-    return;
-  }
-  if (tab === "automation") {
-    await loadAutomation();
-    await loadRolesOnce();
-    await loadChannelsOnce();
-    loadedTabs.automation = true;
-    return;
-  }
-  if (tab === "logs") {
-    await loadChannelsOnce();
-    await refreshLogs();
-    loadedTabs.logs = true;
-    return;
-  }
-  if (tab === "communityMessage") {
-    await loadChannelsOnce();
-    await loadShops();
-    await loadCommunityMessage({ force: true });
-    loadedTabs.communityMessage = true;
-    return;
-  }
-  if (tab === "twitch") {
-    await loadTwitchAutomation();
-    await loadTwitchDailySettings();
-    await loadTwitchStatus();
-    loadedTabs.twitch = true;
-    return;
-  }
-  if (tab === "games") {
-    await loadGamesSettings();
-    loadedTabs.games = true;
-    return;
-  }
-  if (tab === "bot") {
-    await loadBotSettingsOnce();
-    await loadChannelsOnce();
-    loadedTabs.bot = true;
-    return;
-  }
-  loadedTabs[tab] = true;
 };
 
 const syncTwitchSubs = async () => {
@@ -5961,43 +6198,43 @@ onMounted(async () => {
 });
 
 watch(form, () => {
-  if (!suppressDirty.value) isDirty.value = true;
+  markDirtyIfAllowed();
 }, { deep: true });
 
 watch(automation, () => {
-  if (!suppressDirty.value) isDirty.value = true;
+  markDirtyIfAllowed();
 }, { deep: true });
 
 watch(roleBoosters, () => {
-  if (!suppressDirty.value) isDirty.value = true;
+  markDirtyIfAllowed();
 }, { deep: true });
 
 watch(channelBoosters, () => {
-  if (!suppressDirty.value) isDirty.value = true;
+  markDirtyIfAllowed();
 }, { deep: true });
 
 watch(twitchAutomation, () => {
-  if (!suppressDirty.value) isDirty.value = true;
+  markDirtyIfAllowed();
 }, { deep: true });
 
 watch(twitchDaily, () => {
-  if (!suppressDirty.value) isDirty.value = true;
+  markDirtyIfAllowed();
 }, { deep: true });
 
 watch(gamesConfig, () => {
-  if (!suppressDirty.value) isDirty.value = true;
+  markDirtyIfAllowed();
 }, { deep: true });
 
 watch(botLogChannelId, () => {
-  if (!suppressDirty.value) isDirty.value = true;
+  markDirtyIfAllowed();
 });
 
 watch(botLanguage, () => {
-  if (!suppressDirty.value) isDirty.value = true;
+  markDirtyIfAllowed();
 });
 
 watch(botTimezone, () => {
-  if (!suppressDirty.value) isDirty.value = true;
+  markDirtyIfAllowed();
 });
 watch(
   () => botTimezone.value,
@@ -6012,7 +6249,7 @@ watch(
 );
 
 watch(userUiDisabled, () => {
-  if (!suppressDirty.value) isDirty.value = true;
+  markDirtyIfAllowed();
 });
 
 watch(
@@ -7179,6 +7416,27 @@ select option:hover {
 }
 .nav-item.games.active::before {
   background: linear-gradient(135deg, #34d399, #10b981);
+}
+.nav-item.achievements.active {
+  border-color: rgba(59, 130, 246, 0.6);
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.3), rgba(37, 99, 235, 0.25));
+}
+.nav-item.achievements.active::before {
+  background: linear-gradient(135deg, #60a5fa, #93c5fd);
+}
+.nav-item.achievements-giveaway.active {
+  border-color: rgba(236, 72, 153, 0.64);
+  background: linear-gradient(135deg, rgba(236, 72, 153, 0.28), rgba(217, 70, 239, 0.22));
+}
+.nav-item.achievements-giveaway.active::before {
+  background: linear-gradient(135deg, #ec4899, #d946ef);
+}
+.nav-item.achievements-birthday.active {
+  border-color: rgba(251, 191, 36, 0.64);
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.3), rgba(249, 115, 22, 0.24));
+}
+.nav-item.achievements-birthday.active::before {
+  background: linear-gradient(135deg, #fbbf24, #f97316);
 }
 .nav-item.api.active {
   border-color: rgba(249, 115, 22, 0.6);
@@ -8432,10 +8690,590 @@ select option:hover {
   flex-direction: column;
   gap: 6px;
 }
-:global(body.theme-light) .page,
+/* Servers-style visual refresh */
+.page {
+  position: relative;
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 16px;
+  padding: 16px;
+  min-height: 100vh;
+  background: transparent;
+}
+.section-nav {
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 14px;
+  background: linear-gradient(180deg, rgba(8, 12, 20, 0.88), rgba(15, 23, 42, 0.76));
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  top: 14px;
+}
+.section-head {
+  margin-bottom: 6px;
+}
+.section-title {
+  margin: 0;
+  letter-spacing: 0.02em;
+}
+.section-links {
+  gap: 2px;
+}
+.nav-group {
+  margin: 12px 6px 7px;
+}
+.nav-divider {
+  margin: 8px 0;
+  background: rgba(148, 163, 184, 0.2);
+}
+.nav-item {
+  margin-bottom: 6px;
+  padding: 10px 12px 10px 30px;
+  border-color: transparent;
+  background: rgba(15, 23, 42, 0.45);
+  color: var(--text);
+}
+.nav-item::before {
+  background: rgba(148, 163, 184, 0.65);
+}
+.nav-item:hover {
+  border-color: var(--border-strong);
+  background: var(--accent-soft);
+}
+.nav-item.active {
+  color: #eff6ff;
+  border-color: rgba(59, 130, 246, 0.45);
+}
+.section-content {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+.hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: 20px;
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  background:
+    radial-gradient(circle at 92% 6%, rgba(59, 130, 246, 0.2), transparent 38%),
+    linear-gradient(145deg, rgba(8, 12, 20, 0.9), rgba(15, 23, 42, 0.74));
+  padding: 18px;
+  box-shadow: 0 16px 32px rgba(2, 6, 23, 0.34);
+  align-items: flex-start;
+  gap: 14px;
+}
+.section-content.theme-economy .hero {
+  border-color: rgba(59, 130, 246, 0.38);
+}
+.section-content.theme-daily .hero {
+  border-color: rgba(245, 158, 11, 0.36);
+}
+.section-content.theme-shops .hero {
+  border-color: rgba(34, 197, 94, 0.36);
+}
+.section-content.theme-automation .hero {
+  border-color: rgba(34, 211, 238, 0.36);
+}
+.section-content.theme-leaderboard .hero {
+  border-color: rgba(236, 72, 153, 0.36);
+}
+.section-content.theme-logs .hero {
+  border-color: rgba(148, 163, 184, 0.34);
+}
+.section-content.theme-twitch .hero {
+  border-color: rgba(168, 85, 247, 0.38);
+}
+.section-content.theme-games .hero {
+  border-color: rgba(52, 211, 153, 0.36);
+}
+.section-content.theme-api .hero {
+  border-color: rgba(249, 115, 22, 0.36);
+}
+.section-content.theme-sensitive .hero {
+  border-color: rgba(239, 68, 68, 0.38);
+}
+.hero-info,
+.hero-actions {
+  position: relative;
+  z-index: 1;
+}
+.hero-kicker {
+  display: inline-flex;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 700;
+  color: #93c5fd;
+  margin-bottom: 6px;
+}
+.hero-title {
+  font-size: clamp(20px, 2.2vw, 26px);
+}
+.hero-sub {
+  color: var(--text-soft);
+  margin-top: 6px;
+  max-width: 760px;
+}
+.hero-badges {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #dbeafe;
+  border: 1px solid rgba(59, 130, 246, 0.38);
+  background: rgba(59, 130, 246, 0.15);
+}
+.hero-badge-id {
+  color: var(--text-soft);
+  border-color: rgba(148, 163, 184, 0.35);
+  background: rgba(148, 163, 184, 0.14);
+}
+.hero-badge.ok {
+  border-color: rgba(34, 197, 94, 0.42);
+  background: rgba(34, 197, 94, 0.16);
+  color: #bbf7d0;
+}
+.hero-badge.ko {
+  border-color: rgba(239, 68, 68, 0.42);
+  background: rgba(239, 68, 68, 0.14);
+  color: #fecaca;
+}
+.hero-actions {
+  gap: 10px;
+}
+.card {
+  border-radius: 18px;
+  border: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(8, 12, 20, 0.92), rgba(10, 16, 28, 0.86));
+  box-shadow: 0 12px 26px rgba(2, 6, 23, 0.26);
+  padding: 18px;
+}
+.card:hover {
+  transform: translateY(-1px);
+  border-color: var(--border-strong);
+  box-shadow: 0 18px 34px rgba(2, 6, 23, 0.3);
+}
+.sub-card,
+.shop-card,
+.item-card,
+.inventory-sidebar,
+.inventory-detail,
+.inventory-item,
+.inv-members,
+.inv-items,
+.inv-item,
+.logs-table,
+.list-row,
+.form-section,
+.lootbox-entry-card,
+.user-search-results {
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+}
+.card-head {
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+}
+.linked-list .linked-header {
+  border: 1px solid var(--border);
+  background: rgba(148, 163, 184, 0.12);
+}
+.linked-list .linked-row {
+  border-radius: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  padding: 10px 12px;
+}
+.search,
+input,
+textarea,
+select {
+  border-color: var(--border);
+  background: rgba(8, 12, 20, 0.72);
+}
+.role-input,
+.role-results,
+.emoji-popover,
+.switch-field,
+.doc-callout {
+  border-color: var(--border);
+  background: rgba(15, 23, 42, 0.6);
+}
+input:focus,
+textarea:focus,
+select:focus,
+.search:focus {
+  border-color: rgba(59, 130, 246, 0.55);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18);
+}
+.tab,
+.tab-pill {
+  border-color: var(--border);
+  background: var(--surface-2);
+}
+.tab:hover,
+.tab-pill:hover {
+  border-color: var(--border-strong);
+}
+.tab.active,
+.tab-pill.active {
+  background: rgba(59, 130, 246, 0.18);
+  border-color: rgba(59, 130, 246, 0.44);
+  color: #dbeafe;
+}
+.modal {
+  background: rgba(2, 6, 23, 0.76);
+}
+.modal-card {
+  border-radius: 20px;
+  border-color: var(--border-strong);
+  box-shadow: 0 24px 60px rgba(2, 6, 23, 0.45);
+}
+@media (max-width: 1080px) {
+  .page {
+    grid-template-columns: 1fr;
+    padding: 14px;
+  }
+  .section-nav {
+    position: static;
+    top: auto;
+  }
+  .section-toggle {
+    display: inline-flex;
+  }
+  .section-links {
+    display: none;
+  }
+  .section-nav.open .section-links {
+    display: flex;
+  }
+  .hero {
+    flex-direction: column;
+  }
+  .hero-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 720px) {
+  .hero-actions {
+    grid-template-columns: 1fr;
+  }
+  .grid,
+  .filters,
+  .shops-grid,
+  .items-grid,
+  .inv-grid {
+    grid-template-columns: 1fr;
+  }
+}
+/* Tab content polish */
+.card-head {
+  align-items: flex-start;
+  gap: 12px;
+}
+.card-head h3 {
+  margin: 0;
+  font-size: clamp(18px, 1.8vw, 22px);
+  line-height: 1.25;
+  letter-spacing: 0.01em;
+}
+.card-head h3::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 8px;
+  border-radius: 999px;
+  vertical-align: middle;
+  background: #60a5fa;
+}
+.section-content.theme-daily .card-head h3::before {
+  background: #f59e0b;
+}
+.section-content.theme-shops .card-head h3::before {
+  background: #22c55e;
+}
+.section-content.theme-automation .card-head h3::before {
+  background: #22d3ee;
+}
+.section-content.theme-leaderboard .card-head h3::before {
+  background: #ec4899;
+}
+.section-content.theme-logs .card-head h3::before {
+  background: #94a3b8;
+}
+.section-content.theme-twitch .card-head h3::before {
+  background: #a855f7;
+}
+.section-content.theme-games .card-head h3::before {
+  background: #34d399;
+}
+.section-content.theme-api .card-head h3::before {
+  background: #f97316;
+}
+.section-content.theme-sensitive .card-head h3::before {
+  background: #ef4444;
+}
+.sub-card {
+  border-color: rgba(148, 163, 184, 0.24);
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.6), rgba(15, 23, 42, 0.46));
+}
+.sub-card h4 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.sub-card h4::before {
+  content: "";
+  width: 18px;
+  height: 2px;
+  border-radius: 999px;
+  background: rgba(59, 130, 246, 0.75);
+}
+.stats-grid {
+  gap: 10px;
+}
+.stat-tile {
+  border-color: rgba(148, 163, 184, 0.22);
+  background: rgba(8, 12, 20, 0.5);
+}
+.stat-tile strong {
+  font-size: 20px;
+}
+.stats {
+  gap: 10px;
+}
+.stat-card {
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(15, 23, 42, 0.55);
+}
+.grid {
+  gap: 12px;
+}
+.grid > label,
+.filters-grid > label {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(8, 12, 20, 0.42);
+}
+.filters-grid {
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(8, 12, 20, 0.45);
+}
+.switch-field {
+  border-color: rgba(148, 163, 184, 0.28);
+  background: rgba(8, 12, 20, 0.52);
+}
+.switch-field:hover {
+  border-color: var(--border-strong);
+}
+.tabs,
+.inline {
+  gap: 8px;
+}
+.tab,
+.tab-pill {
+  font-weight: 700;
+}
+.list {
+  gap: 10px;
+}
+.list-row {
+  padding: 10px 12px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(8, 12, 20, 0.42);
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+.list-row:hover {
+  border-color: var(--border-strong);
+  background: rgba(37, 99, 235, 0.1);
+}
+.leaderboard {
+  gap: 10px;
+}
+.leaderboard li {
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: rgba(8, 12, 20, 0.48);
+  border-radius: 12px;
+  padding: 10px 12px;
+  align-items: center;
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+.leaderboard li:hover {
+  border-color: var(--border-strong);
+  transform: translateY(-1px);
+}
+.logs-table {
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 14px;
+  overflow: hidden;
+  background: rgba(8, 12, 20, 0.4);
+}
+.logs-header {
+  padding: 10px 12px;
+  background: rgba(148, 163, 184, 0.12);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+}
+.log-row {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+  background: transparent;
+}
+.log-row:last-child {
+  border-bottom: none;
+}
+.linked-list .linked-row {
+  transition: border-color 0.2s ease;
+}
+.linked-list .linked-row:hover {
+  border-color: var(--border-strong);
+}
+.source-pill {
+  border: 1px solid rgba(148, 163, 184, 0.24);
+}
+.pagination {
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(8, 12, 20, 0.4);
+}
+.shops-grid,
+.items-grid {
+  gap: 14px;
+}
+.shop-card,
+.item-card {
+  border-color: rgba(148, 163, 184, 0.22);
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.55), rgba(15, 23, 42, 0.42));
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+.shop-card:hover,
+.item-card:hover {
+  border-color: var(--border-strong);
+  transform: translateY(-1px);
+}
+.card-actions {
+  gap: 8px;
+}
+.inventory-panel,
+.inv-layout {
+  gap: 14px;
+}
+.inventory-sidebar,
+.inventory-detail,
+.inv-members,
+.inv-items {
+  border-color: rgba(148, 163, 184, 0.24);
+  background: rgba(15, 23, 42, 0.45);
+}
+.inventory-user-row,
+.inv-member {
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(8, 12, 20, 0.44);
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+.inventory-user-row:hover,
+.inv-member:hover {
+  border-color: var(--border-strong);
+}
+.inventory-item,
+.inv-item {
+  border-color: rgba(148, 163, 184, 0.22);
+  background: rgba(8, 12, 20, 0.45);
+}
+.form-section {
+  border-color: rgba(148, 163, 184, 0.25);
+  background: rgba(15, 23, 42, 0.45);
+}
+.form-section-head {
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+}
+.lootbox-entry-card {
+  border-color: rgba(148, 163, 184, 0.24);
+  background: rgba(8, 12, 20, 0.44);
+}
+.actions {
+  margin-top: 14px;
+  gap: 10px;
+}
+.actions :global(.u-button),
+.card-actions :global(.u-button) {
+  font-weight: 700;
+}
+:global(body.theme-light) .sub-card {
+  background: linear-gradient(180deg, #ffffff, #f8fafc);
+  border-color: rgba(148, 163, 184, 0.28);
+}
+:global(body.theme-light) .stat-tile,
+:global(body.theme-light) .stat-card {
+  background: #ffffff;
+  border-color: rgba(148, 163, 184, 0.26);
+}
+:global(body.theme-light) .grid > label,
+:global(body.theme-light) .filters-grid > label,
+:global(body.theme-light) .filters-grid {
+  background: #ffffff;
+  border-color: rgba(148, 163, 184, 0.3);
+}
+:global(body.theme-light) .switch-field {
+  background: #ffffff;
+  border-color: rgba(148, 163, 184, 0.32);
+}
+:global(body.theme-light) .list-row,
+:global(body.theme-light) .leaderboard li,
+:global(body.theme-light) .logs-table,
+:global(body.theme-light) .linked-list .linked-header,
+:global(body.theme-light) .linked-list .linked-row,
+:global(body.theme-light) .shop-card,
+:global(body.theme-light) .item-card,
+:global(body.theme-light) .inventory-sidebar,
+:global(body.theme-light) .inventory-detail,
+:global(body.theme-light) .inventory-item,
+:global(body.theme-light) .inv-members,
+:global(body.theme-light) .inv-items,
+:global(body.theme-light) .inv-item,
+:global(body.theme-light) .form-section,
+:global(body.theme-light) .lootbox-entry-card,
+:global(body.theme-light) .pagination {
+  background: #ffffff;
+  border-color: rgba(148, 163, 184, 0.28);
+}
+:global(body.theme-light) .logs-header {
+  background: rgba(148, 163, 184, 0.14);
+  border-bottom-color: rgba(148, 163, 184, 0.24);
+}
+:global(body.theme-light) .log-row {
+  border-bottom-color: rgba(148, 163, 184, 0.16);
+}
+:global(body.theme-light) .source-pill {
+  border-color: rgba(148, 163, 184, 0.32);
+}
 :global(body.theme-light) .section-content,
 :global(body.theme-light) .section-nav {
   background: #f8fafc;
+  color: var(--text);
+}
+:global(body.theme-light) .page {
+  background: transparent;
   color: var(--text);
 }
 :global(body.theme-light) .hero,
@@ -8455,8 +9293,46 @@ select option:hover {
   border-color: rgba(148, 163, 184, 0.25);
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
 }
+:global(body.theme-light) .hero-kicker {
+  color: #1d4ed8;
+}
+:global(body.theme-light) .hero-badge {
+  color: #1e3a8a;
+  border-color: rgba(37, 99, 235, 0.35);
+  background: rgba(37, 99, 235, 0.12);
+}
+:global(body.theme-light) .hero-badge-id {
+  color: #334155;
+  border-color: rgba(148, 163, 184, 0.45);
+  background: rgba(148, 163, 184, 0.14);
+}
+:global(body.theme-light) .hero-badge.ok {
+  color: #166534;
+  border-color: rgba(34, 197, 94, 0.4);
+  background: rgba(34, 197, 94, 0.15);
+}
+:global(body.theme-light) .hero-badge.ko {
+  color: #991b1b;
+  border-color: rgba(239, 68, 68, 0.4);
+  background: rgba(239, 68, 68, 0.12);
+}
+:global(body.theme-light) .nav-item {
+  background: #f8fafc;
+  border-color: rgba(148, 163, 184, 0.22);
+  color: #0f172a;
+}
+:global(body.theme-light) .nav-item.active {
+  background: rgba(37, 99, 235, 0.14);
+  border-color: rgba(37, 99, 235, 0.35);
+  color: #1e3a8a;
+}
 :global(body.theme-light) .tab-pill,
 :global(body.theme-light) .source-pill {
+  background: #eef2ff;
+  border-color: rgba(148, 163, 184, 0.25);
+  color: var(--text);
+}
+:global(body.theme-light) .tab {
   background: #eef2ff;
   border-color: rgba(148, 163, 184, 0.25);
   color: var(--text);
@@ -8464,6 +9340,11 @@ select option:hover {
 :global(body.theme-light) .tab-pill.active {
   background: rgba(99, 102, 241, 0.18);
   color: var(--text);
+}
+:global(body.theme-light) .tab.active {
+  background: rgba(59, 130, 246, 0.16);
+  border-color: rgba(59, 130, 246, 0.36);
+  color: #1e3a8a;
 }
 :global(body.theme-light) .muted,
 :global(body.theme-light) .item-sub,
@@ -8492,10 +9373,196 @@ select option:hover {
   border-color: rgba(148, 163, 184, 0.25);
   color: var(--text);
 }
+:global(body.theme-light) .role-input,
+:global(body.theme-light) .switch-field,
+:global(body.theme-light) .doc-callout {
+  background: #ffffff;
+  border-color: rgba(148, 163, 184, 0.3);
+}
 :global(body.theme-light) .logs-header {
   color: var(--text-soft);
 }
 :global(body.theme-light) .section-nav {
   box-shadow: 0 12px 24px rgba(15, 23, 42, 0.06);
+}
+/* Color boost pass (tab-aware accents) */
+.section-content {
+  --tab-rgb: 59 130 246;
+  --tab-soft-rgb: 147 197 253;
+}
+.section-content.theme-daily {
+  --tab-rgb: 245 158 11;
+  --tab-soft-rgb: 252 211 77;
+}
+.section-content.theme-shops {
+  --tab-rgb: 34 197 94;
+  --tab-soft-rgb: 134 239 172;
+}
+.section-content.theme-automation {
+  --tab-rgb: 34 211 238;
+  --tab-soft-rgb: 125 211 252;
+}
+.section-content.theme-leaderboard {
+  --tab-rgb: 236 72 153;
+  --tab-soft-rgb: 249 168 212;
+}
+.section-content.theme-logs {
+  --tab-rgb: 148 163 184;
+  --tab-soft-rgb: 203 213 225;
+}
+.section-content.theme-twitch {
+  --tab-rgb: 168 85 247;
+  --tab-soft-rgb: 216 180 254;
+}
+.section-content.theme-games {
+  --tab-rgb: 52 211 153;
+  --tab-soft-rgb: 167 243 208;
+}
+.section-content.theme-achievements {
+  --tab-rgb: 59 130 246;
+  --tab-soft-rgb: 147 197 253;
+}
+.section-content.theme-achievementsGiveaway {
+  --tab-rgb: 236 72 153;
+  --tab-soft-rgb: 249 168 212;
+}
+.section-content.theme-achievementsBirthday {
+  --tab-rgb: 251 191 36;
+  --tab-soft-rgb: 253 230 138;
+}
+.section-content.theme-api {
+  --tab-rgb: 249 115 22;
+  --tab-soft-rgb: 253 186 116;
+}
+.section-content.theme-sensitive {
+  --tab-rgb: 239 68 68;
+  --tab-soft-rgb: 252 165 165;
+}
+.section-content .hero-kicker {
+  color: rgb(var(--tab-soft-rgb));
+}
+.section-content .hero-badge {
+  border-color: rgb(var(--tab-rgb) / 0.46);
+  background: rgb(var(--tab-rgb) / 0.24);
+}
+.section-content .hero-badge-id {
+  border-color: rgb(var(--tab-soft-rgb) / 0.5);
+  background: rgb(var(--tab-soft-rgb) / 0.2);
+}
+.section-content .card {
+  border-color: rgb(var(--tab-rgb) / 0.42);
+  background:
+    radial-gradient(circle at 100% 0%, rgb(var(--tab-rgb) / 0.22), transparent 44%),
+    linear-gradient(180deg, rgba(8, 12, 20, 0.94), rgba(10, 16, 28, 0.88));
+  box-shadow:
+    0 14px 30px rgba(2, 6, 23, 0.32),
+    inset 0 0 0 1px rgb(var(--tab-rgb) / 0.12);
+}
+.section-content .card:hover {
+  border-color: rgb(var(--tab-rgb) / 0.64);
+  box-shadow:
+    0 20px 38px rgba(2, 6, 23, 0.36),
+    inset 0 0 0 1px rgb(var(--tab-rgb) / 0.2);
+}
+.section-content :is(.sub-card, .shop-card, .item-card, .inventory-sidebar, .inventory-detail, .inventory-item, .inv-members, .inv-items, .inv-item, .logs-table, .list-row, .form-section, .lootbox-entry-card, .user-search-results, .pagination) {
+  border-color: rgb(var(--tab-rgb) / 0.34);
+  background: linear-gradient(180deg, rgb(var(--tab-rgb) / 0.16), rgba(15, 23, 42, 0.56));
+  box-shadow: inset 0 0 0 1px rgb(var(--tab-soft-rgb) / 0.08);
+}
+.section-content .card-head h3::before {
+  background: rgb(var(--tab-soft-rgb));
+}
+.section-content :is(.grid > label, .filters-grid > label, .filters-grid) {
+  border-color: rgb(var(--tab-rgb) / 0.34);
+  background: linear-gradient(180deg, rgb(var(--tab-rgb) / 0.12), rgba(8, 12, 20, 0.5));
+}
+.section-content :is(input, select, textarea, .search) {
+  border-color: rgb(var(--tab-rgb) / 0.36);
+  background: rgba(8, 12, 20, 0.74);
+}
+.section-content :is(input:focus, select:focus, textarea:focus, .search:focus) {
+  border-color: rgb(var(--tab-rgb) / 0.64);
+  box-shadow: 0 0 0 3px rgb(var(--tab-rgb) / 0.22);
+}
+.section-content .switch-field {
+  border-color: rgb(var(--tab-rgb) / 0.42);
+  background: linear-gradient(135deg, rgb(var(--tab-rgb) / 0.24), rgba(8, 12, 20, 0.64));
+}
+.section-content .switch .slider {
+  background: rgb(var(--tab-rgb) / 0.2);
+  border-color: rgb(var(--tab-rgb) / 0.4);
+}
+.section-content .switch input:checked + .slider {
+  background: linear-gradient(135deg, rgb(var(--tab-rgb) / 0.96), rgb(var(--tab-soft-rgb) / 0.86));
+  border-color: transparent;
+}
+.section-content :is(.tab, .tab-pill) {
+  border-color: rgb(var(--tab-rgb) / 0.38);
+  background: rgb(var(--tab-rgb) / 0.16);
+}
+.section-content :is(.tab:hover, .tab-pill:hover) {
+  border-color: rgb(var(--tab-rgb) / 0.56);
+  background: rgb(var(--tab-rgb) / 0.24);
+}
+.section-content :is(.tab.active, .tab-pill.active) {
+  border-color: rgb(var(--tab-rgb) / 0.72);
+  background: linear-gradient(135deg, rgb(var(--tab-rgb) / 0.42), rgb(var(--tab-soft-rgb) / 0.24));
+  color: #f8fafc;
+  box-shadow: 0 8px 16px rgb(var(--tab-rgb) / 0.26);
+}
+.section-content :is(.list-row, .leaderboard li, .linked-list .linked-row, .inventory-user-row, .inv-member) {
+  border-color: rgb(var(--tab-rgb) / 0.3);
+  background: linear-gradient(180deg, rgb(var(--tab-rgb) / 0.14), rgba(8, 12, 20, 0.46));
+}
+.section-content :is(.list-row:hover, .leaderboard li:hover, .linked-list .linked-row:hover, .inventory-user-row:hover, .inv-member:hover) {
+  border-color: rgb(var(--tab-rgb) / 0.58);
+  background: linear-gradient(180deg, rgb(var(--tab-rgb) / 0.24), rgba(8, 12, 20, 0.52));
+}
+.section-content :is(.logs-table, .linked-list .linked-header) {
+  border-color: rgb(var(--tab-rgb) / 0.36);
+}
+.section-content :is(.logs-header, .linked-list .linked-header) {
+  background: rgb(var(--tab-rgb) / 0.22);
+}
+.section-content .log-row {
+  border-bottom-color: rgb(var(--tab-rgb) / 0.22);
+}
+.section-content .source-pill {
+  border-color: rgb(var(--tab-rgb) / 0.42);
+}
+:global(body.theme-light) .section-content .card {
+  border-color: rgb(var(--tab-rgb) / 0.48);
+  background:
+    radial-gradient(circle at 100% 0%, rgb(var(--tab-rgb) / 0.15), transparent 44%),
+    linear-gradient(180deg, #ffffff, rgb(var(--tab-rgb) / 0.08));
+  box-shadow:
+    0 10px 22px rgba(15, 23, 42, 0.08),
+    inset 0 0 0 1px rgb(var(--tab-rgb) / 0.08);
+}
+:global(body.theme-light) .section-content :is(.sub-card, .shop-card, .item-card, .inventory-sidebar, .inventory-detail, .inventory-item, .inv-members, .inv-items, .inv-item, .logs-table, .list-row, .form-section, .lootbox-entry-card, .user-search-results, .pagination, .grid > label, .filters-grid > label, .filters-grid, .switch-field, .linked-list .linked-header, .linked-list .linked-row) {
+  background: linear-gradient(180deg, rgb(var(--tab-rgb) / 0.12), #ffffff);
+  border-color: rgb(var(--tab-rgb) / 0.34);
+}
+:global(body.theme-light) .section-content :is(input, select, textarea, .search) {
+  border-color: rgb(var(--tab-rgb) / 0.4);
+  background: #ffffff;
+}
+:global(body.theme-light) .section-content :is(.tab, .tab-pill) {
+  background: rgb(var(--tab-rgb) / 0.14);
+  border-color: rgb(var(--tab-rgb) / 0.36);
+  color: #0f172a;
+}
+:global(body.theme-light) .section-content :is(.tab.active, .tab-pill.active) {
+  background: linear-gradient(135deg, rgb(var(--tab-rgb) / 0.28), rgb(var(--tab-soft-rgb) / 0.22));
+  border-color: rgb(var(--tab-rgb) / 0.5);
+  color: #0f172a;
+  box-shadow: 0 8px 14px rgb(var(--tab-rgb) / 0.18);
+}
+:global(body.theme-light) .section-content .switch .slider {
+  background: rgb(var(--tab-rgb) / 0.16);
+  border-color: rgb(var(--tab-rgb) / 0.34);
+}
+:global(body.theme-light) .section-content .switch input:checked + .slider {
+  background: linear-gradient(135deg, rgb(var(--tab-rgb) / 0.88), rgb(var(--tab-soft-rgb) / 0.86));
 }
 </style>
