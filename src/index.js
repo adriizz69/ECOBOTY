@@ -32,11 +32,12 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.GuildMessageReactions,
     GatewayIntentBits.GuildVoiceStates,
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.MessageContent
   ],
-  partials: [Partials.Channel]
+  partials: [Partials.Channel, Partials.Message, Partials.Reaction, Partials.User]
 });
 
 client.commands = new Collection();
@@ -342,6 +343,16 @@ const clampModalTitle = (title) => {
   return `${trimmed}...`;
 };
 
+const formatBirthdayDateByLang = (isoDate, lang) => {
+  const value = String(isoDate || "").trim();
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return value || "-";
+  const [_, year, month, day] = match;
+  const key = String(lang || "").toLowerCase();
+  if (key.startsWith("en")) return `${year}/${month}/${day}`;
+  return `${day}/${month}/${year}`;
+};
+
 const replyBanned = async (interaction, lang = "fr", reason = "") => {
   if (!interaction?.isRepliable?.()) return;
   const content = reason
@@ -543,6 +554,34 @@ const callAutoGain = async ({ guildId, userId, type, channelId, roleIds }) => {
   });
 };
 
+const callAchievementEvent = async ({
+  guildId,
+  userId,
+  eventKey,
+  increment = 1,
+  metadata = {}
+}) => {
+  if (!guildId || !userId || !eventKey) return;
+  const banInfo = await getBanInfo(guildId);
+  if (banInfo) return;
+  const { apiBase, apiKey } = getApiConfig();
+  try {
+    await fetch(`${apiBase}/bot/achievements/event`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-api-key": apiKey },
+      body: JSON.stringify({
+        guildId,
+        userId,
+        eventKey,
+        increment,
+        metadata
+      })
+    });
+  } catch {
+    // ignore achievements network failures
+  }
+};
+
 const stopVoiceInterval = (key) => {
   const existing = voiceIntervals.get(key);
   if (existing) clearInterval(existing);
@@ -567,6 +606,16 @@ const startVoiceInterval = (member, channelId) => {
       channelId: currentChannelId,
       roleIds
     });
+    const afkChannelId = member.guild?.afkChannelId ? String(member.guild.afkChannelId) : "";
+    if (!afkChannelId || String(currentChannelId) !== afkChannelId) {
+      await callAchievementEvent({
+        guildId: member.guild.id,
+        userId: member.id,
+        eventKey: "voice_minutes",
+        increment: 1,
+        metadata: { channelId: currentChannelId }
+      });
+    }
   }, 60_000);
   voiceIntervals.set(key, interval);
 };
@@ -710,9 +759,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const apiKey = process.env.API_SECRET_KEY || "";
         const shopId = interaction.values[0];
 
-        const shopsRes = await fetch(`${apiBase}/bot/shops?guildId=${interaction.guildId}`, {
+        const shopsRes = await fetch(
+          `${apiBase}/bot/shops?guildId=${interaction.guildId}&userId=${interaction.user.id}`,
+          {
           headers: { "x-api-key": apiKey }
-        });
+          }
+        );
         const shopsData = await shopsRes.json();
         const shops = shopsData.shops || [];
         const shop = shops.find((s) => String(s.id) === String(shopId));
@@ -1086,9 +1138,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const apiBase = process.env.API_BASE || "http://localhost:4000";
         const apiKey = process.env.API_SECRET_KEY || "";
 
-        const shopsRes = await fetch(`${apiBase}/bot/shops?guildId=${interaction.guildId}`, {
+        const shopsRes = await fetch(
+          `${apiBase}/bot/shops?guildId=${interaction.guildId}&userId=${interaction.user.id}`,
+          {
           headers: { "x-api-key": apiKey }
-        });
+          }
+        );
         const shopsData = await shopsRes.json();
         const shops = shopsData.shops || [];
         const shop = shops.find((s) => String(s.id) === String(shopId));
@@ -1501,6 +1556,52 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
   if (interaction.isModalSubmit()) {
     const [action, gameId, presetChoice] = interaction.customId.split(":");
+    if (action === "birthday_modal") {
+      try {
+        const birthDateText = interaction.fields.getTextInputValue("birth_date");
+        const apiBase = process.env.API_BASE || "http://localhost:4000";
+        const apiKey = process.env.API_SECRET_KEY || "";
+        const format = String(gameId || "dmy").toLowerCase() === "ymd" ? "ymd" : "dmy";
+
+        const res = await fetch(`${apiBase}/bot/birthdays/self`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-api-key": apiKey },
+          body: JSON.stringify({
+            guildId: interaction.guildId,
+            userId: interaction.user.id,
+            birthDateText,
+            format
+          })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data?.ok) {
+          const reason = String(data?.error || data?.reason || "birthday_save_failed");
+          const map = {
+            birthday_disabled: "Le module anniversaire est desactive sur ce serveur.",
+            birthday_user_locked:
+              "Ta date est deja enregistree. Contacte un administrateur du serveur pour la modifier.",
+            birthday_invalid_date:
+              format === "ymd"
+                ? "Date invalide. Format attendu: YYYY/MM/DD."
+                : "Date invalide. Format attendu: JJ/MM/AAAA."
+          };
+          const content = map[reason] || "Impossible d'enregistrer ta date d'anniversaire.";
+          return interaction.reply({ content, flags: MessageFlags.Ephemeral });
+        }
+
+        const savedDate = formatBirthdayDateByLang(data?.entry?.birthDate, lang);
+        return interaction.reply({
+          content: `🎂 Date d'anniversaire enregistree: **${savedDate}**.`,
+          flags: MessageFlags.Ephemeral
+        });
+      } catch (error) {
+        return interaction.reply({
+          content: "Impossible d'enregistrer ta date d'anniversaire.",
+          flags: MessageFlags.Ephemeral
+        });
+      }
+    }
+
     if (action === "sale_modal") {
       try {
         const price = interaction.fields.getTextInputValue("price");
@@ -1628,6 +1729,103 @@ client.on(Events.MessageCreate, async (message) => {
     channelId: message.channel?.id,
     roleIds
   });
+  await callAchievementEvent({
+    guildId: message.guild.id,
+    userId: message.author.id,
+    eventKey: "message_count",
+    increment: 1,
+    metadata: { channelId: message.channel?.id }
+  });
+  if (message.channel?.isThread?.()) {
+    await callAchievementEvent({
+      guildId: message.guild.id,
+      userId: message.author.id,
+      eventKey: "threads_participated",
+      increment: 1,
+      metadata: { threadId: message.channel.id }
+    });
+  }
+});
+
+client.on(Events.MessageReactionAdd, async (reaction, user) => {
+  if (!user || user.bot) return;
+  try {
+    if (reaction.partial) await reaction.fetch();
+    if (reaction.message?.partial) await reaction.message.fetch();
+  } catch {
+    return;
+  }
+  const guildId = reaction.message?.guildId;
+  if (!guildId) return;
+  const banInfo = await getBanInfo(guildId);
+  if (banInfo) return;
+  await callAchievementEvent({
+    guildId,
+    userId: user.id,
+    eventKey: "reactions_added",
+    increment: 1,
+    metadata: {
+      messageId: reaction.message?.id,
+      emoji: reaction.emoji?.id || reaction.emoji?.name || ""
+    }
+  });
+});
+
+client.on(Events.ThreadCreate, async (thread) => {
+  if (!thread?.guildId) return;
+  const banInfo = await getBanInfo(thread.guildId);
+  if (banInfo) return;
+  let ownerId = thread.ownerId ? String(thread.ownerId) : "";
+  if (!ownerId) {
+    const owner = await thread.fetchOwner().catch(() => null);
+    ownerId = owner?.id ? String(owner.id) : "";
+  }
+  if (!ownerId) return;
+  const owner = await client.users.fetch(ownerId).catch(() => null);
+  if (owner?.bot) return;
+  await callAchievementEvent({
+    guildId: thread.guildId,
+    userId: ownerId,
+    eventKey: "threads_created",
+    increment: 1,
+    metadata: { threadId: thread.id, parentId: thread.parentId || null }
+  });
+});
+
+client.on(Events.GuildMemberUpdate, async (oldMember, newMember) => {
+  if (!newMember?.guild?.id || newMember.user?.bot) return;
+  const guildId = newMember.guild.id;
+  const banInfo = await getBanInfo(guildId);
+  if (banInfo) return;
+
+  if (!oldMember?.premiumSince && newMember?.premiumSince) {
+    await callAchievementEvent({
+      guildId,
+      userId: newMember.id,
+      eventKey: "server_boost",
+      increment: 1
+    });
+  }
+
+  const oldRoles = oldMember?.roles?.cache ? new Set(oldMember.roles.cache.keys()) : new Set();
+  const newRoles = newMember?.roles?.cache ? new Set(newMember.roles.cache.keys()) : new Set();
+  const addedRoleIds = [];
+  for (const roleId of newRoles) {
+    if (oldRoles.has(roleId)) continue;
+    if (String(roleId) === String(guildId)) continue;
+    const role = newMember.guild.roles.cache.get(roleId);
+    if (!role) continue;
+    addedRoleIds.push(roleId);
+  }
+  if (addedRoleIds.length) {
+    await callAchievementEvent({
+      guildId,
+      userId: newMember.id,
+      eventKey: "role_received",
+      increment: addedRoleIds.length,
+      metadata: { roleIds: addedRoleIds }
+    });
+  }
 });
 
 client.on(Events.VoiceStateUpdate, async (oldState, newState) => {

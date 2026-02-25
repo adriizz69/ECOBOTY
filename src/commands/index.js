@@ -5,7 +5,10 @@ import {
   ActionRowBuilder,
   StringSelectMenuBuilder,
   ButtonBuilder,
-  ButtonStyle
+  ButtonStyle,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle
 } from "discord.js";
 import axios from "axios";
 import { buildShopContainerMessage } from "../shop-ui.js";
@@ -48,6 +51,32 @@ const parseRequiredRoleIds = (shop) => {
 
 const memberHasAllRoles = (member, roleIds) =>
   roleIds.every((id) => member.roles.cache.has(id));
+
+const getBirthdayFormatByLang = (lang) => {
+  const key = String(lang || "").toLowerCase();
+  if (key.startsWith("en")) {
+    return {
+      format: "ymd",
+      label: "YYYY/MM/DD",
+      placeholder: "Ex: 2000/12/31"
+    };
+  }
+  return {
+    format: "dmy",
+    label: "JJ/MM/AAAA",
+    placeholder: "Ex: 31/12/2000"
+  };
+};
+
+const formatBirthdayDateByLang = (isoDate, lang) => {
+  const value = String(isoDate || "").trim();
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return value || "-";
+  const [_, year, month, day] = match;
+  const key = String(lang || "").toLowerCase();
+  if (key.startsWith("en")) return `${year}/${month}/${day}`;
+  return `${day}/${month}/${year}`;
+};
 
 const daily = {
   data: new SlashCommandBuilder()
@@ -168,7 +197,7 @@ const shop = {
       lang = await getBotLanguage(interaction.guildId, apiBase, apiKey);
       const tr = (key, vars) => t(lang, key, vars);
       const shopsRes = await axios.get(`${apiBase}/bot/shops`, {
-        params: { guildId: interaction.guildId },
+        params: { guildId: interaction.guildId, userId: interaction.user.id },
         headers: { "x-api-key": apiKey }
       });
 
@@ -283,6 +312,268 @@ const buy = {
       return interaction.reply({ content: tr("buy.success", { price: res.data.price }) });
     } catch (error) {
       return interaction.reply({ content: t(lang, "buy.error"), flags: MessageFlags.Ephemeral });
+    }
+  }
+};
+
+const achievementI18n = {
+  fr: {
+    title: "Tes succes",
+    disabled: "Les succes ne sont pas actives sur ce serveur.",
+    empty: "Aucun succes configure pour le moment.",
+    page: "Page",
+    unique: "Unique",
+    tier: "Palier",
+    progress: "Progression",
+    completed: "termine",
+    expired: "expire",
+    inProgress: "en cours",
+    notStarted: "non commence",
+    tiersDone: "paliers valides"
+  },
+  en: {
+    title: "Your achievements",
+    disabled: "Achievements are disabled on this server.",
+    empty: "No achievement configured yet.",
+    page: "Page",
+    unique: "Unique",
+    tier: "Tier",
+    progress: "Progress",
+    completed: "completed",
+    expired: "expired",
+    inProgress: "in progress",
+    notStarted: "not started",
+    tiersDone: "tiers done"
+  },
+  es: {
+    title: "Tus logros",
+    disabled: "Los logros estan desactivados en este servidor.",
+    empty: "No hay logros configurados por ahora.",
+    page: "Pagina",
+    unique: "Unico",
+    tier: "Escalon",
+    progress: "Progreso",
+    completed: "completado",
+    expired: "expirado",
+    inProgress: "en progreso",
+    notStarted: "sin empezar",
+    tiersDone: "escalones completados"
+  }
+};
+
+const getAchievementLang = (lang) => {
+  const key = String(lang || "").toLowerCase();
+  if (key.startsWith("en")) return achievementI18n.en;
+  if (key.startsWith("es")) return achievementI18n.es;
+  return achievementI18n.fr;
+};
+
+const achievementStatusIcon = (status) => {
+  if (status === "completed") return "✅";
+  if (status === "expired") return "⏳";
+  if (status === "in_progress") return "🟡";
+  return "⚪";
+};
+
+const achievementStatusLabel = (status, ui) => {
+  if (status === "completed") return ui.completed;
+  if (status === "expired") return ui.expired;
+  if (status === "in_progress") return ui.inProgress;
+  return ui.notStarted;
+};
+
+const succes = {
+  data: new SlashCommandBuilder()
+    .setName("succes")
+    .setNameLocalizations({
+      "en-US": "achievements",
+      "es-ES": "logros"
+    })
+    .setDescription("Voir tes succes et ta progression")
+    .setDescriptionLocalizations({
+      "en-US": "See your achievements and progression",
+      "es-ES": "Ver tus logros y progreso"
+    })
+    .addIntegerOption((option) =>
+      option
+        .setName("page")
+        .setNameLocalizations({
+          "en-US": "page",
+          "es-ES": "pagina"
+        })
+        .setDescription("Numero de page")
+        .setDescriptionLocalizations({
+          "en-US": "Page number",
+          "es-ES": "Numero de pagina"
+        })
+        .setMinValue(1)
+        .setMaxValue(30)
+        .setRequired(false)
+    ),
+  async execute(interaction) {
+    let lang = "fr";
+    try {
+      const { apiBase, apiKey } = getApiConfig();
+      lang = await getBotLanguage(interaction.guildId, apiBase, apiKey);
+      const ui = getAchievementLang(lang);
+      const page = Math.max(1, Number(interaction.options.getInteger("page") || 1));
+      const res = await axios.get(`${apiBase}/bot/achievements/user`, {
+        params: {
+          guildId: interaction.guildId,
+          userId: interaction.user.id,
+          page,
+          limit: 6
+        },
+        headers: { "x-api-key": apiKey }
+      });
+      const payload = res.data || {};
+      if (!payload.enabled) {
+        return interaction.reply({ content: ui.disabled, flags: MessageFlags.Ephemeral });
+      }
+      const rows = Array.isArray(payload.achievements) ? payload.achievements : [];
+      if (!rows.length) {
+        return interaction.reply({ content: ui.empty, flags: MessageFlags.Ephemeral });
+      }
+
+      const lines = rows.map((item) => {
+        const icon = achievementStatusIcon(item.status);
+        const status = achievementStatusLabel(item.status, ui);
+        if (item.type === "tier") {
+          const tiers = Array.isArray(item.tiers) ? item.tiers : [];
+          const done = tiers.filter((tier) => tier.completed).length;
+          const total = tiers.length;
+          const percent = Number(item.progress?.percent || 0);
+          return `${icon} **${item.title}** (${ui.tier})\n${ui.progress}: ${percent}% • ${done}/${total} ${ui.tiersDone} • ${status}`;
+        }
+        const current = Number(item.progress?.current || 0);
+        const target = Number(item.progress?.target || 1);
+        const percent = Number(item.progress?.percent || 0);
+        return `${icon} **${item.title}** (${ui.unique})\n${ui.progress}: ${current}/${target} (${percent}%) • ${status}`;
+      });
+
+      const embed = new EmbedBuilder()
+        .setTitle(ui.title)
+        .setDescription(lines.join("\n\n"))
+        .setFooter({
+          text: `${ui.page} ${payload.page || page}/${payload.totalPages || 1}`
+        })
+        .setColor(0x2563eb);
+      return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
+    } catch (error) {
+      return interaction.reply({
+        content: getAchievementLang(lang).empty,
+        flags: MessageFlags.Ephemeral
+      });
+    }
+  }
+};
+
+const anniversaire = {
+  data: new SlashCommandBuilder()
+    .setName("anniversaire")
+    .setNameLocalizations({
+      "en-US": "birthday",
+      "es-ES": "cumpleanos"
+    })
+    .setDescription("Ajouter ou modifier ta date d'anniversaire")
+    .setDescriptionLocalizations({
+      "en-US": "Add or update your birthday date",
+      "es-ES": "Agregar o modificar tu fecha de cumpleanos"
+    }),
+  async execute(interaction) {
+    let lang = "fr";
+    try {
+      const { apiBase, apiKey } = getApiConfig();
+      lang = await getBotLanguage(interaction.guildId, apiBase, apiKey);
+      const settingsRes = await axios.get(`${apiBase}/bot/birthdays/settings`, {
+        params: { guildId: interaction.guildId },
+        headers: { "x-api-key": apiKey }
+      });
+      if (!settingsRes.data?.settings?.enabled) {
+        return interaction.reply({
+          content: "Le module anniversaire est desactive sur ce serveur.",
+          flags: MessageFlags.Ephemeral
+        });
+      }
+
+      const selfRes = await axios.get(`${apiBase}/bot/birthdays/self`, {
+        params: { guildId: interaction.guildId, userId: interaction.user.id },
+        headers: { "x-api-key": apiKey }
+      }).catch(() => null);
+      const existingBirthDate = String(selfRes?.data?.entry?.birthDate || "").trim();
+      if (existingBirthDate) {
+        return interaction.reply({
+          content:
+            "Tu as deja enregistre ta date d'anniversaire. Pour toute correction, contacte un administrateur du serveur.",
+          flags: MessageFlags.Ephemeral
+        });
+      }
+
+      const formatMeta = getBirthdayFormatByLang(lang);
+      const modal = new ModalBuilder()
+        .setCustomId(`birthday_modal:${formatMeta.format}`)
+        .setTitle("Anniversaire (definitif)");
+      const input = new TextInputBuilder()
+        .setCustomId("birth_date")
+        .setLabel(`Date de naissance (${formatMeta.label}) - definitive`)
+        .setPlaceholder(`${formatMeta.placeholder} (verifie avant validation)`)
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true);
+      modal.addComponents(new ActionRowBuilder().addComponents(input));
+      await interaction.showModal(modal);
+    } catch (error) {
+      return interaction.reply({
+        content: "Impossible d'ouvrir le formulaire anniversaire.",
+        flags: MessageFlags.Ephemeral
+      });
+    }
+  }
+};
+
+const anniversaireList = {
+  data: new SlashCommandBuilder()
+    .setName("anniversaire-list")
+    .setNameLocalizations({
+      "en-US": "birthday-list",
+      "es-ES": "lista-cumpleanos"
+    })
+    .setDescription("Afficher les 10 prochains anniversaires")
+    .setDescriptionLocalizations({
+      "en-US": "Show the next 10 birthdays",
+      "es-ES": "Mostrar los proximos 10 cumpleanos"
+    }),
+  async execute(interaction) {
+    let lang = "fr";
+    try {
+      const { apiBase, apiKey } = getApiConfig();
+      lang = await getBotLanguage(interaction.guildId, apiBase, apiKey);
+      const res = await axios.get(`${apiBase}/bot/birthdays/upcoming`, {
+        params: { guildId: interaction.guildId, limit: 10 },
+        headers: { "x-api-key": apiKey }
+      });
+      const payload = res.data || {};
+      if (!payload?.settings?.enabled) {
+        return interaction.reply({ content: "Le module anniversaire est desactive sur ce serveur." });
+      }
+      const rows = Array.isArray(payload.birthdays) ? payload.birthdays : [];
+      if (!rows.length) {
+        return interaction.reply({ content: "Aucun anniversaire enregistre pour le moment." });
+      }
+      const showAge = Boolean(payload?.settings?.showAgeInList);
+      const lines = rows.map((row, index) => {
+        const nextDate = formatBirthdayDateByLang(row?.nextBirthdayDate, lang);
+        const agePart = showAge && Number.isFinite(Number(row?.age)) ? ` • ${Number(row.age)} ans` : "";
+        const days = Number(row?.daysUntil || 0);
+        const when = days <= 0 ? "aujourd'hui" : `dans ${days}j`;
+        return `${index + 1}. <@${row.userId}> • ${nextDate}${agePart} • ${when}`;
+      });
+      const embed = new EmbedBuilder()
+        .setTitle("Prochains anniversaires")
+        .setDescription(lines.join("\n"))
+        .setColor(0xf59e0b);
+      return interaction.reply({ embeds: [embed] });
+    } catch (error) {
+      return interaction.reply({ content: "Impossible de recuperer la liste des anniversaires." });
     }
   }
 };
@@ -697,4 +988,17 @@ const vente = {
   }
 };
 
-export const commands = [daily, shop, buy, addMoney, giveaway, leaderboard, jeux, inventaire, vente];
+export const commands = [
+  daily,
+  shop,
+  buy,
+  succes,
+  anniversaire,
+  anniversaireList,
+  addMoney,
+  giveaway,
+  leaderboard,
+  jeux,
+  inventaire,
+  vente
+];
