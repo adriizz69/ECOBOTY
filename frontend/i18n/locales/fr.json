@@ -669,6 +669,7 @@
       "noEvents": "Aucun évènement.",
       "sourceMessage": "Message",
       "sourceVoice": "Vocal",
+      "sourceAchievement": "Succès",
       "sourceTwitchMessage": "Message Twitch",
       "sourceTwitchWatch": "Visionnage Twitch",
       "eventShopPurchase": "Achat boutique",
@@ -983,7 +984,8 @@
         "discordMessage": "Discord message",
         "discordVoice": "Discord vocal",
         "daily": "Daily",
-        "purchase": "Achat"
+        "purchase": "Achat",
+        "achievement": "Succès"
       },
       "linkedColumns": {
         "user": "Utilisateur",
