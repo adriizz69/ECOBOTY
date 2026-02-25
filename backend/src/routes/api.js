@@ -13,6 +13,7 @@ import {
   getGainSummary,
   getUserGainStats,
   updateUserBalance,
+  addAmountToAllBalances,
   resetAllBalances,
   getLeaderboardPostSettings,
   saveLeaderboardPostSettings,
@@ -852,6 +853,17 @@ apiRouter.post("/economy/user-balance", async (req, res) => {
     return res.json({ ok: true, ...result });
   } catch (error) {
     return res.status(400).json({ error: error.message || "balance_update_failed" });
+  }
+});
+
+apiRouter.post("/economy/all-balances/add", async (req, res) => {
+  const { guildId, amount } = req.body || {};
+  if (!guildId) return res.status(400).json({ error: "missing_params" });
+  try {
+    const result = await addAmountToAllBalances({ guildId, amount });
+    return res.json(result);
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "mass_balance_update_failed" });
   }
 });
 

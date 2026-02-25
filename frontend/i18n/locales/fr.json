@@ -905,7 +905,17 @@
       "balanceSuccessSet": "modifié",
       "balanceSuccessAdd": "ajouté",
       "balanceSuccessRemove": "retiré",
-      "balanceSuccess": "Solde {amount} {action} pour l'utilisateur {user}"
+      "balanceSuccess": "Solde {amount} {action} pour l'utilisateur {user}",
+      "bulkAddAction": "Ajouter à tous",
+      "bulkAddTitle": "Ajouter de la monnaie à tous les membres",
+      "bulkAddHelp": "Cette action ajoute un montant fixe à tous les membres ayant déjà un solde économie.",
+      "bulkAddAmount": "Montant à ajouter par membre",
+      "bulkAddConfirmLabel": "Confirmation",
+      "bulkAddConfirmPlaceholder": "Écrire YES",
+      "bulkAddConfirmHint": "Écris YES pour confirmer l'ajout global.",
+      "bulkAddInvalidAmount": "Le montant doit être un entier supérieur à 0.",
+      "bulkAddError": "Erreur pendant l'ajout global.",
+      "bulkAddSuccess": "{amount} ajouté à {members} membres ({total} au total)."
     },
     "logs": {
       "tabs": {

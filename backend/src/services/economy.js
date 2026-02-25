@@ -326,6 +326,18 @@ export const applyDaily = async ({ guildId, userId }) => {
         last_daily: now
       });
 
+    await trx("economy_gain_logs").insert({
+      guild_id: guild.id,
+      user_discord_id: userKey,
+      source: "daily",
+      base_amount: base,
+      multiplier: 1,
+      bonus_amount: bonus,
+      total_amount: amount,
+      data: null,
+      created_at: now
+    });
+
     return {
       ok: true,
       amount: appliedAmount,
@@ -517,6 +529,57 @@ export const updateUserBalance = async ({ guildId, userId, amount, mode = "set" 
     });
 
     return { balance: nextBalance, diff, mode };
+  });
+};
+
+export const addAmountToAllBalances = async ({ guildId, amount }) => {
+  return db.transaction(async (trx) => {
+    const guild = await ensureGuild(guildId, trx);
+    const rawAmount = Number(amount || 0);
+    if (!Number.isFinite(rawAmount) || rawAmount <= 0 || !Number.isInteger(rawAmount)) {
+      throw new Error("invalid_amount");
+    }
+    const inputAmount = rawAmount;
+
+    const countRow = await trx("balances")
+      .where({ guild_id: guild.id })
+      .count({ count: "*" })
+      .first();
+    const affected = Number(countRow?.count || 0);
+    if (affected <= 0) {
+      return {
+        ok: true,
+        affected: 0,
+        amount: inputAmount,
+        totalAdded: 0
+      };
+    }
+
+    await trx("balances")
+      .where({ guild_id: guild.id })
+      .increment("balance", inputAmount);
+
+    const now = new Date();
+    const logData = JSON.stringify({
+      action: "mass_add",
+      scope: "all_balances",
+      amount: inputAmount
+    });
+    await trx.raw(
+      `INSERT INTO economy_gain_logs
+        (guild_id, user_discord_id, source, base_amount, multiplier, bonus_amount, total_amount, data, created_at)
+       SELECT ?, user_discord_id, 'manual', ?, 1, 0, ?, ?, ?
+       FROM balances
+       WHERE guild_id = ?`,
+      [guild.id, inputAmount, inputAmount, logData, now, guild.id]
+    );
+
+    return {
+      ok: true,
+      affected,
+      amount: inputAmount,
+      totalAdded: affected * inputAmount
+    };
   });
 };
 

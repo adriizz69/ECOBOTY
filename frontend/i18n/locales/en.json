@@ -905,7 +905,17 @@
       "balanceSuccessSet": "set",
       "balanceSuccessAdd": "added",
       "balanceSuccessRemove": "removed",
-      "balanceSuccess": "Balance {amount} {action} for user {user}"
+      "balanceSuccess": "Balance {amount} {action} for user {user}",
+      "bulkAddAction": "Add to everyone",
+      "bulkAddTitle": "Add currency to all members",
+      "bulkAddHelp": "This action adds a fixed amount to every member who already has an economy balance.",
+      "bulkAddAmount": "Amount to add per member",
+      "bulkAddConfirmLabel": "Confirmation",
+      "bulkAddConfirmPlaceholder": "Type YES",
+      "bulkAddConfirmHint": "Type YES to confirm the global add.",
+      "bulkAddInvalidAmount": "Amount must be an integer greater than 0.",
+      "bulkAddError": "Error while applying the global add.",
+      "bulkAddSuccess": "{amount} added to {members} members ({total} total)."
     },
     "logs": {
       "tabs": {
