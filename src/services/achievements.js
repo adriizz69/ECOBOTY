@@ -215,6 +215,197 @@ const COLOR_THEME = {
 };
 
 const DEFAULT_SHOP_VIEW_COOLDOWN_SECONDS = 60;
+const DISCORD_CUSTOM_EMOJI_PATTERN = /^<a?:(\w+):(\d+)>$/;
+const UNICODE_EMOJI_PATTERN = /\p{Extended_Pictographic}/u;
+const ACHIEVEMENT_DESCRIPTION_MAX_CHARS = 220;
+const ACHIEVEMENT_DESCRIPTION_MAX_LINES = 4;
+const CARD_DESCRIPTION_MAX_CHARS_PER_LINE = 52;
+const CARD_DESCRIPTION_MAX_LINES = 2;
+const CARD_ASSET_DATA_URI_CACHE = new Map();
+const CARD_TEXT_I18N = {
+  fr: {
+    unlocked: "SUCCES DEBLOQUE !",
+    tier: "Palier",
+    completion: "Palier final",
+    roleWord: "role(s)",
+    noReward: "Aucune recompense"
+  },
+  en: {
+    unlocked: "ACHIEVEMENT UNLOCKED!",
+    tier: "Tier",
+    completion: "Completion",
+    roleWord: "role(s)",
+    noReward: "No reward"
+  },
+  es: {
+    unlocked: "¡LOGRO DESBLOQUEADO!",
+    tier: "Nivel",
+    completion: "Nivel final",
+    roleWord: "rol(es)",
+    noReward: "Sin recompensa"
+  }
+};
+
+const escapeXml = (value) =>
+  String(value || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+
+const wrapTextLines = (value, maxChars = 56, maxLines = 2) => {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  if (!text) return [];
+  const words = text.split(" ");
+  const lines = [];
+  let current = "";
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (candidate.length <= maxChars) {
+      current = candidate;
+      continue;
+    }
+    if (!current) {
+      lines.push(`${word.slice(0, Math.max(0, maxChars - 3)).trimEnd()}...`);
+      if (lines.length >= maxLines) break;
+      current = "";
+      continue;
+    }
+    if (current) lines.push(current);
+    current = word;
+    if (lines.length >= maxLines - 1) break;
+  }
+  if (lines.length < maxLines && current) {
+    lines.push(current);
+  }
+  const consumedWordCount = lines
+    .join(" ")
+    .split(" ")
+    .filter(Boolean).length;
+  if (consumedWordCount < words.length && lines.length) {
+    const lastIndex = lines.length - 1;
+    const base = lines[lastIndex].slice(0, Math.max(0, maxChars - 1)).trimEnd();
+    lines[lastIndex] = `${base}...`;
+  }
+  return lines.slice(0, maxLines);
+};
+
+const truncateWithEllipsis = (value, maxChars) => {
+  const text = String(value || "");
+  if (text.length <= maxChars) return text;
+  return `${text.slice(0, Math.max(0, maxChars - 3)).trimEnd()}...`;
+};
+
+const sanitizeAchievementDescription = (value) => {
+  const normalized = String(value || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .trim();
+  if (!normalized) return "";
+  const lines = normalized
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .slice(0, ACHIEVEMENT_DESCRIPTION_MAX_LINES);
+  return truncateWithEllipsis(lines.join("\n"), ACHIEVEMENT_DESCRIPTION_MAX_CHARS);
+};
+
+const parseCustomDiscordEmoji = (value) => {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  const match = raw.match(DISCORD_CUSTOM_EMOJI_PATTERN);
+  if (!match) return null;
+  return {
+    name: String(match[1] || ""),
+    id: String(match[2] || ""),
+    animated: raw.startsWith("<a:")
+  };
+};
+
+const resolveImageDataUri = async (url, fallbackMime = "image/png") => {
+  const key = String(url || "").trim();
+  if (!key) return "";
+  if (CARD_ASSET_DATA_URI_CACHE.has(key)) {
+    return CARD_ASSET_DATA_URI_CACHE.get(key) || "";
+  }
+  try {
+    const response = await fetch(key);
+    if (!response.ok) {
+      CARD_ASSET_DATA_URI_CACHE.set(key, "");
+      return "";
+    }
+    const mime = String(response.headers.get("content-type") || fallbackMime)
+      .split(";")[0]
+      .trim() || fallbackMime;
+    const buffer = await response.arrayBuffer();
+    const dataUri = `data:${mime};base64,${Buffer.from(buffer).toString("base64")}`;
+    CARD_ASSET_DATA_URI_CACHE.set(key, dataUri);
+    return dataUri;
+  } catch {
+    CARD_ASSET_DATA_URI_CACHE.set(key, "");
+    return "";
+  }
+};
+
+const toTwemojiCodepoints = (emoji) =>
+  Array.from(String(emoji || ""))
+    .map((char) => char.codePointAt(0))
+    .filter((cp) => Number.isFinite(cp))
+    .map((cp) => cp.toString(16).toLowerCase())
+    .filter((hex) => hex !== "fe0f")
+    .join("-");
+
+const resolveUnicodeEmojiDataUri = async (emoji) => {
+  const codepoints = toTwemojiCodepoints(emoji);
+  if (!codepoints) return "";
+  const url = `https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/${codepoints}.png`;
+  return resolveImageDataUri(url);
+};
+
+const resolveBadgeIconVisual = async (iconValue) => {
+  const raw = String(iconValue || "").trim();
+  const parsedCustom = parseCustomDiscordEmoji(raw);
+  if (parsedCustom?.id) {
+    const imageDataUri = await resolveImageDataUri(
+      `https://cdn.discordapp.com/emojis/${parsedCustom.id}.png?size=96&quality=lossless`
+    );
+    return {
+      textSymbol: parsedCustom.name || ICON_GLYPHS.trophy,
+      imageDataUri
+    };
+  }
+  const key = raw.toLowerCase();
+  const glyph = ICON_GLYPHS[key] || (UNICODE_EMOJI_PATTERN.test(raw) ? raw : ICON_GLYPHS.trophy);
+  return {
+    textSymbol: glyph,
+    imageDataUri: await resolveUnicodeEmojiDataUri(glyph)
+  };
+};
+
+const resolveCardLocale = (language) => {
+  const key = String(language || "fr").toLowerCase();
+  if (key.startsWith("en")) return CARD_TEXT_I18N.en;
+  if (key.startsWith("es")) return CARD_TEXT_I18N.es;
+  return CARD_TEXT_I18N.fr;
+};
+
+const resolveCurrencyVisual = async (symbolValue) => {
+  const raw = String(symbolValue || "💰").trim() || "💰";
+  const parsedCustom = parseCustomDiscordEmoji(raw);
+  if (!parsedCustom?.id) {
+    return {
+      textSymbol: raw,
+      imageDataUri: ""
+    };
+  }
+  return {
+    textSymbol: parsedCustom.name || "monnaie",
+    imageDataUri: await resolveImageDataUri(
+      `https://cdn.discordapp.com/emojis/${parsedCustom.id}.png?size=96&quality=lossless`
+    )
+  };
+};
 
 const parseFixedTimeZoneOffset = (timeZone) => {
   const raw = String(timeZone || "").trim();
@@ -429,7 +620,7 @@ const normalizeDefinitionInput = (input = {}) => {
     type,
     eventKey,
     title: String(input.title || "").trim() || "Nouveau succes",
-    description: String(input.description || "").trim(),
+    description: sanitizeAchievementDescription(input.description || ""),
     enabled: toBool(input.enabled, true),
     threshold: isSingleThresholdEvent(eventKey) ? 1 : toPositive(input.threshold, 1),
     eventTargetRoleId,
@@ -1131,18 +1322,22 @@ const applyRewardConfig = async ({ guildId, userId, reward = {} }) => {
 
 const getTierLabel = (tierKey) => getDefaultTierTitle(String(tierKey || "").toLowerCase());
 
-const rewardSummaryText = (rewardSummary = {}) => {
+const rewardSummaryText = (rewardSummary = {}, options = {}) => {
+  const localeTexts = options?.localeTexts || CARD_TEXT_I18N.fr;
+  const currencyToken = String(options?.currencyToken || "💰").trim() || "💰";
+  const showCurrencyToken = options?.showCurrencyToken !== false;
   const parts = [];
   if (toInt(rewardSummary.currency, 0, { min: 0 }) > 0) {
-    parts.push(`+${rewardSummary.currency} 💰`);
+    const currencyPart = showCurrencyToken ? `+${rewardSummary.currency} ${currencyToken}` : `+${rewardSummary.currency}`;
+    parts.push(currencyPart.trim());
   }
   if (Array.isArray(rewardSummary.addedRoles) && rewardSummary.addedRoles.length) {
-    parts.push(`+${rewardSummary.addedRoles.length} role(s)`);
+    parts.push(`+${rewardSummary.addedRoles.length} ${localeTexts.roleWord}`);
   }
   if (Array.isArray(rewardSummary.removedRoles) && rewardSummary.removedRoles.length) {
-    parts.push(`-${rewardSummary.removedRoles.length} role(s)`);
+    parts.push(`-${rewardSummary.removedRoles.length} ${localeTexts.roleWord}`);
   }
-  return parts.join(" • ") || "Aucune recompense";
+  return parts.join(" • ") || localeTexts.noReward;
 };
 
 const buildRewardPreview = (reward = {}) => {
@@ -1195,10 +1390,12 @@ const shapePath = (shape, cx, cy, r) => {
     return `<polygon points="${ring(points)}" />`;
   }
   if (shape === "heart") {
-    const top = cy - r * 0.1;
-    return `<path d="M ${cx} ${cy + r}
-      C ${cx - r * 1.2} ${cy + r * 0.35}, ${cx - r * 1.2} ${top - r * 0.5}, ${cx} ${top}
-      C ${cx + r * 1.2} ${top - r * 0.5}, ${cx + r * 1.2} ${cy + r * 0.35}, ${cx} ${cy + r} Z" />`;
+    const bottomY = cy + r * 0.9;
+    const topY = cy - r * 0.28;
+    return `<path d="M ${cx} ${bottomY}
+      C ${cx - r * 0.95} ${cy + r * 0.35}, ${cx - r * 0.98} ${cy - r * 0.15}, ${cx - r * 0.48} ${topY}
+      C ${cx - r * 0.22} ${cy - r * 0.5}, ${cx + r * 0.22} ${cy - r * 0.5}, ${cx + r * 0.48} ${topY}
+      C ${cx + r * 0.98} ${cy - r * 0.15}, ${cx + r * 0.95} ${cy + r * 0.35}, ${cx} ${bottomY} Z" />`;
   }
   if (shape === "octagon") {
     const points = Array.from({ length: 8 }).map((_, index) => {
@@ -1234,20 +1431,43 @@ const shapePath = (shape, cx, cy, r) => {
 };
 
 const buildAchievementCardSvg = ({
+  kickerText,
   title,
   subtitle,
   tierLabel,
   rewardText,
   dateLabel,
-  badge
+  badge,
+  badgeIconText = "",
+  badgeIconDataUri = "",
+  currencyIconDataUri = "",
+  hasCurrencyReward = false
 }) => {
   const theme = COLOR_THEME[badge.color] || COLOR_THEME.purple;
-  const icon = ICON_GLYPHS[badge.icon] || ICON_GLYPHS.trophy;
-  const safeTitle = String(title || "Achievement unlocked").replace(/[<>&]/g, "");
-  const safeSubtitle = String(subtitle || "").replace(/[<>&]/g, "");
-  const safeTier = String(tierLabel || "").replace(/[<>&]/g, "");
-  const safeReward = String(rewardText || "").replace(/[<>&]/g, "");
-  const safeDate = String(dateLabel || "").replace(/[<>&]/g, "");
+  const icon = String(badgeIconText || ICON_GLYPHS[badge.icon] || ICON_GLYPHS.trophy);
+  const safeKicker = escapeXml(kickerText || CARD_TEXT_I18N.en.unlocked);
+  const safeTitle = escapeXml(title || "Achievement unlocked");
+  const safeTier = escapeXml(tierLabel || "");
+  const safeReward = escapeXml(rewardText || "");
+  const safeDate = escapeXml(dateLabel || "");
+  const subtitleLines = wrapTextLines(subtitle, CARD_DESCRIPTION_MAX_CHARS_PER_LINE, CARD_DESCRIPTION_MAX_LINES);
+  const subtitleOffset = Math.max(0, subtitleLines.length - 1) * 24;
+  const tierY = 238 + subtitleOffset;
+  const rewardY = 282 + subtitleOffset;
+  const dateY = 322 + subtitleOffset;
+  const showCurrencyIcon = Boolean(hasCurrencyReward && currencyIconDataUri);
+  const rewardTextX = showCurrencyIcon ? 264 : 220;
+  const badgeIconSvg = badgeIconDataUri
+    ? `<image x="-38" y="-38" width="76" height="76" href="${escapeXml(badgeIconDataUri)}" preserveAspectRatio="xMidYMid meet" />`
+    : `<text x="0" y="20" text-anchor="middle" font-size="54" font-family="Segoe UI Emoji, Arial" fill="${theme.accent}">${escapeXml(icon)}</text>`;
+  const rewardIconSvg = showCurrencyIcon
+    ? `<image x="220" y="${rewardY - 27}" width="32" height="32" href="${escapeXml(currencyIconDataUri)}" />`
+    : "";
+  const subtitleSvg = subtitleLines.length
+    ? `<text x="220" y="190" fill="#94A3B8" font-size="30" font-family="Inter, Arial">${subtitleLines
+        .map((line, index) => `<tspan x="220" dy="${index === 0 ? 0 : 34}">${escapeXml(line)}</tspan>`)
+        .join("")}</text>`
+    : "";
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360">
   <defs>
@@ -1268,15 +1488,16 @@ const buildAchievementCardSvg = ({
     <g fill="${theme.base}" stroke="${theme.light}" stroke-width="8">
       ${shapePath(badge.shape, 0, 0, 72)}
     </g>
-    <text x="0" y="20" text-anchor="middle" font-size="54" font-family="Segoe UI Emoji, Arial" fill="${theme.accent}">${icon}</text>
+    ${badgeIconSvg}
   </g>
 
-  <text x="220" y="86" fill="${theme.base}" font-size="40" font-weight="700" font-family="Inter, Arial">ACHIEVEMENT UNLOCKED!</text>
+  <text x="220" y="86" fill="${theme.base}" font-size="40" font-weight="700" font-family="Inter, Arial">${safeKicker}</text>
   <text x="220" y="144" fill="#F8FAFC" font-size="54" font-weight="800" font-family="Inter, Arial">${safeTitle}</text>
-  <text x="220" y="190" fill="#94A3B8" font-size="30" font-family="Inter, Arial">${safeSubtitle}</text>
-  <text x="220" y="238" fill="${theme.light}" font-size="28" font-family="Inter, Arial">${safeTier}</text>
-  <text x="220" y="282" fill="#E2E8F0" font-size="26" font-family="Inter, Arial">${safeReward}</text>
-  <text x="220" y="322" fill="#64748B" font-size="22" font-family="Inter, Arial">${safeDate}</text>
+  ${subtitleSvg}
+  <text x="220" y="${tierY}" fill="${theme.light}" font-size="28" font-family="Inter, Arial">${safeTier}</text>
+  ${rewardIconSvg}
+  <text x="${rewardTextX}" y="${rewardY}" fill="#E2E8F0" font-size="26" font-family="Inter, Arial">${safeReward}</text>
+  <text x="220" y="${dateY}" fill="#64748B" font-size="22" font-family="Inter, Arial">${safeDate}</text>
 </svg>`;
 };
 
@@ -1311,6 +1532,7 @@ const sendProgressDm = async ({ userId, title, percent }) => {
 const sendUnlockNotifications = async ({
   guildId,
   userId,
+  kickerText,
   title,
   subtitle,
   tierLabel,
@@ -1318,17 +1540,25 @@ const sendUnlockNotifications = async ({
   dateLabel,
   badge,
   announceChannelId,
-  notifyDm
+  notifyDm,
+  currencyIconDataUri = "",
+  hasCurrencyReward = false
 }) => {
   let file = null;
   try {
+    const badgeIconVisual = await resolveBadgeIconVisual(badge?.icon);
     file = await renderCardFile({
+      kickerText,
       title,
       subtitle,
       tierLabel,
       rewardText,
       dateLabel,
-      badge
+      badge,
+      badgeIconText: badgeIconVisual.textSymbol,
+      badgeIconDataUri: badgeIconVisual.imageDataUri,
+      currencyIconDataUri,
+      hasCurrencyReward
     });
   } catch (error) {
     console.error("Achievement card render failed", error);
@@ -1500,16 +1730,26 @@ export const recordAchievementEvent = async ({
   const unlockedActions = [];
   const progressActions = [];
   let botTimeZone = "UTC";
+  let botLanguage = "fr";
   let botLocale = "fr-FR";
   try {
     const botSettings = await getBotSettings(String(guildId));
     botTimeZone = String(botSettings?.timezone || "UTC");
-    const botLang = String(botSettings?.bot_language || "fr").toLowerCase();
-    if (botLang === "en") botLocale = "en-US";
-    if (botLang === "es") botLocale = "es-ES";
+    botLanguage = String(botSettings?.bot_language || "fr").toLowerCase();
+    if (botLanguage === "en") botLocale = "en-US";
+    if (botLanguage === "es") botLocale = "es-ES";
   } catch {
     botTimeZone = "UTC";
+    botLanguage = "fr";
     botLocale = "fr-FR";
+  }
+  const cardLocale = resolveCardLocale(botLanguage);
+  let currencyVisual = { textSymbol: "💰", imageDataUri: "" };
+  try {
+    const economySettings = await getOrCreateSettings(String(guildId), db);
+    currencyVisual = await resolveCurrencyVisual(economySettings?.emoji_symbol || "💰");
+  } catch {
+    currencyVisual = { textSymbol: "💰", imageDataUri: "" };
   }
 
   for (const definition of definitions) {
@@ -1625,20 +1865,28 @@ export const recordAchievementEvent = async ({
       reward: action.reward
     });
     await setProgressFlags(action.progressId, { reward_applied: true });
+    const hasCurrencyReward = toInt(rewardResult.currency, 0, { min: 0 }) > 0;
     const tierLabel = action.completion
-      ? "Completion"
-      : action.tier?.title || getTierLabel(action.tier?.tierKey);
+      ? cardLocale.completion
+      : action.tier?.title || (action.tier?.tierKey ? getTierLabel(action.tier?.tierKey) : cardLocale.tier);
     const notifications = await sendUnlockNotifications({
       guildId,
       userId: userKey,
+      kickerText: cardLocale.unlocked,
       title: action.definition.title,
       subtitle: action.definition.description || "",
       tierLabel,
-      rewardText: rewardSummaryText(rewardResult),
+      rewardText: rewardSummaryText(rewardResult, {
+        localeTexts: cardLocale,
+        currencyToken: currencyVisual.textSymbol,
+        showCurrencyToken: !(hasCurrencyReward && currencyVisual.imageDataUri)
+      }),
       dateLabel: formatDateByTimeZone(now, botTimeZone, botLocale),
       badge: action.tier?.badge || action.definition.badge,
       announceChannelId: settings.announceChannelId,
-      notifyDm: action.tier?.notify?.unlockEnabled ?? action.definition.notify.unlockEnabled
+      notifyDm: action.tier?.notify?.unlockEnabled ?? action.definition.notify.unlockEnabled,
+      currencyIconDataUri: hasCurrencyReward ? currencyVisual.imageDataUri : "",
+      hasCurrencyReward
     });
     await setProgressFlags(action.progressId, {
       unlock_notified: notifications.dmOk,
