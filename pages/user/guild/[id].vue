@@ -1849,6 +1849,8 @@ const formatSource = (source) => {
       return t("userGuild.logs.sourceMessage");
     case "voice":
       return t("userGuild.logs.sourceVoice");
+    case "achievement":
+      return t("userGuild.logs.sourceAchievement");
     case "twitch_message":
       return t("userGuild.logs.sourceTwitchMessage");
     case "twitch_watch":

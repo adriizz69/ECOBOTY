@@ -669,6 +669,7 @@
       "noEvents": "No events.",
       "sourceMessage": "Message",
       "sourceVoice": "Voice",
+      "sourceAchievement": "Achievement",
       "sourceTwitchMessage": "Twitch message",
       "sourceTwitchWatch": "Twitch watch",
       "eventShopPurchase": "Shop purchase",
@@ -983,7 +984,8 @@
         "discordMessage": "Discord message",
         "discordVoice": "Discord voice",
         "daily": "Daily",
-        "purchase": "Purchase"
+        "purchase": "Purchase",
+        "achievement": "Achievement"
       },
       "linkedColumns": {
         "user": "User",

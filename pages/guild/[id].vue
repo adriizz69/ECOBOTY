@@ -3802,6 +3802,7 @@ const formatGainSource = (source) => {
   if (key === "voice") return t("adminGuild.logs.gainSources.discordVoice");
   if (key === "daily") return t("adminGuild.logs.gainSources.daily");
   if (key === "purchase") return t("adminGuild.logs.gainSources.purchase");
+  if (key === "achievement") return t("adminGuild.logs.gainSources.achievement");
   return key || t("common.na");
 };
 
@@ -3974,6 +3975,9 @@ const sourceMeta = (source) => {
   const key = String(source || "");
   if (key.startsWith("twitch")) {
     return { kind: "twitch", icon: "🟣", label: t("adminGuild.logs.sources.twitch") };
+  }
+  if (key === "achievement") {
+    return { kind: "achievement", icon: "🏆", label: t("adminGuild.logs.gainSources.achievement") };
   }
   return { kind: "discord", icon: "🔵", label: t("adminGuild.logs.sources.discord") };
 };
@@ -7893,6 +7897,10 @@ select option:hover {
   background: rgba(59, 130, 246, 0.2);
   color: #bfdbfe;
 }
+.source-pill.achievement {
+  background: rgba(250, 204, 21, 0.2);
+  color: #fef08a;
+}
 .source-pill.transaction {
   background: rgba(16, 185, 129, 0.2);
   color: #a7f3d0;
@@ -9266,6 +9274,11 @@ select:focus,
 }
 :global(body.theme-light) .source-pill {
   border-color: rgba(148, 163, 184, 0.32);
+}
+:global(body.theme-light) .source-pill.achievement {
+  background: rgba(250, 204, 21, 0.2);
+  border-color: rgba(202, 138, 4, 0.35);
+  color: #92400e;
 }
 :global(body.theme-light) .section-content,
 :global(body.theme-light) .section-nav {

@@ -235,7 +235,13 @@
               </label>
               <label style="grid-column: 1 / -1;">
                 Description
-                <textarea v-model="form.description" rows="2"></textarea>
+                <textarea
+                  v-model="form.description"
+                  rows="2"
+                  :maxlength="DESCRIPTION_MAX_CHARS"
+                  @input="onDescriptionInput"
+                ></textarea>
+                <span class="muted small">Max {{ DESCRIPTION_MAX_LINES }} lignes / {{ DESCRIPTION_MAX_CHARS }} caracteres.</span>
               </label>
               <div class="switch-field switch-field-vertical">
                 <div class="switch-field-copy">
@@ -497,6 +503,8 @@ const config = useRuntimeConfig();
 
 const tierKeys = ["bronze", "silver", "gold", "diamond"];
 const DM_PROGRESS_PERCENT = 75;
+const DESCRIPTION_MAX_CHARS = 220;
+const DESCRIPTION_MAX_LINES = 4;
 const colorMap = {
   purple: "#7c3aed",
   blue: "#2563eb",
@@ -746,6 +754,18 @@ const parseCsvRoleIds = (csv) => {
     .filter(Boolean);
 };
 
+const clampDescription = (value) => {
+  const normalized = String(value || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const lines = normalized.split("\n").slice(0, DESCRIPTION_MAX_LINES);
+  const merged = lines.join("\n");
+  if (merged.length <= DESCRIPTION_MAX_CHARS) return merged;
+  return merged.slice(0, DESCRIPTION_MAX_CHARS);
+};
+
+const onDescriptionInput = () => {
+  form.description = clampDescription(form.description);
+};
+
 const joinRoleIds = (value) => {
   if (!Array.isArray(value)) return "";
   return value.map((item) => String(item)).filter(Boolean).join(", ");
@@ -793,7 +813,7 @@ const buildPayload = () => {
     type: form.type,
     eventKey: String(form.eventKey || "").trim(),
     title: String(form.title || "").trim(),
-    description: String(form.description || "").trim(),
+    description: clampDescription(form.description),
     enabled: Boolean(form.enabled),
     threshold: isSingleUnlockEvent(form.eventKey) ? 1 : Math.max(1, Number(form.threshold || 1)),
     eventTargetRoleId:
