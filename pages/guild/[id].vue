@@ -2548,7 +2548,7 @@
             <h3>{{ $t("adminGuild.leaderboard.bulkAddTitle") }}</h3>
             <p class="muted">{{ $t("adminGuild.leaderboard.bulkAddHelp") }}</p>
           </div>
-          <UButton color="neutral" variant="outline" @click="showMassBalanceModal = false">✕</UButton>
+          <UButton color="neutral" variant="outline" :disabled="massBalanceSaving" @click="showMassBalanceModal = false">✕</UButton>
         </div>
         <div class="grid">
           <label>
@@ -2564,8 +2564,28 @@
         <div v-if="massBalanceStatus" class="muted" style="margin-top: 8px;">
           {{ massBalanceStatus }}
         </div>
+        <div v-if="massBalanceSaving || massBalanceProgress > 0" class="mass-sync-box">
+          <div class="mass-sync-row">
+            <strong>{{ massBalancePhase || $t("adminGuild.leaderboard.bulkAddWorking") }}</strong>
+            <span class="mass-sync-percent">{{ Math.round(massBalanceProgress) }}%</span>
+          </div>
+          <div
+            class="mass-sync-track"
+            role="progressbar"
+            :aria-valuemin="0"
+            :aria-valuemax="100"
+            :aria-valuenow="Math.round(massBalanceProgress)"
+          >
+            <div class="mass-sync-fill" :style="{ width: `${massBalanceProgress}%` }" />
+          </div>
+          <div v-if="massBalanceTotalMembers > 0" class="muted small">
+            {{ $t("adminGuild.leaderboard.bulkAddSyncCount", { done: massBalanceSyncedMembers, total: massBalanceTotalMembers }) }}
+          </div>
+        </div>
         <div class="actions" style="justify-content: flex-end;">
-          <UButton color="neutral" variant="outline" @click="showMassBalanceModal = false">{{ $t("common.cancel") }}</UButton>
+          <UButton color="neutral" variant="outline" :disabled="massBalanceSaving" @click="showMassBalanceModal = false">
+            {{ $t("common.cancel") }}
+          </UButton>
           <UButton color="primary" variant="solid" :loading="massBalanceSaving" @click="confirmMassBalanceAdd">
             {{ $t("common.confirm") }}
           </UButton>
@@ -3008,6 +3028,7 @@ const saveAndContinue = async () => {
   }
 };
 let leaderboardTimer = null;
+let massBalanceProgressTimer = null;
 
 const leaderboard = ref([]);
 const leaderboardPage = ref(1);
@@ -3127,6 +3148,10 @@ const massBalanceAmount = ref(0);
 const massBalanceConfirmText = ref("");
 const massBalanceStatus = ref("");
 const massBalanceSaving = ref(false);
+const massBalanceProgress = ref(0);
+const massBalancePhase = ref("");
+const massBalanceSyncedMembers = ref(0);
+const massBalanceTotalMembers = ref(0);
 const showResetModal = ref(false);
 const resetInput = ref("");
 const resetStatus = ref("");
@@ -4737,6 +4762,27 @@ const openMassBalanceModal = () => {
   massBalanceAmount.value = 0;
   massBalanceConfirmText.value = "";
   massBalanceStatus.value = "";
+  massBalanceProgress.value = 0;
+  massBalancePhase.value = "";
+  massBalanceSyncedMembers.value = 0;
+  massBalanceTotalMembers.value = 0;
+};
+
+const stopMassBalanceProgress = () => {
+  if (massBalanceProgressTimer) {
+    clearInterval(massBalanceProgressTimer);
+    massBalanceProgressTimer = null;
+  }
+};
+
+const startMassBalanceProgress = () => {
+  stopMassBalanceProgress();
+  massBalanceProgress.value = Math.max(8, massBalanceProgress.value);
+  massBalanceProgressTimer = setInterval(() => {
+    if (massBalanceProgress.value >= 82) return;
+    const step = massBalanceProgress.value < 40 ? 7 : 3;
+    massBalanceProgress.value = Math.min(82, massBalanceProgress.value + step);
+  }, 220);
 };
 
 const confirmMassBalanceAdd = async () => {
@@ -4750,40 +4796,72 @@ const confirmMassBalanceAdd = async () => {
     return;
   }
   massBalanceSaving.value = true;
-  massBalanceStatus.value = "";
-  const token = getToken();
-  const res = await fetch(`${config.public.apiBase}/api/economy/all-balances/add`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({
-      guildId: id,
-      amount
-    })
-  });
-  if (handleUnauthorized(res)) {
-    massBalanceSaving.value = false;
-    return;
-  }
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    massBalanceStatus.value = data?.error || t("adminGuild.leaderboard.bulkAddError");
-    massBalanceSaving.value = false;
-    return;
-  }
+  massBalanceProgress.value = 10;
+  massBalancePhase.value = t("adminGuild.leaderboard.bulkAddPhaseApply");
+  massBalanceStatus.value = t("adminGuild.leaderboard.bulkAddWorking");
+  massBalanceSyncedMembers.value = 0;
+  massBalanceTotalMembers.value = 0;
+  startMassBalanceProgress();
 
-  await Promise.all([loadLeaderboard(), loadLeaderboardSummary(), loadGainLogs()]);
-  if (showLeaderboardModal.value && selectedLeaderboardUser.value) {
-    await loadLeaderboardUserStats();
+  const token = getToken();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 120000);
+
+  try {
+    const res = await fetch(`${config.public.apiBase}/api/economy/all-balances/add`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        guildId: id,
+        amount
+      }),
+      signal: controller.signal
+    });
+    if (handleUnauthorized(res)) {
+      return;
+    }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data?.error || t("adminGuild.leaderboard.bulkAddError"));
+    }
+
+    massBalancePhase.value = t("adminGuild.leaderboard.bulkAddPhaseRefresh");
+    massBalanceStatus.value = t("adminGuild.leaderboard.bulkAddRefreshing");
+    massBalanceProgress.value = Math.max(massBalanceProgress.value, 86);
+
+    await Promise.all([loadLeaderboard(), loadLeaderboardSummary(), loadGainLogs()]);
+    if (showLeaderboardModal.value && selectedLeaderboardUser.value) {
+      await loadLeaderboardUserStats();
+    }
+
+    const synced = Number(data?.affected || 0);
+    massBalanceSyncedMembers.value = synced;
+    massBalanceTotalMembers.value = synced;
+    massBalancePhase.value = t("adminGuild.leaderboard.bulkAddPhaseDone");
+    massBalanceStatus.value = t("adminGuild.leaderboard.bulkAddSyncCount", {
+      done: synced,
+      total: synced
+    });
+    massBalanceProgress.value = 100;
+
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    showMassBalanceModal.value = false;
+    notifySaved(
+      t("adminGuild.leaderboard.bulkAddSuccess", {
+        amount: Number(data?.amount || amount),
+        members: synced,
+        total: Number(data?.totalAdded || 0)
+      })
+    );
+  } catch (error) {
+    massBalanceStatus.value = error?.name === "AbortError"
+      ? t("adminGuild.leaderboard.bulkAddTimeout")
+      : error?.message || t("adminGuild.leaderboard.bulkAddError");
+  } finally {
+    clearTimeout(timeout);
+    stopMassBalanceProgress();
+    massBalanceSaving.value = false;
   }
-  massBalanceSaving.value = false;
-  showMassBalanceModal.value = false;
-  notifySaved(
-    t("adminGuild.leaderboard.bulkAddSuccess", {
-      amount: Number(data?.amount || amount),
-      members: Number(data?.affected || 0),
-      total: Number(data?.totalAdded || 0)
-    })
-  );
 };
 
 const resetCoins = async () => {
@@ -6381,6 +6459,7 @@ onBeforeUnmount(() => {
     clearInterval(leaderboardTimer);
     leaderboardTimer = null;
   }
+  stopMassBalanceProgress();
 });
 </script>
 
@@ -7306,6 +7385,39 @@ select option:hover {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 12px;
+}
+.mass-sync-box {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgb(var(--tab-rgb) / 0.38);
+  background: linear-gradient(180deg, rgb(var(--tab-rgb) / 0.16), rgba(8, 12, 20, 0.52));
+  display: grid;
+  gap: 8px;
+}
+.mass-sync-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+.mass-sync-percent {
+  color: var(--text-soft);
+  font-variant-numeric: tabular-nums;
+}
+.mass-sync-track {
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.28);
+  overflow: hidden;
+}
+.mass-sync-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgb(var(--tab-rgb) / 0.96), rgb(var(--tab-soft-rgb) / 0.96));
+  transition: width 0.22s ease;
 }
 @media (max-width: 900px) {
   .page {

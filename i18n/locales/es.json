@@ -915,7 +915,14 @@
       "bulkAddConfirmHint": "Escribe YES para confirmar el agregado global.",
       "bulkAddInvalidAmount": "La cantidad debe ser un entero mayor que 0.",
       "bulkAddError": "Error durante el agregado global.",
-      "bulkAddSuccess": "{amount} agregado a {members} miembros ({total} en total)."
+      "bulkAddSuccess": "{amount} agregado a {members} miembros ({total} en total).",
+      "bulkAddWorking": "Sincronización en curso para todos los miembros...",
+      "bulkAddRefreshing": "Actualizando los datos de la interfaz...",
+      "bulkAddPhaseApply": "Aplicando saldos",
+      "bulkAddPhaseRefresh": "Sincronizando la interfaz",
+      "bulkAddPhaseDone": "Sincronización completada",
+      "bulkAddTimeout": "El proceso tardó demasiado. Revisa los logs e inténtalo de nuevo.",
+      "bulkAddSyncCount": "Sincronizado: {done}/{total} miembros"
     },
     "logs": {
       "tabs": {

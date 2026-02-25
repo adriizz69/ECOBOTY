@@ -915,7 +915,14 @@
       "bulkAddConfirmHint": "Écris YES pour confirmer l'ajout global.",
       "bulkAddInvalidAmount": "Le montant doit être un entier supérieur à 0.",
       "bulkAddError": "Erreur pendant l'ajout global.",
-      "bulkAddSuccess": "{amount} ajouté à {members} membres ({total} au total)."
+      "bulkAddSuccess": "{amount} ajouté à {members} membres ({total} au total).",
+      "bulkAddWorking": "Synchronisation en cours sur tous les membres...",
+      "bulkAddRefreshing": "Mise à jour des données en cours...",
+      "bulkAddPhaseApply": "Application des soldes",
+      "bulkAddPhaseRefresh": "Synchronisation de l'interface",
+      "bulkAddPhaseDone": "Synchronisation terminée",
+      "bulkAddTimeout": "Le traitement a pris trop de temps. Vérifie les logs puis réessaie.",
+      "bulkAddSyncCount": "Synchronisé: {done}/{total} membres"
     },
     "logs": {
       "tabs": {
