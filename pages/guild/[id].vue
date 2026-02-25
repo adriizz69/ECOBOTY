@@ -334,7 +334,12 @@
       <UCard v-show="activeTab === 'leaderboard'" class="card">
         <div class="card-head">
           <h3>{{ $t("adminGuild.leaderboard.title") }}</h3>
-          <UButton color="neutral" variant="outline" @click="refreshLeaderboard">{{ $t("common.refresh") }}</UButton>
+          <div class="actions-inline">
+            <UButton color="primary" variant="solid" @click="openMassBalanceModal">
+              {{ $t("adminGuild.leaderboard.bulkAddAction") }}
+            </UButton>
+            <UButton color="neutral" variant="outline" @click="refreshLeaderboard">{{ $t("common.refresh") }}</UButton>
+          </div>
         </div>
         <div class="sub-card">
           <h4>{{ $t("adminGuild.leaderboard.autoTitle") }}</h4>
@@ -2536,6 +2541,38 @@
       </UCard>
     </div>
 
+    <div v-if="showMassBalanceModal" class="modal">
+      <UCard class="modal-card" style="max-width: 560px;">
+        <div class="modal-head">
+          <div>
+            <h3>{{ $t("adminGuild.leaderboard.bulkAddTitle") }}</h3>
+            <p class="muted">{{ $t("adminGuild.leaderboard.bulkAddHelp") }}</p>
+          </div>
+          <UButton color="neutral" variant="outline" @click="showMassBalanceModal = false">✕</UButton>
+        </div>
+        <div class="grid">
+          <label>
+            {{ $t("adminGuild.leaderboard.bulkAddAmount") }}
+            <input v-model.number="massBalanceAmount" type="number" min="1" step="1" :placeholder="$t('adminGuild.leaderboard.amount')" />
+          </label>
+          <label>
+            {{ $t("adminGuild.leaderboard.bulkAddConfirmLabel") }}
+            <input v-model.trim="massBalanceConfirmText" :placeholder="$t('adminGuild.leaderboard.bulkAddConfirmPlaceholder')" />
+            <span class="muted small">{{ $t("adminGuild.leaderboard.bulkAddConfirmHint") }}</span>
+          </label>
+        </div>
+        <div v-if="massBalanceStatus" class="muted" style="margin-top: 8px;">
+          {{ massBalanceStatus }}
+        </div>
+        <div class="actions" style="justify-content: flex-end;">
+          <UButton color="neutral" variant="outline" @click="showMassBalanceModal = false">{{ $t("common.cancel") }}</UButton>
+          <UButton color="primary" variant="solid" :loading="massBalanceSaving" @click="confirmMassBalanceAdd">
+            {{ $t("common.confirm") }}
+          </UButton>
+        </div>
+      </UCard>
+    </div>
+
     <div v-if="showResetModal" class="modal">
       <UCard class="modal-card">
         <div class="modal-head">
@@ -3085,6 +3122,11 @@ const logsSearchPlaceholder = computed(() => {
   return t("adminGuild.logs.searchPlaceholders.gains");
 });
 const balanceEdit = reactive({ amount: 0, saving: false, mode: "set" });
+const showMassBalanceModal = ref(false);
+const massBalanceAmount = ref(0);
+const massBalanceConfirmText = ref("");
+const massBalanceStatus = ref("");
+const massBalanceSaving = ref(false);
 const showResetModal = ref(false);
 const resetInput = ref("");
 const resetStatus = ref("");
@@ -4688,6 +4730,60 @@ const updateUserBalance = async () => {
         ? t("adminGuild.leaderboard.balanceSuccessAdd")
         : t("adminGuild.leaderboard.balanceSuccessRemove");
   notifySaved(t("adminGuild.leaderboard.balanceSuccess", { amount, action: successLabel, user: targetUser }));
+};
+
+const openMassBalanceModal = () => {
+  showMassBalanceModal.value = true;
+  massBalanceAmount.value = 0;
+  massBalanceConfirmText.value = "";
+  massBalanceStatus.value = "";
+};
+
+const confirmMassBalanceAdd = async () => {
+  const amount = Number(massBalanceAmount.value || 0);
+  if (!Number.isFinite(amount) || amount <= 0 || !Number.isInteger(amount)) {
+    massBalanceStatus.value = t("adminGuild.leaderboard.bulkAddInvalidAmount");
+    return;
+  }
+  if (String(massBalanceConfirmText.value || "").trim().toUpperCase() !== "YES") {
+    massBalanceStatus.value = t("adminGuild.leaderboard.bulkAddConfirmHint");
+    return;
+  }
+  massBalanceSaving.value = true;
+  massBalanceStatus.value = "";
+  const token = getToken();
+  const res = await fetch(`${config.public.apiBase}/api/economy/all-balances/add`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      guildId: id,
+      amount
+    })
+  });
+  if (handleUnauthorized(res)) {
+    massBalanceSaving.value = false;
+    return;
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    massBalanceStatus.value = data?.error || t("adminGuild.leaderboard.bulkAddError");
+    massBalanceSaving.value = false;
+    return;
+  }
+
+  await Promise.all([loadLeaderboard(), loadLeaderboardSummary(), loadGainLogs()]);
+  if (showLeaderboardModal.value && selectedLeaderboardUser.value) {
+    await loadLeaderboardUserStats();
+  }
+  massBalanceSaving.value = false;
+  showMassBalanceModal.value = false;
+  notifySaved(
+    t("adminGuild.leaderboard.bulkAddSuccess", {
+      amount: Number(data?.amount || amount),
+      members: Number(data?.affected || 0),
+      total: Number(data?.totalAdded || 0)
+    })
+  );
 };
 
 const resetCoins = async () => {

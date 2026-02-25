@@ -905,7 +905,17 @@
       "balanceSuccessSet": "definido",
       "balanceSuccessAdd": "agregado",
       "balanceSuccessRemove": "retirado",
-      "balanceSuccess": "Saldo {amount} {action} para el usuario {user}"
+      "balanceSuccess": "Saldo {amount} {action} para el usuario {user}",
+      "bulkAddAction": "Agregar a todos",
+      "bulkAddTitle": "Agregar moneda a todos los miembros",
+      "bulkAddHelp": "Esta acción agrega una cantidad fija a todos los miembros que ya tienen saldo de economía.",
+      "bulkAddAmount": "Cantidad a agregar por miembro",
+      "bulkAddConfirmLabel": "Confirmación",
+      "bulkAddConfirmPlaceholder": "Escribe YES",
+      "bulkAddConfirmHint": "Escribe YES para confirmar el agregado global.",
+      "bulkAddInvalidAmount": "La cantidad debe ser un entero mayor que 0.",
+      "bulkAddError": "Error durante el agregado global.",
+      "bulkAddSuccess": "{amount} agregado a {members} miembros ({total} en total)."
     },
     "logs": {
       "tabs": {
