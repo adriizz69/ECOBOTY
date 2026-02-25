@@ -467,13 +467,34 @@ export const applyTwitchDaily = async ({ guildId, userId }) => {
   });
 };
 
-export const getLeaderboard = async ({ guildId, limit = 10, offset = 0, minBalance = 0 }) => {
-  const guild = await ensureGuild(guildId, db);
-  let query = db("balances").where({ guild_id: guild.id });
+const applyLeaderboardFilters = (query, { minBalance = 0, search = "" } = {}) => {
   if (Number(minBalance || 0) > 0) {
-    query = query.andWhere("balance", ">=", Number(minBalance));
+    query.andWhere("balances.balance", ">=", Number(minBalance));
   }
-  const rows = await query.orderBy("balance", "desc").limit(limit).offset(offset);
+  const term = String(search || "").trim();
+  if (term) {
+    const lowered = term.toLowerCase();
+    query.andWhere((builder) => {
+      builder
+        .where("balances.user_discord_id", "like", `%${term}%`)
+        .orWhereRaw("LOWER(COALESCE(users.username, '')) LIKE ?", [`%${lowered}%`]);
+    });
+  }
+  return query;
+};
+
+export const getLeaderboard = async ({ guildId, limit = 10, offset = 0, minBalance = 0, search = "" }) => {
+  const guild = await ensureGuild(guildId, db);
+  let query = db("balances")
+    .leftJoin("users", "balances.user_discord_id", "users.discord_id")
+    .where("balances.guild_id", guild.id);
+  query = applyLeaderboardFilters(query, { minBalance, search });
+  const rows = await query
+    .select("balances.user_discord_id", "balances.balance")
+    .orderBy("balances.balance", "desc")
+    .orderBy("balances.user_discord_id", "asc")
+    .limit(limit)
+    .offset(offset);
 
   return rows.map((row, index) => ({
     rank: offset + index + 1,
@@ -482,13 +503,13 @@ export const getLeaderboard = async ({ guildId, limit = 10, offset = 0, minBalan
   }));
 };
 
-export const getLeaderboardTotal = async ({ guildId, minBalance = 0 }) => {
+export const getLeaderboardTotal = async ({ guildId, minBalance = 0, search = "" }) => {
   const guild = await ensureGuild(guildId, db);
-  let query = db("balances").where({ guild_id: guild.id });
-  if (Number(minBalance || 0) > 0) {
-    query = query.andWhere("balance", ">=", Number(minBalance));
-  }
-  const total = await query.count({ count: "*" }).first();
+  let query = db("balances")
+    .leftJoin("users", "balances.user_discord_id", "users.discord_id")
+    .where("balances.guild_id", guild.id);
+  query = applyLeaderboardFilters(query, { minBalance, search });
+  const total = await query.countDistinct({ count: "balances.user_discord_id" }).first();
   return Number(total?.count || 0);
 };
 
