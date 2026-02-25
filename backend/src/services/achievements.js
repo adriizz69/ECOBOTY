@@ -1282,29 +1282,21 @@ const buildAchievementCardSvg = ({
 
 const renderCardFile = async (payload) => {
   const svg = buildAchievementCardSvg(payload);
-  try {
-    const resvg = await import("@resvg/resvg-js");
-    if (typeof resvg?.Resvg === "function") {
-      const renderer = new resvg.Resvg(svg, {
-        fitTo: {
-          mode: "width",
-          value: 1200
-        }
-      });
-      const png = renderer.render();
-      return {
-        buffer: Buffer.from(png.asPng()),
-        mime: "image/png",
-        filename: "achievement-card.png"
-      };
-    }
-  } catch {
-    // fallback below
+  const resvg = await import("@resvg/resvg-js").catch(() => null);
+  if (typeof resvg?.Resvg !== "function") {
+    throw new Error("achievement_card_renderer_unavailable");
   }
+  const renderer = new resvg.Resvg(svg, {
+    fitTo: {
+      mode: "width",
+      value: 1200
+    }
+  });
+  const png = renderer.render();
   return {
-    buffer: Buffer.from(svg, "utf8"),
-    mime: "image/svg+xml",
-    filename: "achievement-card.svg"
+    buffer: Buffer.from(png.asPng()),
+    mime: "image/png",
+    filename: "achievement-card.png"
   };
 };
 
@@ -1328,14 +1320,20 @@ const sendUnlockNotifications = async ({
   announceChannelId,
   notifyDm
 }) => {
-  const file = await renderCardFile({
-    title,
-    subtitle,
-    tierLabel,
-    rewardText,
-    dateLabel,
-    badge
-  });
+  let file = null;
+  try {
+    file = await renderCardFile({
+      title,
+      subtitle,
+      tierLabel,
+      rewardText,
+      dateLabel,
+      badge
+    });
+  } catch (error) {
+    console.error("Achievement card render failed", error);
+    return { dmOk: false, announceOk: false };
+  }
   let dmOk = false;
   let announceOk = false;
   if (notifyDm) {
