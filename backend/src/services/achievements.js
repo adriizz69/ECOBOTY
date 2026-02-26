@@ -18,14 +18,22 @@ export const ACHIEVEMENT_EVENTS = [
   { key: "server_boost", supportsTier: false },
   { key: "role_received", supportsTier: false },
   { key: "twitch_authenticated", supportsTier: false },
+  { key: "twitch_sub_count", supportsTier: true },
+  { key: "twitch_subgift_count", supportsTier: true },
+  { key: "twitch_bits_sent", supportsTier: true },
   { key: "birthday_added", supportsTier: false },
+  { key: "birthday_announced", supportsTier: false },
   { key: "voice_minutes", supportsTier: true },
   { key: "reactions_added", supportsTier: true },
   { key: "threads_created", supportsTier: true },
   { key: "threads_participated", supportsTier: true },
   { key: "economy_purchases", supportsTier: true },
+  { key: "economy_sales_count", supportsTier: true },
+  { key: "lootboxes_opened", supportsTier: true },
+  { key: "economy_balance_reached", supportsTier: true },
   { key: "daily_claims", supportsTier: true },
   { key: "shop_views", supportsTier: true },
+  { key: "twitch_watch_live_minutes", supportsTier: true },
   { key: "games_played", supportsTier: true },
   { key: "games_won", supportsTier: true }
 ];
@@ -509,7 +517,13 @@ const getEventDefinition = (eventKey) =>
 
 const isSingleThresholdEvent = (eventKey) => {
   const key = String(eventKey || "").trim().toLowerCase();
-  return key === "role_received" || key === "server_boost" || key === "twitch_authenticated" || key === "birthday_added";
+  return (
+    key === "role_received" ||
+    key === "server_boost" ||
+    key === "twitch_authenticated" ||
+    key === "birthday_added" ||
+    key === "birthday_announced"
+  );
 };
 
 const getDefaultTierTitle = (tierKey) => {
@@ -987,6 +1001,7 @@ const upsertProgressScope = async ({
   scopeType,
   scopeId,
   increment,
+  mode = "increment",
   threshold,
   notifyEnabled,
   notifyPercent
@@ -1034,8 +1049,12 @@ const upsertProgressScope = async ({
       };
     }
 
-    const inc = Math.max(1, toInt(increment, 1, { min: 1 }));
-    const next = current + inc;
+    const normalizedMode = String(mode || "").trim().toLowerCase() === "set_max" ? "set_max" : "increment";
+    const inc =
+      normalizedMode === "set_max"
+        ? Math.max(0, toInt(increment, 0, { min: 0 }))
+        : Math.max(1, toInt(increment, 1, { min: 1 }));
+    const next = normalizedMode === "set_max" ? Math.max(current, inc) : current + inc;
     const updates = {
       progress_count: next,
       updated_at: now
@@ -1062,7 +1081,11 @@ const upsertProgressScope = async ({
       completedNow = true;
     }
 
-    await trx(TABLES.progress).where({ id: row.id }).update(updates);
+    const hasProgressCountChange = next !== current;
+    const mustPersistFlags = progressNotifiedNow || completedNow;
+    if (hasProgressCountChange || mustPersistFlags) {
+      await trx(TABLES.progress).where({ id: row.id }).update(updates);
+    }
     return {
       rowId: Number(row.id),
       progressCount: next,
@@ -1724,9 +1747,13 @@ export const recordAchievementEvent = async ({
   }
 
   const now = new Date();
+  const isBalanceEvent = normalizedEventKey === "economy_balance_reached";
   const incrementValue = isSingleThresholdEvent(normalizedEventKey)
     ? 1
+    : isBalanceEvent
+    ? Math.max(0, toInt(metadata?.currentBalance ?? metadata?.balance ?? increment, 0, { min: 0 }))
     : Math.max(1, toInt(increment, 1, { min: 1 }));
+  const progressMode = isBalanceEvent ? "set_max" : "increment";
   const unlockedActions = [];
   const progressActions = [];
   let botTimeZone = "UTC";
@@ -1762,6 +1789,7 @@ export const recordAchievementEvent = async ({
         scopeType: "unique",
         scopeId: 0,
         increment: incrementValue,
+        mode: progressMode,
         threshold: definition.threshold,
         notifyEnabled: definition.notify.progressEnabled,
         notifyPercent: definition.notify.progressPercent
@@ -1794,6 +1822,7 @@ export const recordAchievementEvent = async ({
         scopeType: "tier",
         scopeId: tier.id,
         increment: incrementValue,
+        mode: progressMode,
         threshold: tier.threshold,
         notifyEnabled: tier.notify.progressEnabled,
         notifyPercent: tier.notify.progressPercent
@@ -2090,7 +2119,7 @@ export const syncAchievementFromDiscord = async ({ guildId, achievementId }) => 
 
   const eventKey = String(definition.eventKey || "").trim().toLowerCase();
   if (String(definition.type || "") !== "unique") throw new Error("achievement_sync_not_supported");
-  if (!["role_received", "server_boost", "birthday_added"].includes(eventKey)) {
+  if (!["role_received", "server_boost", "birthday_added", "twitch_authenticated"].includes(eventKey)) {
     throw new Error("achievement_sync_not_supported");
   }
   if (eventKey === "role_received" && !normalizeRoleId(definition.eventTargetRoleId)) {
@@ -2111,10 +2140,16 @@ export const syncAchievementFromDiscord = async ({ guildId, achievementId }) => 
   } else {
     const members = await loadDiscordGuildMembers(String(guildId));
     const eligible = [];
+    const memberUserIds = [];
     for (const member of members) {
       const userId = String(member?.user?.id || "").trim();
       if (!userId) continue;
       if (member?.user?.bot) continue;
+      memberUserIds.push(userId);
+
+      if (eventKey === "twitch_authenticated") {
+        continue;
+      }
 
       if (eventKey === "role_received") {
         const roleId = String(definition.eventTargetRoleId || "").trim();
@@ -2128,7 +2163,26 @@ export const syncAchievementFromDiscord = async ({ guildId, achievementId }) => 
       }
     }
     scannedMembers = members.length;
-    eligibleUserIds = Array.from(new Set(eligible));
+    if (eventKey === "twitch_authenticated") {
+      const uniqueMemberUserIds = Array.from(new Set(memberUserIds));
+      const linked = [];
+      for (let index = 0; index < uniqueMemberUserIds.length; index += 1000) {
+        const chunk = uniqueMemberUserIds.slice(index, index + 1000);
+        if (!chunk.length) continue;
+        const rows = await db("users")
+          .whereIn("discord_id", chunk)
+          .whereNotNull("twitch_login")
+          .whereRaw("TRIM(COALESCE(twitch_login, '')) <> ''")
+          .select("discord_id");
+        for (const row of rows || []) {
+          const discordId = String(row?.discord_id || "").trim();
+          if (discordId) linked.push(discordId);
+        }
+      }
+      eligibleUserIds = Array.from(new Set(linked));
+    } else {
+      eligibleUserIds = Array.from(new Set(eligible));
+    }
   }
 
   let synced = 0;

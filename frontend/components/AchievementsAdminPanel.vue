@@ -220,6 +220,11 @@
                 <input value="Validation automatique a l'ajout d'un anniversaire" type="text" disabled />
                 <span class="muted small">Le succes se debloque une seule fois quand le membre enregistre sa date d'anniversaire.</span>
               </label>
+              <label v-else-if="form.type === 'unique' && form.eventKey === 'birthday_announced'" class="event-condition-field">
+                Condition de validation
+                <input value="Validation automatique lors de l'anniversaire du membre" type="text" disabled />
+                <span class="muted small">Le succes se debloque quand l'anniversaire du membre est traite par le module anniversaire.</span>
+              </label>
               <label v-else-if="form.type === 'unique'" class="event-condition-field">
                 Nombre de fois a atteindre pour valider ce succes
                 <input v-model.number="form.threshold" type="number" min="1" placeholder="Ex: 10" />
@@ -563,14 +568,22 @@ const eventMetaMap = {
   server_boost: { label: "Boost serveur", icon: "rocket", color: "pink" },
   role_received: { label: "Role recu", icon: "shield", color: "purple" },
   twitch_authenticated: { label: "Authentification Twitch", icon: "sparkle", color: "cyan" },
+  twitch_sub_count: { label: "Abonnements Twitch", icon: "crown", color: "purple" },
+  twitch_subgift_count: { label: "Subgifts Twitch", icon: "gift", color: "orange" },
+  twitch_bits_sent: { label: "Bits Twitch", icon: "coin", color: "cyan" },
   birthday_added: { label: "Anniversaire ajoute", icon: "gift", color: "orange" },
+  birthday_announced: { label: "Anniversaire celebre", icon: "star", color: "pink" },
   voice_minutes: { label: "Vocal", icon: "headset", color: "cyan" },
   reactions_added: { label: "Reactions", icon: "heart", color: "orange" },
   threads_created: { label: "Threads crees", icon: "book", color: "mint" },
   threads_participated: { label: "Participation threads", icon: "chat", color: "green" },
   economy_purchases: { label: "Achats economie", icon: "shop", color: "gold" },
+  economy_sales_count: { label: "Ventes economie", icon: "tag", color: "mint" },
+  lootboxes_opened: { label: "Lootbox ouvertes", icon: "gift", color: "purple" },
+  economy_balance_reached: { label: "Solde economie", icon: "coin", color: "yellow" },
   daily_claims: { label: "Daily", icon: "gift", color: "yellow" },
   shop_views: { label: "Vues shop", icon: "shop", color: "peach" },
+  twitch_watch_live_minutes: { label: "Minutes live Twitch", icon: "headset", color: "cyan" },
   games_played: { label: "Parties jouees", icon: "gamepad", color: "green" },
   games_won: { label: "Parties gagnees", icon: "trophy", color: "gold" }
 };
@@ -580,14 +593,22 @@ const eventOptionTextMap = {
   server_boost: "Le membre boost le serveur (non configurable en palier)",
   role_received: "Le membre recoit un role (non configurable en palier)",
   twitch_authenticated: "Le membre s'authentifie avec Twitch (non configurable en palier)",
+  twitch_sub_count: "Le membre s'abonne X fois a la chaine Twitch",
+  twitch_subgift_count: "Le membre offre X subgifts sur la chaine Twitch",
+  twitch_bits_sent: "Le membre envoie X bits sur la chaine Twitch",
   birthday_added: "Le membre ajoute sa date d'anniversaire (non configurable en palier)",
+  birthday_announced: "Le membre est celebre automatiquement le jour de son anniversaire (non configurable en palier)",
   voice_minutes: "Le membre passe X minutes dans les salons vocaux",
   reactions_added: "Le membre ajoute des reactions a X messages",
   threads_created: "Un membre cree X fils de discussion ou publications de forum",
   threads_participated: "Un membre participe a X fils de discussion ou publications de forum",
   economy_purchases: "Le membre achete X objets d'economie",
+  economy_sales_count: "Le membre vend X objets sur la revente",
+  lootboxes_opened: "Le membre ouvre X lootboxes",
+  economy_balance_reached: "Le membre atteint un solde economie de X",
   daily_claims: "Le membre utilise X fois la commande daily",
   shop_views: "Le membre regarde X fois le shop",
+  twitch_watch_live_minutes: "Le membre passe X minutes sur le live Twitch",
   games_played: "Le membre joue a des jeux X fois",
   games_won: "Le membre gagne X parties"
 };
@@ -936,7 +957,13 @@ const eventLabel = (eventKey) => {
 
 const isSingleUnlockEvent = (eventKey) => {
   const key = String(eventKey || "").trim();
-  return key === "role_received" || key === "server_boost" || key === "twitch_authenticated" || key === "birthday_added";
+  return (
+    key === "role_received" ||
+    key === "server_boost" ||
+    key === "twitch_authenticated" ||
+    key === "birthday_added" ||
+    key === "birthday_announced"
+  );
 };
 
 const uniqueThresholdHelp = (eventKey) => {
@@ -953,6 +980,9 @@ const uniqueThresholdHelp = (eventKey) => {
   if (key === "birthday_added") {
     return "Succes valide automatiquement lors du premier enregistrement de la date d'anniversaire.";
   }
+  if (key === "birthday_announced") {
+    return "Succes valide automatiquement quand l'anniversaire du membre est traite sur le serveur.";
+  }
   return "Definis le nombre exact de fois necessaires pour debloquer ce succes unique.";
 };
 
@@ -960,7 +990,12 @@ const canSyncFromDiscord = (item) => {
   const type = String(item?.type || "").trim();
   const eventKey = String(item?.eventKey || "").trim();
   if (type !== "unique") return false;
-  return eventKey === "role_received" || eventKey === "server_boost" || eventKey === "birthday_added";
+  return (
+    eventKey === "role_received" ||
+    eventKey === "server_boost" ||
+    eventKey === "birthday_added" ||
+    eventKey === "twitch_authenticated"
+  );
 };
 
 const roleName = (roleId) => {
@@ -1395,7 +1430,13 @@ const toggleEnabled = async (item) => {
 
 const syncAchievementAction = async (item) => {
   if (!canSyncFromDiscord(item)) return;
-  const eventLabelText = item.eventKey === "role_received" ? "roles deja obtenus" : "boosters deja actifs";
+  const syncScopeLabelMap = {
+    role_received: "membres ayant deja le role cible",
+    server_boost: "boosters deja actifs",
+    birthday_added: "membres ayant deja ajoute leur anniversaire",
+    twitch_authenticated: "membres ayant deja lie leur compte Twitch"
+  };
+  const eventLabelText = syncScopeLabelMap[String(item?.eventKey || "").trim()] || "membres eligibles";
   const confirmed = window.confirm(
     `Synchroniser ce succes avec les ${eventLabelText} ?\\n\\n` +
       "Le bot ne retire/ajoute rien avant synchronisation: il valide juste les membres deja eligibles."

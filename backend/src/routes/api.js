@@ -48,7 +48,8 @@ import {
   updateAchievement,
   deleteAchievement,
   applyAchievementTemplate,
-  syncAchievementFromDiscord
+  syncAchievementFromDiscord,
+  recordAchievementEvent
 } from "../services/achievements.js";
 import {
   listGuildBirthdays,
@@ -59,6 +60,25 @@ import {
 } from "../services/birthdays.js";
 
 export const apiRouter = Router();
+
+const trackBalanceAchievementSafe = async ({ guildId, userId, balance, metadata = {} }) => {
+  const numericBalance = Number(balance);
+  if (!Number.isFinite(numericBalance) || numericBalance < 0) return;
+  try {
+    await recordAchievementEvent({
+      guildId: String(guildId),
+      userId: String(userId),
+      eventKey: "economy_balance_reached",
+      increment: Math.floor(numericBalance),
+      metadata: {
+        currentBalance: Math.floor(numericBalance),
+        ...metadata
+      }
+    });
+  } catch {
+    // ignore achievements errors in API flows
+  }
+};
 
 const leaderboardI18n = {
   fr: {
@@ -791,6 +811,24 @@ apiRouter.post("/economy/daily", async (req, res) => {
   if (!guildId || !userId) return res.status(400).json({ error: "missing_params" });
   try {
     const result = await applyDaily({ guildId, userId });
+    if (result?.ok) {
+      try {
+        await recordAchievementEvent({
+          guildId: String(guildId),
+          userId: String(userId),
+          eventKey: "daily_claims",
+          increment: 1
+        });
+      } catch {
+        // ignore achievements errors in daily endpoint
+      }
+      await trackBalanceAchievementSafe({
+        guildId,
+        userId,
+        balance: result.balance,
+        metadata: { source: "daily" }
+      });
+    }
     return res.json(result);
   } catch (error) {
     return res.status(400).json({ error: error.message || "daily_failed" });
@@ -851,6 +889,12 @@ apiRouter.post("/economy/user-balance", async (req, res) => {
   if (!guildId || !userId) return res.status(400).json({ error: "missing_params" });
   try {
     const result = await updateUserBalance({ guildId, userId, amount, mode });
+    await trackBalanceAchievementSafe({
+      guildId,
+      userId,
+      balance: result.balance,
+      metadata: { source: "manual" }
+    });
     return res.json({ ok: true, ...result });
   } catch (error) {
     return res.status(400).json({ error: error.message || "balance_update_failed" });
@@ -1279,6 +1323,12 @@ apiRouter.post("/twitch/add-money", async (req, res) => {
       userId: user.discord_id,
       amount: Number(amount),
       mode: "add"
+    });
+    await trackBalanceAchievementSafe({
+      guildId,
+      userId: user.discord_id,
+      balance: result.balance,
+      metadata: { source: "twitch_add_money" }
     });
     return res.json({ ok: true, discordId: user.discord_id, balance: result.balance, diff: result.diff });
   } catch (error) {

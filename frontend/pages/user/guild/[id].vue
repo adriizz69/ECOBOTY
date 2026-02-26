@@ -1,5 +1,5 @@
 <template>
-  <section class="page">
+  <section class="page" :class="`theme-${activeTab}`">
     <div class="page-head" :class="{ 'page-head--with-daily': dailyEnabled }">
       <div class="head-main">
         <span class="head-kicker">PLAYER SPACE</span>
@@ -86,10 +86,18 @@
         <button :class="['tab', activeTab === 'inventory' && 'active']" @click="activeTab = 'inventory'">{{ $t("userGuild.tabs.inventory") }}</button>
         <button :class="['tab', activeTab === 'market' && 'active']" @click="activeTab = 'market'">{{ $t("userGuild.tabs.market") }}</button>
         <button :class="['tab', activeTab === 'games' && 'active']" @click="activeTab = 'games'">{{ $t("userGuild.tabs.games") }}</button>
-        <button :class="['tab', activeTab === 'account' && 'active']" @click="activeTab = 'account'">Mon compte</button>
         <button v-if="achievementsVisible" :class="['tab', activeTab === 'achievements' && 'active']" @click="activeTab = 'achievements'">Succes</button>
         <button :class="['tab', activeTab === 'logs' && 'active']" @click="activeTab = 'logs'">{{ $t("userGuild.tabs.logs") }}</button>
+        <button :class="['tab', activeTab === 'account' && 'active']" @click="activeTab = 'account'">Mon compte</button>
       </div>
+
+      <section class="tab-hero">
+        <div class="tab-hero-main">
+          <span class="tab-hero-kicker">{{ activeTabHero.kicker }}</span>
+          <h3>{{ activeTabHero.title }}</h3>
+          <p class="muted">{{ activeTabHero.help }}</p>
+        </div>
+      </section>
 
       <div v-show="activeTab === 'shops'" class="grid">
         <UCard class="card">
@@ -1002,6 +1010,63 @@ const greetingName = computed(() => {
 
 const greetingText = computed(() => {
   return greetingName.value ? `${greetingLabel.value} ${greetingName.value}` : greetingLabel.value;
+});
+
+const activeTabHero = computed(() => {
+  const localeCode = String(locale.value || "fr").toLowerCase();
+  const accountTitle =
+    localeCode === "en" ? "My account" : localeCode === "es" ? "Mi cuenta" : "Mon compte";
+  const accountHelp =
+    localeCode === "en"
+      ? "Manage your birthday and profile information."
+      : localeCode === "es"
+        ? "Gestiona tu cumpleanos y tu perfil de jugador."
+        : "Gere ton anniversaire et les informations de ton compte.";
+
+  const heroByTab = {
+    shops: {
+      kicker: "PLAYER SHOPS",
+      title: t("userGuild.shops.title"),
+      help: t("userGuild.shops.help")
+    },
+    inventory: {
+      kicker: "PLAYER INVENTORY",
+      title: t("userGuild.inventory.title"),
+      help: t("userGuild.inventory.help")
+    },
+    market: {
+      kicker: "PLAYER MARKET",
+      title: t("userGuild.market.marketTitle"),
+      help: t("userGuild.market.marketHelp")
+    },
+    games: {
+      kicker: "PLAYER GAMES",
+      title: t("userGuild.games.title"),
+      help: t("userGuild.games.help")
+    },
+    achievements: {
+      kicker: "PLAYER PROGRESSION",
+      title: "Succes",
+      help:
+        localeCode === "en"
+          ? "Track your achievement progression on this server."
+          : localeCode === "es"
+            ? "Sigue tu progresion de logros en este servidor."
+            : "Progression de tes succes sur ce serveur."
+    },
+    logs: {
+      kicker: "PLAYER LOGS",
+      title: t("userGuild.tabs.logs"),
+      help: t("userGuild.logs.gainsHelp")
+    },
+    account: {
+      kicker: "PLAYER ACCOUNT",
+      title: accountTitle,
+      help: accountHelp
+    }
+  };
+
+  return heroByTab[activeTab.value] || heroByTab.shops;
 });
 
 const botTimeZone = computed(() => {
@@ -3286,8 +3351,34 @@ textarea:focus {
 
 /* Playful refresh */
 .page {
+  --tab-rgb: 34 197 94;
+  --tab-soft-rgb: 134 239 172;
   gap: 16px;
   background: transparent;
+}
+.page.theme-inventory {
+  --tab-rgb: 14 165 233;
+  --tab-soft-rgb: 125 211 252;
+}
+.page.theme-market {
+  --tab-rgb: 249 115 22;
+  --tab-soft-rgb: 253 186 116;
+}
+.page.theme-games {
+  --tab-rgb: 52 211 153;
+  --tab-soft-rgb: 167 243 208;
+}
+.page.theme-achievements {
+  --tab-rgb: 59 130 246;
+  --tab-soft-rgb: 147 197 253;
+}
+.page.theme-logs {
+  --tab-rgb: 148 163 184;
+  --tab-soft-rgb: 203 213 225;
+}
+.page.theme-account {
+  --tab-rgb: 251 191 36;
+  --tab-soft-rgb: 253 230 138;
 }
 .page::before,
 .page::after {
@@ -3298,8 +3389,8 @@ textarea:focus {
   position: relative;
   border-radius: 24px;
   padding: 20px;
-  background: linear-gradient(128deg, rgba(15, 23, 42, 0.95), rgba(29, 78, 216, 0.3), rgba(219, 39, 119, 0.24));
-  border: 1px solid rgba(125, 211, 252, 0.3);
+  background: linear-gradient(128deg, rgba(15, 23, 42, 0.95), rgb(var(--tab-rgb) / 0.32), rgb(var(--tab-soft-rgb) / 0.24));
+  border: 1px solid rgb(var(--tab-rgb) / 0.32);
   box-shadow: 0 24px 44px rgba(2, 6, 23, 0.35);
   overflow: hidden;
 }
@@ -3311,7 +3402,7 @@ textarea:focus {
   right: -70px;
   bottom: -100px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(56, 189, 248, 0.26), transparent 72%);
+  background: radial-gradient(circle, rgb(var(--tab-rgb) / 0.26), transparent 72%);
   pointer-events: none;
 }
 .head-main {
@@ -3359,8 +3450,8 @@ textarea:focus {
   gap: 6px;
   padding: 5px 11px;
   border-radius: 999px;
-  border: 1px solid rgba(96, 165, 250, 0.32);
-  background: linear-gradient(125deg, rgba(15, 23, 42, 0.65), rgba(30, 64, 175, 0.22));
+  border: 1px solid rgb(var(--tab-rgb) / 0.34);
+  background: linear-gradient(125deg, rgba(15, 23, 42, 0.65), rgb(var(--tab-rgb) / 0.22), rgb(var(--tab-soft-rgb) / 0.2));
   color: #e2e8f0;
   font-size: 12px;
   font-weight: 500;
@@ -3373,8 +3464,8 @@ textarea:focus {
   margin-top: 0;
   padding: 12px;
   border-radius: 14px;
-  border: 1px solid rgba(45, 212, 191, 0.36);
-  background: linear-gradient(130deg, rgba(20, 184, 166, 0.2), rgba(37, 99, 235, 0.18));
+  border: 1px solid rgb(var(--tab-rgb) / 0.36);
+  background: linear-gradient(130deg, rgb(var(--tab-rgb) / 0.2), rgb(var(--tab-soft-rgb) / 0.2));
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -3392,7 +3483,7 @@ textarea:focus {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  color: #ccfbf1;
+  color: rgb(var(--tab-soft-rgb) / 1);
 }
 .daily-inline-status {
   font-size: 13px;
@@ -3409,7 +3500,7 @@ textarea:focus {
   gap: 6px;
   padding: 5px 10px;
   border-radius: 999px;
-  border: 1px solid rgba(125, 211, 252, 0.32);
+  border: 1px solid rgb(var(--tab-rgb) / 0.34);
   background: rgba(15, 23, 42, 0.45);
   color: #e2e8f0;
   font-size: 12px;
@@ -3437,14 +3528,14 @@ textarea:focus {
 .balance-card {
   border-radius: 14px;
   padding: 10px 12px;
-  border-color: rgba(125, 211, 252, 0.34);
-  background: linear-gradient(138deg, rgba(15, 23, 42, 0.62), rgba(14, 116, 144, 0.26), rgba(79, 70, 229, 0.22));
+  border-color: rgb(var(--tab-rgb) / 0.34);
+  background: linear-gradient(138deg, rgba(15, 23, 42, 0.62), rgb(var(--tab-rgb) / 0.24), rgb(var(--tab-soft-rgb) / 0.22));
 }
 .tabs {
   padding: 8px;
   gap: 10px;
   border-radius: 18px;
-  border-color: rgba(125, 211, 252, 0.24);
+  border-color: rgb(var(--tab-rgb) / 0.24);
   background: linear-gradient(130deg, rgba(15, 23, 42, 0.7), rgba(30, 41, 59, 0.55));
   box-shadow: 0 12px 24px rgba(2, 6, 23, 0.22);
 }
@@ -3457,12 +3548,46 @@ textarea:focus {
 }
 .tab:hover {
   transform: translateY(-1px);
-  border-color: rgba(125, 211, 252, 0.52);
+  border-color: rgb(var(--tab-rgb) / 0.52);
 }
 .tab.active {
-  border-color: rgba(56, 189, 248, 0.76);
-  background: linear-gradient(130deg, rgba(56, 189, 248, 0.3), rgba(236, 72, 153, 0.25));
-  box-shadow: 0 10px 18px rgba(14, 116, 144, 0.28);
+  border-color: rgb(var(--tab-rgb) / 0.76);
+  background: linear-gradient(130deg, rgb(var(--tab-rgb) / 0.3), rgb(var(--tab-soft-rgb) / 0.25));
+  box-shadow: 0 10px 18px rgb(var(--tab-rgb) / 0.28);
+}
+.tab-hero {
+  border: 1px solid rgb(var(--tab-rgb) / 0.34);
+  border-radius: 22px;
+  padding: 16px 18px;
+  background:
+    linear-gradient(140deg, rgb(var(--tab-rgb) / 0.2), rgba(15, 23, 42, 0.45)),
+    radial-gradient(circle at 0% 0%, rgb(var(--tab-soft-rgb) / 0.16), transparent 48%);
+  box-shadow: inset 0 0 0 1px rgb(var(--tab-rgb) / 0.12), 0 12px 28px rgba(2, 6, 23, 0.22);
+}
+.tab-hero-main {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tab-hero-kicker {
+  display: inline-flex;
+  width: fit-content;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgb(var(--tab-rgb) / 0.38);
+  background: rgba(15, 23, 42, 0.38);
+  color: rgb(var(--tab-soft-rgb) / 1);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+.tab-hero h3 {
+  margin: 0;
+  font-size: 1.08rem;
+}
+.tab-hero p {
+  margin: 0;
 }
 .grid {
   gap: 16px;
@@ -3496,7 +3621,7 @@ textarea:focus {
 .double-result-summary,
 .item-detail,
 .price-symbol {
-  border-color: rgba(125, 211, 252, 0.24);
+  border-color: rgb(var(--tab-rgb) / 0.24);
   background: linear-gradient(155deg, rgba(15, 23, 42, 0.72), rgba(30, 41, 59, 0.58));
   box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.08), 0 10px 24px rgba(2, 6, 23, 0.22);
 }
@@ -3512,8 +3637,8 @@ textarea:focus {
   box-shadow: 0 22px 34px rgba(2, 6, 23, 0.34);
 }
 .shop-card.active {
-  border-color: rgba(56, 189, 248, 0.82);
-  background: linear-gradient(140deg, rgba(56, 189, 248, 0.25), rgba(99, 102, 241, 0.2), rgba(236, 72, 153, 0.16));
+  border-color: rgb(var(--tab-rgb) / 0.82);
+  background: linear-gradient(140deg, rgb(var(--tab-rgb) / 0.25), rgb(var(--tab-soft-rgb) / 0.2), rgb(var(--tab-rgb) / 0.12));
 }
 .shop-card.locked {
   filter: saturate(0.72);
@@ -3525,8 +3650,8 @@ textarea:focus {
 .game-icon,
 .lootbox-icon,
 .reward-image {
-  border: 1px solid rgba(125, 211, 252, 0.35);
-  background: radial-gradient(circle at 24% 20%, rgba(56, 189, 248, 0.46), rgba(30, 41, 59, 0.95));
+  border: 1px solid rgb(var(--tab-rgb) / 0.35);
+  background: radial-gradient(circle at 24% 20%, rgb(var(--tab-rgb) / 0.46), rgba(30, 41, 59, 0.95));
   background-repeat: no-repeat;
   background-position: center;
   background-size: contain;
@@ -3545,19 +3670,19 @@ textarea:focus {
 }
 .item-more {
   border-radius: 12px;
-  border-color: rgba(45, 212, 191, 0.56);
-  background: linear-gradient(120deg, rgba(45, 212, 191, 0.24), rgba(56, 189, 248, 0.22));
-  color: #ccfbf1;
+  border-color: rgb(var(--tab-rgb) / 0.56);
+  background: linear-gradient(120deg, rgb(var(--tab-rgb) / 0.24), rgb(var(--tab-soft-rgb) / 0.22));
+  color: rgb(var(--tab-soft-rgb) / 1);
 }
 .stat-pill {
-  border-color: rgba(125, 211, 252, 0.34);
-  background: linear-gradient(120deg, rgba(56, 189, 248, 0.2), rgba(99, 102, 241, 0.18));
+  border-color: rgb(var(--tab-rgb) / 0.34);
+  background: linear-gradient(120deg, rgb(var(--tab-rgb) / 0.22), rgb(var(--tab-soft-rgb) / 0.18));
 }
 .pill.neutral {
   background: linear-gradient(120deg, rgba(148, 163, 184, 0.2), rgba(148, 163, 184, 0.1));
 }
 .pill.info {
-  background: linear-gradient(120deg, rgba(56, 189, 248, 0.26), rgba(59, 130, 246, 0.2));
+  background: linear-gradient(120deg, rgb(var(--tab-rgb) / 0.26), rgb(var(--tab-soft-rgb) / 0.2));
 }
 .pill.warning {
   background: linear-gradient(120deg, rgba(251, 191, 36, 0.28), rgba(245, 158, 11, 0.16));
@@ -3578,14 +3703,14 @@ select,
 input,
 textarea {
   border-radius: 14px;
-  border-color: rgba(125, 211, 252, 0.3);
+  border-color: rgb(var(--tab-rgb) / 0.3);
   background: rgba(15, 23, 42, 0.56);
 }
 select:focus,
 input:focus,
 textarea:focus {
-  border-color: rgba(56, 189, 248, 0.8);
-  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.22);
+  border-color: rgb(var(--tab-rgb) / 0.8);
+  box-shadow: 0 0 0 2px rgb(var(--tab-rgb) / 0.22);
 }
 .modal {
   background: rgba(2, 6, 23, 0.72);
@@ -3593,48 +3718,48 @@ textarea:focus {
 }
 .modal-card {
   border-radius: 22px;
-  border-color: rgba(125, 211, 252, 0.32);
+  border-color: rgb(var(--tab-rgb) / 0.32);
   background: linear-gradient(145deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.78));
 }
 .slot-frame,
 .double-window,
 .lootbox-window {
-  border-color: rgba(125, 211, 252, 0.3);
-  box-shadow: inset 0 0 34px rgba(14, 116, 144, 0.2), 0 22px 36px rgba(2, 6, 23, 0.35);
+  border-color: rgb(var(--tab-rgb) / 0.3);
+  box-shadow: inset 0 0 34px rgb(var(--tab-rgb) / 0.2), 0 22px 36px rgba(2, 6, 23, 0.35);
 }
 .slot-line {
-  background: linear-gradient(90deg, transparent, rgba(244, 114, 182, 0.86), transparent);
-  box-shadow: 0 0 12px rgba(244, 114, 182, 0.5);
+  background: linear-gradient(90deg, transparent, rgb(var(--tab-rgb) / 0.86), transparent);
+  box-shadow: 0 0 12px rgb(var(--tab-rgb) / 0.5);
 }
 .double-pointer,
 .lootbox-marker {
-  background: linear-gradient(180deg, rgba(56, 189, 248, 0.2), rgba(56, 189, 248, 1), rgba(56, 189, 248, 0.2));
+  background: linear-gradient(180deg, rgb(var(--tab-rgb) / 0.2), rgb(var(--tab-rgb) / 1), rgb(var(--tab-rgb) / 0.2));
 }
 
 :global(body.theme-light) .page {
   background: transparent;
 }
 :global(body.theme-light) .page-head {
-  background: linear-gradient(130deg, #ffffff, rgba(224, 242, 254, 0.9), rgba(233, 213, 255, 0.74));
-  border-color: rgba(125, 211, 252, 0.4);
+  background: linear-gradient(130deg, #ffffff, rgb(var(--tab-rgb) / 0.14), rgb(var(--tab-soft-rgb) / 0.16));
+  border-color: rgb(var(--tab-rgb) / 0.4);
   box-shadow: 0 18px 34px rgba(15, 23, 42, 0.1);
 }
 :global(body.theme-light) .head-kicker {
   background: rgba(241, 245, 249, 0.95);
-  border-color: rgba(125, 211, 252, 0.4);
+  border-color: rgb(var(--tab-rgb) / 0.4);
   color: #0f172a;
 }
 :global(body.theme-light) .head-stat {
   color: #1e293b;
-  border-color: rgba(56, 189, 248, 0.35);
-  background: linear-gradient(120deg, rgba(224, 242, 254, 0.9), rgba(199, 210, 254, 0.6));
+  border-color: rgb(var(--tab-rgb) / 0.35);
+  background: linear-gradient(120deg, rgb(var(--tab-rgb) / 0.14), rgb(var(--tab-soft-rgb) / 0.2));
 }
 :global(body.theme-light) .head-stat strong {
   color: #0f172a;
 }
 :global(body.theme-light) .daily-inline {
-  background: linear-gradient(120deg, rgba(204, 251, 241, 0.95), rgba(224, 242, 254, 0.85));
-  border-color: rgba(45, 212, 191, 0.42);
+  background: linear-gradient(120deg, rgb(var(--tab-rgb) / 0.14), rgb(var(--tab-soft-rgb) / 0.2));
+  border-color: rgb(var(--tab-rgb) / 0.42);
 }
 :global(body.theme-light) .daily-inline-title,
 :global(body.theme-light) .daily-inline-status,
@@ -3646,20 +3771,31 @@ textarea:focus {
   border-color: rgba(148, 163, 184, 0.3);
 }
 :global(body.theme-light) .balance-card {
-  background: linear-gradient(120deg, rgba(224, 242, 254, 0.95), rgba(219, 234, 254, 0.8));
-  border-color: rgba(56, 189, 248, 0.4);
+  background: linear-gradient(120deg, rgb(var(--tab-rgb) / 0.14), rgb(var(--tab-soft-rgb) / 0.2));
+  border-color: rgb(var(--tab-rgb) / 0.4);
 }
 :global(body.theme-light) .tabs {
   background: linear-gradient(120deg, rgba(248, 250, 252, 0.92), rgba(239, 246, 255, 0.85));
   border-color: rgba(148, 163, 184, 0.24);
+}
+:global(body.theme-light) .tab-hero {
+  border-color: rgb(var(--tab-rgb) / 0.32);
+  background:
+    linear-gradient(130deg, #ffffff, rgb(var(--tab-rgb) / 0.12), rgb(var(--tab-soft-rgb) / 0.18));
+  box-shadow: 0 12px 26px rgba(15, 23, 42, 0.08);
+}
+:global(body.theme-light) .tab-hero-kicker {
+  border-color: rgb(var(--tab-rgb) / 0.36);
+  background: rgba(255, 255, 255, 0.92);
+  color: #0f172a;
 }
 :global(body.theme-light) .tab {
   background: #ffffff;
   border-color: rgba(148, 163, 184, 0.28);
 }
 :global(body.theme-light) .tab.active {
-  background: linear-gradient(120deg, rgba(56, 189, 248, 0.2), rgba(244, 114, 182, 0.16));
-  border-color: rgba(56, 189, 248, 0.46);
+  background: linear-gradient(120deg, rgb(var(--tab-rgb) / 0.2), rgb(var(--tab-soft-rgb) / 0.16));
+  border-color: rgb(var(--tab-rgb) / 0.46);
 }
 :global(body.theme-light) .card {
   background: linear-gradient(150deg, #ffffff, rgba(240, 249, 255, 0.9));
@@ -3681,14 +3817,14 @@ textarea:focus {
   box-shadow: 0 10px 22px rgba(15, 23, 42, 0.08);
 }
 :global(body.theme-light) .shop-card.active {
-  background: linear-gradient(130deg, rgba(186, 230, 253, 0.62), rgba(224, 231, 255, 0.6), rgba(251, 207, 232, 0.52));
+  background: linear-gradient(130deg, rgb(var(--tab-rgb) / 0.18), rgb(var(--tab-soft-rgb) / 0.2), rgb(var(--tab-rgb) / 0.1));
 }
 :global(body.theme-light) .shop-thumb,
 :global(body.theme-light) .item-image,
 :global(body.theme-light) .sale-preview-image,
 :global(body.theme-light) .item-detail-image,
 :global(body.theme-light) .game-icon {
-  border-color: rgba(125, 211, 252, 0.38);
+  border-color: rgb(var(--tab-rgb) / 0.38);
 }
 :global(body.theme-light) select,
 :global(body.theme-light) input,

@@ -76,6 +76,21 @@ const trackAchievementSafe = async ({
   }
 };
 
+const trackBalanceAchievementSafe = async ({ guildId, userId, balance, metadata = {} }) => {
+  const numericBalance = Number(balance);
+  if (!Number.isFinite(numericBalance) || numericBalance < 0) return;
+  await trackAchievementSafe({
+    guildId,
+    userId,
+    eventKey: "economy_balance_reached",
+    increment: Math.floor(numericBalance),
+    metadata: {
+      currentBalance: Math.floor(numericBalance),
+      ...metadata
+    }
+  });
+};
+
 botRouter.use((req, res, next) => {
   const token = req.headers["x-api-key"];
   if (!token || token !== process.env.API_SECRET_KEY) {
@@ -202,6 +217,12 @@ botRouter.post("/economy/daily", async (req, res) => {
         eventKey: "daily_claims",
         increment: 1
       });
+      await trackBalanceAchievementSafe({
+        guildId,
+        userId,
+        balance: result.balance,
+        metadata: { source: "daily" }
+      });
     }
     return res.json(result);
   } catch (error) {
@@ -298,6 +319,12 @@ botRouter.post("/games/play", async (req, res) => {
           metadata: { gameId }
         });
       }
+      await trackBalanceAchievementSafe({
+        guildId,
+        userId,
+        balance: result.balance,
+        metadata: { source: "game", gameId }
+      });
     }
     return res.json(result);
   } catch (error) {
@@ -458,6 +485,14 @@ botRouter.post("/economy/auto-gain", async (req, res) => {
       channelId,
       roleIds: Array.isArray(roleIds) ? roleIds : []
     });
+    if (result?.ok) {
+      await trackBalanceAchievementSafe({
+        guildId,
+        userId,
+        balance: result.balance,
+        metadata: { source: type }
+      });
+    }
     if (result.ok && shouldLogAutoGain(guildId)) {
       console.log(
         `[auto-gain] guild=${guildId} type=${type} amount=${result.amount} base=${result.base} mult=${result.multiplier}`
@@ -544,6 +579,13 @@ botRouter.post("/shops/:id/purchase", async (req, res) => {
         eventKey: "economy_purchases",
         increment: 1
       });
+      const currentBalance = await getBalance({ guildId, userId });
+      await trackBalanceAchievementSafe({
+        guildId,
+        userId,
+        balance: currentBalance,
+        metadata: { source: "purchase" }
+      });
     }
     return res.json(result);
   } catch (error) {
@@ -590,6 +632,23 @@ botRouter.post("/inventory/open", async (req, res) => {
   if (!guildId || !userId || !itemId) return res.status(400).json({ error: "missing_params" });
   try {
     const result = await openLootbox({ guildId, userId, itemId });
+    if (result?.ok) {
+      await trackAchievementSafe({
+        guildId,
+        userId,
+        eventKey: "lootboxes_opened",
+        increment: 1
+      });
+      if (String(result?.reward?.type || "") === "currency") {
+        const currentBalance = await getBalance({ guildId, userId });
+        await trackBalanceAchievementSafe({
+          guildId,
+          userId,
+          balance: currentBalance,
+          metadata: { source: "lootbox" }
+        });
+      }
+    }
     return res.json(result);
   } catch (error) {
     return res.status(400).json({ error: error.message || "lootbox_open_failed" });
@@ -612,6 +671,30 @@ botRouter.post("/inventory/buy", async (req, res) => {
   if (!guildId || !userId || !saleId) return res.status(400).json({ error: "missing_params" });
   try {
     const result = await buySale({ guildId, buyerId: userId, saleId });
+    if (result?.ok) {
+      await trackBalanceAchievementSafe({
+        guildId,
+        userId,
+        balance: result.buyerBalance,
+        metadata: { source: "sale_buy" }
+      });
+      if (!result.selfBuy && result.sellerId) {
+        await trackAchievementSafe({
+          guildId,
+          userId: result.sellerId,
+          eventKey: "economy_sales_count",
+          increment: 1,
+          metadata: { buyerId: userId, source: "sale_buy" }
+        });
+        const sellerBalance = await getBalance({ guildId, userId: result.sellerId });
+        await trackBalanceAchievementSafe({
+          guildId,
+          userId: result.sellerId,
+          balance: sellerBalance,
+          metadata: { source: "sale_sell" }
+        });
+      }
+    }
     return res.json(result);
   } catch (error) {
     return res.status(400).json({ error: error.message || "sale_buy_failed" });

@@ -1,17 +1,6 @@
 <template>
   <UCard class="card achievements-user">
     <div class="achv-shell">
-      <section class="achv-hero">
-        <div class="hero-main">
-          <span class="hero-kicker">PLAYER PROGRESSION</span>
-          <h3>Succes</h3>
-          <p class="muted">Progression de tes succes sur ce serveur.</p>
-        </div>
-        <div class="hero-actions">
-          <UButton color="neutral" variant="outline" :loading="loading" @click="loadAchievements">Actualiser</UButton>
-        </div>
-      </section>
-
       <section v-if="enabled && !loading" class="head-stats-grid">
         <article class="head-stat-card">
           <span class="head-stat-label">Total</span>
@@ -32,7 +21,10 @@
       </section>
 
       <section class="filters-wrap">
-        <div class="filters-title">Filtres</div>
+        <div class="filters-head">
+          <div class="filters-title">Filtres</div>
+          <UButton color="neutral" variant="outline" :loading="loading" @click="loadAchievements">Actualiser</UButton>
+        </div>
         <div class="filters">
           <label class="field">
             <span>Statut</span>
@@ -244,14 +236,22 @@ const eventMetaMap = {
   server_boost: { label: "Boost serveur", icon: "rocket" },
   role_received: { label: "Role recu", icon: "shield" },
   twitch_authenticated: { label: "Twitch lie", icon: "sparkle" },
+  twitch_sub_count: { label: "Abonnements Twitch", icon: "crown" },
+  twitch_subgift_count: { label: "Subgifts Twitch", icon: "gift" },
+  twitch_bits_sent: { label: "Bits Twitch", icon: "coin" },
   birthday_added: { label: "Anniversaire ajoute", icon: "gift" },
+  birthday_announced: { label: "Anniversaire celebre", icon: "star" },
   voice_minutes: { label: "Vocal", icon: "headset" },
   reactions_added: { label: "Reactions", icon: "heart" },
   threads_created: { label: "Threads crees", icon: "book" },
   threads_participated: { label: "Participation threads", icon: "chat" },
   economy_purchases: { label: "Achats economie", icon: "shop" },
+  economy_sales_count: { label: "Ventes economie", icon: "tag" },
+  lootboxes_opened: { label: "Lootbox ouvertes", icon: "gift" },
+  economy_balance_reached: { label: "Solde economie", icon: "coin" },
   daily_claims: { label: "Daily", icon: "gift" },
   shop_views: { label: "Vues shop", icon: "shop" },
+  twitch_watch_live_minutes: { label: "Minutes live Twitch", icon: "headset" },
   games_played: { label: "Parties jouees", icon: "gamepad" },
   games_won: { label: "Parties gagnees", icon: "trophy" }
 };
@@ -424,67 +424,13 @@ watch(
 
 <style scoped>
 .achievements-user {
-  position: relative;
   overflow: hidden;
 }
 
-.achievements-user::before {
-  content: "";
-  position: absolute;
-  inset: -24% -10% auto;
-  height: 220px;
-  background:
-    radial-gradient(circle at 10% 12%, rgba(34, 211, 238, 0.18), transparent 58%),
-    radial-gradient(circle at 85% 14%, rgba(59, 130, 246, 0.24), transparent 60%);
-  pointer-events: none;
-}
-
 .achv-shell {
-  position: relative;
-  z-index: 1;
   display: flex;
   flex-direction: column;
   gap: 16px;
-}
-
-.achv-hero {
-  border: 1px solid rgba(148, 163, 184, 0.25);
-  border-radius: 22px;
-  padding: 18px;
-  background:
-    linear-gradient(140deg, rgba(15, 23, 42, 0.68), rgba(15, 23, 42, 0.26)),
-    radial-gradient(circle at 0% 0%, rgba(56, 189, 248, 0.12), transparent 48%);
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 14px;
-  flex-wrap: wrap;
-}
-
-.hero-kicker {
-  display: inline-flex;
-  align-items: center;
-  border: 1px solid rgba(56, 189, 248, 0.35);
-  border-radius: 999px;
-  padding: 4px 10px;
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  color: #93c5fd;
-}
-
-.hero-main h3 {
-  margin: 10px 0 0;
-  font-size: 1.45rem;
-  line-height: 1.2;
-}
-
-.hero-main p {
-  margin: 8px 0 0;
-}
-
-.hero-actions {
-  display: flex;
-  align-items: center;
 }
 
 .head-stats-grid {
@@ -535,6 +481,14 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.filters-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .filters-title {
