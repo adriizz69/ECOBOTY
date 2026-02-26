@@ -803,6 +803,20 @@ const processGuildRoleSync = async (guildRow) => {
     }).catch(() => null);
   };
 
+  const trackBirthdayAnnounced = async (userId) => {
+    try {
+      await recordAchievementEvent({
+        guildId: guildDiscordId,
+        userId: String(userId),
+        eventKey: "birthday_announced",
+        increment: 1,
+        metadata: { source: "birthday_scheduler", date: todayIso }
+      });
+    } catch {
+      // ignore achievements errors
+    }
+  };
+
   const staleAssignments = await db(TABLES.roleAssignments)
     .where({
       guild_id: guildInternalId,
@@ -884,6 +898,7 @@ const processGuildRoleSync = async (guildRow) => {
           guildId: guildDiscordId,
           content: `🎂 <@${userId}> a deja le role anniversaire <@&${roleId}>. Aucun changement applique.`
         });
+        await trackBirthdayAnnounced(userId);
         await sendBirthdayAnnouncement(userId);
         continue;
       }
@@ -913,6 +928,7 @@ const processGuildRoleSync = async (guildRow) => {
         guildId: guildDiscordId,
         content: `🎂 Role anniversaire ajoute pour <@${userId}> : <@&${roleId}>.`
       });
+      await trackBirthdayAnnounced(userId);
       await sendBirthdayAnnouncement(userId);
     } catch {
       failed += 1;

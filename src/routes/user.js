@@ -115,6 +115,21 @@ const trackAchievementSafe = async ({
   }
 };
 
+const trackBalanceAchievementSafe = async ({ guildId, userId, balance, metadata = {} }) => {
+  const numericBalance = Number(balance);
+  if (!Number.isFinite(numericBalance) || numericBalance < 0) return;
+  await trackAchievementSafe({
+    guildId,
+    userId,
+    eventKey: "economy_balance_reached",
+    increment: Math.floor(numericBalance),
+    metadata: {
+      currentBalance: Math.floor(numericBalance),
+      ...metadata
+    }
+  });
+};
+
 userRouter.get("/servers", async (req, res) => {
   const userId = getActiveUser(req);
   if (!userId) return res.status(401).json({ error: "missing_user" });
@@ -255,6 +270,12 @@ userRouter.post("/guilds/:id/daily/claim", async (req, res) => {
         eventKey: "daily_claims",
         increment: 1
       });
+      await trackBalanceAchievementSafe({
+        guildId,
+        userId,
+        balance: result.balance,
+        metadata: { source: "daily" }
+      });
     }
     const daily = await getDailyStatus({ guildId, userId });
     return res.json({ ok: true, result, daily });
@@ -327,6 +348,13 @@ userRouter.post("/guilds/:id/shops/:shopId/purchase", async (req, res) => {
         eventKey: "economy_purchases",
         increment: 1
       });
+      const currentBalance = await getBalance({ guildId, userId });
+      await trackBalanceAchievementSafe({
+        guildId,
+        userId,
+        balance: currentBalance,
+        metadata: { source: "purchase" }
+      });
     }
     return res.json(result);
   } catch (error) {
@@ -388,6 +416,30 @@ userRouter.post("/guilds/:id/sales/:saleId/buy", async (req, res) => {
   try {
     await ensureUserGuildAccess({ guildId, userId });
     const result = await buySale({ guildId, buyerId: userId, saleId });
+    if (result?.ok) {
+      await trackBalanceAchievementSafe({
+        guildId,
+        userId,
+        balance: result.buyerBalance,
+        metadata: { source: "sale_buy" }
+      });
+      if (!result.selfBuy && result.sellerId) {
+        await trackAchievementSafe({
+          guildId,
+          userId: result.sellerId,
+          eventKey: "economy_sales_count",
+          increment: 1,
+          metadata: { buyerId: userId, source: "sale_buy" }
+        });
+        const sellerBalance = await getBalance({ guildId, userId: result.sellerId });
+        await trackBalanceAchievementSafe({
+          guildId,
+          userId: result.sellerId,
+          balance: sellerBalance,
+          metadata: { source: "sale_sell" }
+        });
+      }
+    }
     return res.json(result);
   } catch (error) {
     return res.status(400).json({ error: error.message || "sale_buy_failed" });
@@ -402,6 +454,23 @@ userRouter.post("/guilds/:id/inventory/:itemId/open", async (req, res) => {
   try {
     await ensureUserGuildAccess({ guildId, userId });
     const result = await openLootbox({ guildId, userId, itemId });
+    if (result?.ok) {
+      await trackAchievementSafe({
+        guildId,
+        userId,
+        eventKey: "lootboxes_opened",
+        increment: 1
+      });
+      if (String(result?.reward?.type || "") === "currency") {
+        const currentBalance = await getBalance({ guildId, userId });
+        await trackBalanceAchievementSafe({
+          guildId,
+          userId,
+          balance: currentBalance,
+          metadata: { source: "lootbox" }
+        });
+      }
+    }
     return res.json(result);
   } catch (error) {
     return res.status(400).json({ error: error.message || "lootbox_open_failed" });
@@ -460,6 +529,12 @@ userRouter.post("/guilds/:id/games/play", async (req, res) => {
           metadata: { gameId }
         });
       }
+      await trackBalanceAchievementSafe({
+        guildId,
+        userId,
+        balance: result.balance,
+        metadata: { source: "game", gameId }
+      });
     }
     return res.json(result);
   } catch (error) {

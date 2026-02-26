@@ -2,6 +2,7 @@ import tmi from "tmi.js";
 import { db } from "./db.js";
 import { ensureGuild, addTwitchGain, applyTwitchDaily, getOrCreateSettings } from "./economy.js";
 import { ensureEventSubSubscriptions } from "./twitchEventSub.js";
+import { recordAchievementEvent } from "./achievements.js";
 
 const twitchClients = new Map();
 const watchIntervals = new Map();
@@ -46,6 +47,79 @@ const randomInt = (min, max) => {
   const range = high - low + 1;
   if (range <= 1) return low;
   return Math.floor(Math.random() * range) + low;
+};
+
+const findLinkedDiscordUserByTwitchLogin = async (twitchLogin) => {
+  const login = String(twitchLogin || "").trim();
+  if (!login) return null;
+  return db("users")
+    .whereRaw("LOWER(twitch_login) = LOWER(?)", [login])
+    .first();
+};
+
+const trackTwitchAchievementByDiscordUser = async ({
+  guildId,
+  discordUserId,
+  eventKey,
+  increment = 1,
+  metadata = {}
+}) => {
+  const numericIncrement = Number(increment || 0);
+  if (!Number.isFinite(numericIncrement) || numericIncrement <= 0) {
+    return { ok: false, reason: "invalid_increment" };
+  }
+  const userId = String(discordUserId || "").trim();
+  if (!userId) return { ok: false, reason: "not_linked" };
+  try {
+    await recordAchievementEvent({
+      guildId: String(guildId),
+      userId,
+      eventKey: String(eventKey),
+      increment: Math.floor(numericIncrement),
+      metadata
+    });
+    return { ok: true };
+  } catch (error) {
+    debugLog("achievement-track-failed", {
+      guildId,
+      discordUserId: userId,
+      eventKey,
+      message: error?.message || String(error)
+    });
+    return { ok: false, reason: "achievement_failed" };
+  }
+};
+
+const trackTwitchAchievementByLogin = async ({
+  guildId,
+  twitchLogin,
+  eventKey,
+  increment = 1,
+  metadata = {}
+}) => {
+  const numericIncrement = Number(increment || 0);
+  if (!Number.isFinite(numericIncrement) || numericIncrement <= 0) {
+    return { ok: false, reason: "invalid_increment" };
+  }
+  try {
+    const user = await findLinkedDiscordUserByTwitchLogin(twitchLogin);
+    if (!user?.discord_id) return { ok: false, reason: "not_linked" };
+    return trackTwitchAchievementByDiscordUser({
+      guildId: String(guildId),
+      discordUserId: String(user.discord_id),
+      eventKey: String(eventKey),
+      increment: numericIncrement,
+      metadata
+    });
+  } catch (error) {
+    debugLog("achievement-track-failed", {
+      guildId,
+      twitchLogin,
+      eventKey,
+      message: error?.message || String(error)
+    });
+    return { ok: false, reason: "achievement_failed" };
+  }
 };
 
 const normalizeRule = (rule = {}, defaults) => {
@@ -523,9 +597,7 @@ const awardMessageGain = async ({ guildId, twitchLogin }) => {
     return;
   }
 
-  const user = await db("users")
-    .whereRaw("LOWER(twitch_login) = LOWER(?)", [String(twitchLogin)])
-    .first();
+  const user = await findLinkedDiscordUserByTwitchLogin(twitchLogin);
   if (!user) {
     debugLog("message-skip", { guildId, twitchLogin, reason: "not_linked" });
     return { ok: false, reason: "not_linked" };
@@ -559,21 +631,39 @@ const awardMessageGain = async ({ guildId, twitchLogin }) => {
     .where({ id: activity.id })
     .update({ message_count: 0, updated_at: new Date() });
 
+  if (gainResult?.ok) {
+    await trackTwitchAchievementByDiscordUser({
+      guildId,
+      discordUserId: user.discord_id,
+      eventKey: "economy_balance_reached",
+      increment: Number(gainResult.balance || 0),
+      metadata: { source: "twitch_message", currentBalance: Number(gainResult.balance || 0) }
+    });
+  }
+
   debugLog("message-award", { guildId, twitchLogin, amount, baseAmount, multiplier });
 
   return gainResult;
 };
 
-const awardWatchGain = async ({ guildId, twitchLogin }) => {
+const awardWatchGain = async ({ guildId, twitchLogin, trackedMinutes = 0 }) => {
   const config = await getCachedConfig(guildId);
   const rule = config.rules?.watch;
+
+  const user = await findLinkedDiscordUserByTwitchLogin(twitchLogin);
+  if (!user) return { ok: false, reason: "not_linked" };
+
+  const watchMinutes = Math.max(1, Math.floor(Number(trackedMinutes || 0)));
+  await trackTwitchAchievementByDiscordUser({
+    guildId,
+    discordUserId: user.discord_id,
+    eventKey: "twitch_watch_live_minutes",
+    increment: watchMinutes,
+    metadata: { source: "twitch_listener", event: "watch_tick" }
+  });
+
   if (!rule?.enabled) return;
   if (rule.min_gain <= 0 && rule.max_gain <= 0) return;
-
-  const user = await db("users")
-    .whereRaw("LOWER(twitch_login) = LOWER(?)", [String(twitchLogin)])
-    .first();
-  if (!user) return { ok: false, reason: "not_linked" };
 
   const activity = await getOrCreateTwitchActivity(guildId, twitchLogin);
   const now = new Date();
@@ -600,14 +690,22 @@ const awardWatchGain = async ({ guildId, twitchLogin }) => {
     .where({ id: activity.id })
     .update({ last_watch_reward_at: now, updated_at: new Date() });
 
+  if (gainResult?.ok) {
+    await trackTwitchAchievementByDiscordUser({
+      guildId,
+      discordUserId: user.discord_id,
+      eventKey: "economy_balance_reached",
+      increment: Number(gainResult.balance || 0),
+      metadata: { source: "twitch_watch", currentBalance: Number(gainResult.balance || 0) }
+    });
+  }
+
   return gainResult;
 };
 
 const awardSubEvent = async ({ guildId, twitchLogin, tier, source, amount }) => {
   if (!amount || amount <= 0) return;
-  const user = await db("users")
-    .whereRaw("LOWER(twitch_login) = LOWER(?)", [String(twitchLogin)])
-    .first();
+  const user = await findLinkedDiscordUserByTwitchLogin(twitchLogin);
   if (!user) return { ok: false, reason: "not_linked" };
   await updateSubTier({ guildId, twitchLogin, tier });
   const gainResult = await addTwitchGain({
@@ -619,6 +717,15 @@ const awardSubEvent = async ({ guildId, twitchLogin, tier, source, amount }) => 
     baseAmount: amount,
     multiplier: 1
   });
+  if (gainResult?.ok) {
+    await trackTwitchAchievementByDiscordUser({
+      guildId,
+      discordUserId: user.discord_id,
+      eventKey: "economy_balance_reached",
+      increment: Number(gainResult.balance || 0),
+      metadata: { source, currentBalance: Number(gainResult.balance || 0) }
+    });
+  }
   return gainResult;
 };
 
@@ -626,9 +733,7 @@ const awardBitsEvent = async ({ guildId, twitchLogin, bits, amountPer100 }) => {
   const count = Math.floor(Number(bits || 0) / 100);
   if (count <= 0 || amountPer100 <= 0) return;
   const amount = count * amountPer100;
-  const user = await db("users")
-    .whereRaw("LOWER(twitch_login) = LOWER(?)", [String(twitchLogin)])
-    .first();
+  const user = await findLinkedDiscordUserByTwitchLogin(twitchLogin);
   if (!user) return { ok: false, reason: "not_linked" };
   const gainResult = await addTwitchGain({
     guildId,
@@ -636,6 +741,15 @@ const awardBitsEvent = async ({ guildId, twitchLogin, bits, amountPer100 }) => {
     amount,
     source: "twitch_bits"
   });
+  if (gainResult?.ok) {
+    await trackTwitchAchievementByDiscordUser({
+      guildId,
+      discordUserId: user.discord_id,
+      eventKey: "economy_balance_reached",
+      increment: Number(gainResult.balance || 0),
+      metadata: { source: "twitch_bits", currentBalance: Number(gainResult.balance || 0) }
+    });
+  }
   return gainResult;
 };
 
@@ -745,6 +859,14 @@ const handleDailyCommand = async ({ guildId, twitchLogin, client, channel }) => 
     return;
   }
 
+  await trackTwitchAchievementByDiscordUser({
+    guildId,
+    discordUserId: user.discord_id,
+    eventKey: "economy_balance_reached",
+    increment: Number(result.balance || 0),
+    metadata: { source: "twitch_daily", currentBalance: Number(result.balance || 0) }
+  });
+
   const bonusText = result.bonus > 0 ? ` (bonus +${result.bonus})` : "";
   await client.say(
     channel,
@@ -823,6 +945,13 @@ export const startTwitchListener = async (guildId) => {
       const key = eventTier ? `sub_${eventTier}` : null;
       const amount = key && config.events?.[key]?.enabled ? config.events?.[key]?.amount : 0;
       debugLog("sub-event", { guildId, username, tier, amount, message: String(message || "") });
+      await trackTwitchAchievementByLogin({
+        guildId,
+        twitchLogin: username,
+        eventKey: "twitch_sub_count",
+        increment: 1,
+        metadata: { source: "twitch_listener", tier: tier || null, event: "subscription" }
+      });
       if (!tier) return;
       await awardSubEvent({ guildId, twitchLogin: username, tier, source: "twitch_sub", amount });
     });
@@ -835,6 +964,13 @@ export const startTwitchListener = async (guildId) => {
       const key = eventTier ? `sub_${eventTier}` : null;
       const amount = key && config.events?.[key]?.enabled ? config.events?.[key]?.amount : 0;
       debugLog("resub-event", { guildId, username, tier, amount, message: String(message || "") });
+      await trackTwitchAchievementByLogin({
+        guildId,
+        twitchLogin: username,
+        eventKey: "twitch_sub_count",
+        increment: 1,
+        metadata: { source: "twitch_listener", tier: tier || null, event: "resub" }
+      });
       if (!tier) return;
       await awardSubEvent({ guildId, twitchLogin: username, tier, source: "twitch_sub", amount });
     });
@@ -846,6 +982,13 @@ export const startTwitchListener = async (guildId) => {
       const key = tier ? `subgift_${tier}` : null;
       const amount = key && config.events?.[key]?.enabled ? config.events?.[key]?.amount : 0;
       debugLog("subgift-event", { guildId, username, recipient, tier, amount });
+      await trackTwitchAchievementByLogin({
+        guildId,
+        twitchLogin: username,
+        eventKey: "twitch_subgift_count",
+        increment: 1,
+        metadata: { source: "twitch_listener", tier: tier || null, event: "subgift" }
+      });
       if (!tier) return;
       if (recipient) {
         await updateSubTier({ guildId, twitchLogin: recipient, tier });
@@ -862,6 +1005,13 @@ export const startTwitchListener = async (guildId) => {
       const count = Number(numOfSubs || 0);
       const amount = count > 0 ? baseAmount * count : 0;
       debugLog("submysterygift-event", { guildId, username, tier, count, amount });
+      await trackTwitchAchievementByLogin({
+        guildId,
+        twitchLogin: username,
+        eventKey: "twitch_subgift_count",
+        increment: count > 0 ? count : 0,
+        metadata: { source: "twitch_listener", tier: tier || null, event: "submysterygift" }
+      });
       if (!tier) return;
       await awardSubEvent({ guildId, twitchLogin: username, tier, source: "twitch_subgift", amount });
     });
@@ -873,6 +1023,13 @@ export const startTwitchListener = async (guildId) => {
       const config = await getCachedConfig(guildId);
       const amountPer100 = config.events?.bits?.enabled ? Number(config.events?.bits?.amount || 0) : 0;
       debugLog("bits-event", { guildId, username, bits, amountPer100, message: String(message || "") });
+      await trackTwitchAchievementByLogin({
+        guildId,
+        twitchLogin: username,
+        eventKey: "twitch_bits_sent",
+        increment: bits,
+        metadata: { source: "twitch_listener", event: "cheer" }
+      });
       await awardBitsEvent({ guildId, twitchLogin: username, bits, amountPer100 });
     });
 
@@ -887,7 +1044,8 @@ export const startTwitchListener = async (guildId) => {
 
   if (!watchIntervals.has(guildId)) {
     const { watchInterval } = getEnv();
-    const intervalMs = Math.max(1, watchInterval) * 60 * 1000;
+    const watchStepMinutes = Math.max(1, Math.floor(Number(watchInterval || 1)));
+    const intervalMs = watchStepMinutes * 60 * 1000;
     const timer = setInterval(async () => {
       try {
         const current = await getTwitchSettings(guildId);
@@ -901,7 +1059,7 @@ export const startTwitchListener = async (guildId) => {
         for (const chatter of chatters) {
           const login = chatter?.user_login;
           if (!login) continue;
-          await awardWatchGain({ guildId, twitchLogin: login });
+          await awardWatchGain({ guildId, twitchLogin: login, trackedMinutes: watchStepMinutes });
         }
       } catch {
         // ignore errors
