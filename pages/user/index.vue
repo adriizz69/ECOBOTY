@@ -170,8 +170,8 @@ onMounted(fetchServers);
   gap: 16px;
   border-radius: 24px;
   padding: 18px 20px;
-  background: linear-gradient(130deg, rgba(17, 24, 39, 0.95), rgba(15, 23, 42, 0.84), rgba(30, 64, 175, 0.42));
-  border: 1px solid rgba(129, 140, 248, 0.24);
+  background: linear-gradient(130deg, rgba(17, 24, 39, 0.95), rgba(124, 58, 237, 0.26), rgba(37, 99, 235, 0.34));
+  border: 1px solid rgba(167, 139, 250, 0.28);
   box-shadow: 0 20px 44px rgba(2, 6, 23, 0.36);
   overflow: hidden;
 }
@@ -183,7 +183,7 @@ onMounted(fetchServers);
   right: -44px;
   bottom: -70px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(56, 189, 248, 0.32), transparent 72%);
+  background: radial-gradient(circle, rgba(124, 58, 237, 0.28), transparent 72%);
   pointer-events: none;
 }
 .hero-copy {
@@ -214,8 +214,8 @@ onMounted(fetchServers);
   min-width: 84px;
   padding: 9px 11px;
   border-radius: 14px;
-  border: 1px solid rgba(96, 165, 250, 0.3);
-  background: linear-gradient(130deg, rgba(15, 23, 42, 0.64), rgba(30, 64, 175, 0.24));
+  border: 1px solid rgba(167, 139, 250, 0.34);
+  background: linear-gradient(130deg, rgba(15, 23, 42, 0.64), rgba(124, 58, 237, 0.22), rgba(37, 99, 235, 0.2));
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -264,7 +264,7 @@ onMounted(fetchServers);
   right: -56px;
   top: -68px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(34, 211, 238, 0.24), transparent 74%);
+  background: radial-gradient(circle, rgba(124, 58, 237, 0.22), transparent 74%);
   pointer-events: none;
 }
 .server-card:hover {
@@ -282,8 +282,8 @@ onMounted(fetchServers);
   border-radius: 14px;
   display: grid;
   place-items: center;
-  border: 1px solid rgba(125, 211, 252, 0.32);
-  background: radial-gradient(circle at top, rgba(56, 189, 248, 0.34), rgba(30, 41, 59, 0.95));
+  border: 1px solid rgba(167, 139, 250, 0.32);
+  background: radial-gradient(circle at top, rgba(124, 58, 237, 0.34), rgba(30, 41, 59, 0.95));
   background-size: cover;
   background-position: center;
   color: #dbeafe;
@@ -308,8 +308,8 @@ onMounted(fetchServers);
 }
 
 :global(body.theme-light) .page-hero {
-  background: linear-gradient(130deg, #ffffff, rgba(224, 242, 254, 0.92), rgba(233, 213, 255, 0.72));
-  border-color: rgba(125, 211, 252, 0.4);
+  background: linear-gradient(130deg, #ffffff, rgba(237, 233, 254, 0.88), rgba(219, 234, 254, 0.82));
+  border-color: rgba(167, 139, 250, 0.4);
   box-shadow: 0 16px 34px rgba(15, 23, 42, 0.1);
 }
 :global(body.theme-light) .hero-kicker {
@@ -317,8 +317,8 @@ onMounted(fetchServers);
   color: #0f172a;
 }
 :global(body.theme-light) .hero-stat {
-  background: linear-gradient(130deg, rgba(239, 246, 255, 0.94), rgba(224, 242, 254, 0.78));
-  border-color: rgba(56, 189, 248, 0.34);
+  background: linear-gradient(130deg, rgba(245, 243, 255, 0.94), rgba(224, 231, 255, 0.82));
+  border-color: rgba(124, 58, 237, 0.34);
 }
 :global(body.theme-light) .card {
   background: linear-gradient(150deg, #ffffff, rgba(240, 249, 255, 0.9));
