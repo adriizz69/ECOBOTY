@@ -176,6 +176,10 @@ const consentCookie = useCookie("cookie_consent", { maxAge: 60 * 60 * 24 * 180, 
 const showCookieBanner = computed(
   () => consentCookie.value !== "accepted" && consentCookie.value !== "refused"
 );
+const adsenseClient = computed(() => String(config.public.adsenseClient || "").trim());
+const shouldLoadAdsense = computed(
+  () => consentCookie.value === "accepted" && adsenseClient.value.length > 0
+);
 
 const colorMode = useColorMode();
 const disableLightMode = true;
@@ -211,6 +215,19 @@ useHead({
     dir: htmlDir
   }
 });
+
+useHead(() => ({
+  script: shouldLoadAdsense.value
+    ? [
+        {
+          key: "adsense-auto",
+          async: true,
+          src: `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(adsenseClient.value)}`,
+          crossorigin: "anonymous"
+        }
+      ]
+    : []
+}));
 
 const avatarUrl = computed(() => {
   if (!me.value?.discord_id || !me.value?.avatar) return "";

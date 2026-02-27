@@ -8,7 +8,8 @@ export default defineNuxtConfig({
       apiBase: process.env.API_BASE || "http://localhost:4000",
       discordClientId: process.env.DISCORD_CLIENT_ID,
       baseUrl: process.env.BASE_URL || "",
-      adminUserId: process.env.ADMIN_USER_ID || process.env.ADMIN_USER_IDS || "1328058083246608407"
+      adminUserId: process.env.ADMIN_USER_ID || process.env.ADMIN_USER_IDS || "1328058083246608407",
+      adsenseClient: process.env.ADSENSE_CLIENT || ""
     }
   },
   i18n: {
