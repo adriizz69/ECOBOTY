@@ -217,6 +217,15 @@ useHead({
 });
 
 useHead(() => ({
+  meta: adsenseClient.value
+    ? [
+        {
+          key: "google-adsense-account",
+          name: "google-adsense-account",
+          content: adsenseClient.value
+        }
+      ]
+    : [],
   script: shouldLoadAdsense.value
     ? [
         {
