@@ -176,8 +176,11 @@ const consentCookie = useCookie("cookie_consent", { maxAge: 60 * 60 * 24 * 180, 
 const showCookieBanner = computed(
   () => consentCookie.value !== "accepted" && consentCookie.value !== "refused"
 );
+const defaultTawkWidgetUrl = "https://embed.tawk.to/69a1b03b37d2cc1c36f4a8a7/1jifpgq5r";
 const adsenseClient = computed(() => String(config.public.adsenseClient || "").trim());
-const tawkToWidgetUrl = computed(() => String(config.public.tawkToWidgetUrl || "").trim());
+const tawkToWidgetUrl = computed(
+  () => String(config.public.tawkToWidgetUrl || defaultTawkWidgetUrl).trim()
+);
 const shouldLoadAdsense = computed(
   () => consentCookie.value === "accepted" && adsenseClient.value.length > 0
 );
@@ -220,44 +223,60 @@ useHead({
   }
 });
 
-useHead(() => ({
-  meta: adsenseClient.value
-    ? [
-        {
-          key: "google-adsense-account",
-          name: "google-adsense-account",
-          content: adsenseClient.value
-        }
-      ]
-    : [],
-  script: [
-    ...(shouldLoadAdsense.value
-      ? [
-        {
-          key: "adsense-auto",
-          async: true,
-          src: `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(adsenseClient.value)}`,
-          crossorigin: "anonymous"
-        }
-      ]
-      : []),
-    ...(shouldLoadTawk.value
-      ? [
-        {
-          key: "tawk-to-init",
-          children: "window.Tawk_API=window.Tawk_API||{};window.Tawk_LoadStart=new Date();"
-        },
-        {
-          key: "tawk-to-widget",
-          async: true,
-          src: tawkToWidgetUrl.value,
-          charset: "UTF-8",
-          crossorigin: "*"
-        }
-      ]
-      : [])
-  ]
-}));
+const ensureAdsenseLoaded = () => {
+  if (!process.client) return;
+  if (!shouldLoadAdsense.value) return;
+  if (!adsenseClient.value) return;
+
+  let meta = document.querySelector('meta[name="google-adsense-account"]');
+  if (!meta) {
+    meta = document.createElement("meta");
+    meta.setAttribute("name", "google-adsense-account");
+    document.head.appendChild(meta);
+  }
+  meta.setAttribute("content", adsenseClient.value);
+
+  const existingScript = document.querySelector('script[data-adsense-loader="1"]');
+  if (existingScript?.getAttribute("data-client") === adsenseClient.value) return;
+  if (existingScript) existingScript.remove();
+
+  const script = document.createElement("script");
+  script.async = true;
+  script.src = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(adsenseClient.value)}`;
+  script.crossOrigin = "anonymous";
+  script.setAttribute("data-adsense-loader", "1");
+  script.setAttribute("data-client", adsenseClient.value);
+  document.head.appendChild(script);
+};
+
+const ensureTawkLoaded = () => {
+  if (!process.client) return;
+  if (!shouldLoadTawk.value) return;
+
+  const existingScript = document.querySelector('script[data-tawk-widget="1"]');
+  if (existingScript?.getAttribute("src") === tawkToWidgetUrl.value) return;
+  if (existingScript) existingScript.remove();
+
+  const globalWindow = window;
+  globalWindow.Tawk_API = globalWindow.Tawk_API || {};
+  globalWindow.Tawk_LoadStart = new Date();
+
+  const script = document.createElement("script");
+  script.async = true;
+  script.src = tawkToWidgetUrl.value;
+  script.charset = "UTF-8";
+  script.setAttribute("crossorigin", "*");
+  script.setAttribute("data-tawk-widget", "1");
+  document.head.appendChild(script);
+};
+
+watch([shouldLoadAdsense, adsenseClient], () => {
+  ensureAdsenseLoaded();
+}, { immediate: true });
+
+watch([shouldLoadTawk, tawkToWidgetUrl], () => {
+  ensureTawkLoaded();
+}, { immediate: true });
 
 const avatarUrl = computed(() => {
   if (!me.value?.discord_id || !me.value?.avatar) return "";
