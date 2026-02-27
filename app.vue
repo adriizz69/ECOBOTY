@@ -236,16 +236,18 @@ const ensureAdsenseLoaded = () => {
   }
   meta.setAttribute("content", adsenseClient.value);
 
-  const existingScript = document.querySelector('script[data-adsense-loader="1"]');
-  if (existingScript?.getAttribute("data-client") === adsenseClient.value) return;
-  if (existingScript) existingScript.remove();
+  const targetSrc = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(adsenseClient.value)}`;
+  const existingScripts = Array.from(
+    document.querySelectorAll('script[src*="pagead2.googlesyndication.com/pagead/js/adsbygoogle.js"]')
+  );
+  const hasExactScript = existingScripts.some((s) => (s.getAttribute("src") || "") === targetSrc);
+  if (hasExactScript) return;
+  existingScripts.forEach((s) => s.remove());
 
   const script = document.createElement("script");
   script.async = true;
-  script.src = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(adsenseClient.value)}`;
+  script.src = targetSrc;
   script.crossOrigin = "anonymous";
-  script.setAttribute("data-adsense-loader", "1");
-  script.setAttribute("data-client", adsenseClient.value);
   document.head.appendChild(script);
 };
 
