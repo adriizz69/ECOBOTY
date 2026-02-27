@@ -816,68 +816,90 @@ const tTwitch = (lang, key, vars = {}) => {
 
 const handleDailyCommand = async ({ guildId, twitchLogin, client, channel }) => {
   const lang = await getBotLanguage(guildId);
-  const user = await db("users")
-    .whereRaw("LOWER(twitch_login) = LOWER(?)", [String(twitchLogin)])
-    .first();
-  if (!user) {
-    const base = getPublicApiBase();
-    const link = `${base}/auth/discord/twitch-link?guildId=${encodeURIComponent(
-      guildId
-    )}&twitchLogin=${encodeURIComponent(String(twitchLogin || ""))}`;
-    await client.say(channel, tTwitch(lang, "link", { link }));
-    return;
-  }
-
-  const liveOnly = await isLiveOnlyEnabled(guildId);
-  if (liveOnly) {
-    const live = await isLiveCached(guildId);
-    if (!live) {
-      await client.say(channel, tTwitch(lang, "liveOnly"));
+  try {
+    const user = await db("users")
+      .whereRaw("LOWER(twitch_login) = LOWER(?)", [String(twitchLogin)])
+      .first();
+    if (!user) {
+      const base = getPublicApiBase();
+      const link = `${base}/auth/discord/twitch-link?guildId=${encodeURIComponent(
+        guildId
+      )}&twitchLogin=${encodeURIComponent(String(twitchLogin || ""))}`;
+      await client.say(channel, tTwitch(lang, "link", { link }));
       return;
     }
-  }
 
-  const economy = await getOrCreateSettings(guildId, db);
-  const currencyName = economy?.name || "Economy";
-  const currency = `🪙 ${currencyName}`;
-  const result = await applyTwitchDaily({ guildId, userId: user.discord_id });
+    const liveOnly = await isLiveOnlyEnabled(guildId);
+    if (liveOnly) {
+      const live = await isLiveCached(guildId);
+      if (!live) {
+        await client.say(channel, tTwitch(lang, "liveOnly"));
+        return;
+      }
+    }
 
-  if (!result.ok && result.reason === "already_claimed") {
-    const nextAt = result.nextAt ? new Date(result.nextAt) : null;
-    const remaining = nextAt ? formatDuration(nextAt.getTime() - Date.now()) : "";
+    const economy = await getOrCreateSettings(guildId, db);
+    const currencyName = economy?.name || "Economy";
+    const currency = `🪙 ${currencyName}`;
+    const result = await applyTwitchDaily({ guildId, userId: user.discord_id });
+
+    if (!result.ok && result.reason === "already_claimed") {
+      const nextAt = result.nextAt ? new Date(result.nextAt) : null;
+      const remaining = nextAt ? formatDuration(nextAt.getTime() - Date.now()) : "";
+      await client.say(
+        channel,
+        remaining
+          ? tTwitch(lang, "alreadyWithRemaining", { remaining })
+          : tTwitch(lang, "alreadyToday")
+      );
+      return;
+    }
+
+    if (!result.ok) {
+      await client.say(channel, tTwitch(lang, "error"));
+      return;
+    }
+
+    await trackTwitchAchievementByDiscordUser({
+      guildId,
+      discordUserId: user.discord_id,
+      eventKey: "daily_claims",
+      increment: 1,
+      metadata: {
+        source: "twitch_daily",
+        streak: Number(result.streak || 0),
+        amount: Number(result.amount || 0),
+        balance: Number(result.balance || 0)
+      }
+    });
+
+    await trackTwitchAchievementByDiscordUser({
+      guildId,
+      discordUserId: user.discord_id,
+      eventKey: "economy_balance_reached",
+      increment: Number(result.balance || 0),
+      metadata: { source: "twitch_daily", currentBalance: Number(result.balance || 0) }
+    });
+
+    const bonusText = result.bonus > 0 ? ` (bonus +${result.bonus})` : "";
     await client.say(
       channel,
-      remaining
-        ? tTwitch(lang, "alreadyWithRemaining", { remaining })
-        : tTwitch(lang, "alreadyToday")
+      tTwitch(lang, "success", {
+        amount: result.amount,
+        currency,
+        bonusText,
+        streak: result.streak,
+        balance: result.balance
+      })
     );
-    return;
-  }
-
-  if (!result.ok) {
+  } catch (error) {
+    debugLog("daily-command-failed", {
+      guildId,
+      twitchLogin,
+      message: error?.message || String(error)
+    });
     await client.say(channel, tTwitch(lang, "error"));
-    return;
   }
-
-  await trackTwitchAchievementByDiscordUser({
-    guildId,
-    discordUserId: user.discord_id,
-    eventKey: "economy_balance_reached",
-    increment: Number(result.balance || 0),
-    metadata: { source: "twitch_daily", currentBalance: Number(result.balance || 0) }
-  });
-
-  const bonusText = result.bonus > 0 ? ` (bonus +${result.bonus})` : "";
-  await client.say(
-    channel,
-    tTwitch(lang, "success", {
-      amount: result.amount,
-      currency,
-      bonusText,
-      streak: result.streak,
-      balance: result.balance
-    })
-  );
 };
 
 export const startTwitchListener = async (guildId) => {
@@ -922,19 +944,29 @@ export const startTwitchListener = async (guildId) => {
     });
 
     client.on("message", async (_channel, tags, message, self) => {
-      if (self) return;
-      const username = tags?.username;
-      if (!username) return;
+      try {
+        if (self) return;
+        const username = tags?.username;
+        if (!username) return;
 
-      debugLog("message-received", { guildId, username, message: String(message || "") });
+        debugLog("message-received", { guildId, username, message: String(message || "") });
 
-      const trimmed = String(message || "").trim();
-      if (trimmed.toLowerCase().startsWith("!daily")) {
-        await handleDailyCommand({ guildId, twitchLogin: username, client, channel: _channel });
+        const trimmed = String(message || "").trim();
+        if (trimmed.toLowerCase().startsWith("!daily")) {
+          await handleDailyCommand({ guildId, twitchLogin: username, client, channel: _channel });
+        }
+
+        await maybeSetSubTierFromBadges({ guildId, twitchLogin: username, badges: tags?.badges });
+        await awardMessageGain({ guildId, twitchLogin: username });
+      } catch (error) {
+        debugLog("message-handler-failed", {
+          guildId,
+          channel: _channel,
+          username: tags?.username || null,
+          message: String(message || ""),
+          error: error?.message || String(error)
+        });
       }
-
-      await maybeSetSubTierFromBadges({ guildId, twitchLogin: username, badges: tags?.badges });
-      await awardMessageGain({ guildId, twitchLogin: username });
     });
 
     client.on("subscription", async (_channel, username, _methods, message, userstate) => {

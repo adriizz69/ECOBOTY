@@ -133,11 +133,13 @@ authRouter.get("/discord/callback", async (req, res) => {
 
     let twitchConnection = null;
     let twitchConnections = [];
+    let connectionsFetched = false;
     try {
       const connectionsRes = await fetch("https://discord.com/api/users/@me/connections", {
         headers: { Authorization: `Bearer ${tokenData.access_token}` }
       });
       if (connectionsRes.ok) {
+        connectionsFetched = true;
         const connections = await connectionsRes.json();
         twitchConnections = connections.filter((c) => c.type === "twitch");
         twitchConnection = twitchConnections[0] || null;
@@ -153,102 +155,11 @@ authRouter.get("/discord/callback", async (req, res) => {
       twitchConnection = null;
     }
 
+    const existing = await db("users").where({ discord_id: user.id }).first();
+    const previousTwitchId = existing?.twitch_id || null;
+    const previousTwitchLogin = existing?.twitch_login || null;
     const twitchId = twitchConnection?.id || null;
     const twitchLogin = twitchConnection?.name || null;
-    const existing = await db("users").where({ discord_id: user.id }).first();
-    const previousTwitchLogin = existing?.twitch_login || null;
-    if (existing) {
-      await db("users").where({ discord_id: user.id }).update({
-        username: user.username,
-        avatar: user.avatar,
-        twitch_id: twitchId,
-        twitch_login: twitchLogin
-      });
-    } else {
-      await db("users").insert({
-        discord_id: user.id,
-        username: user.username,
-        avatar: user.avatar,
-        twitch_id: twitchId,
-        twitch_login: twitchLogin
-      });
-    }
-
-    const guildCount = Array.isArray(userGuilds) ? userGuilds.length : 0;
-    let userGuildsInsertError = userGuildsError || "";
-    let savedGuildsCount = 0;
-    let savedGuildsSample = "";
-
-    if (userGuildsFetched && Array.isArray(userGuilds) && userGuilds.length > 0) {
-      try {
-        const uniqueGuilds = new Map();
-        userGuilds.forEach((guild) => {
-          const id = guild?.id ? String(guild.id) : "";
-          if (!id) return;
-          if (!uniqueGuilds.has(id)) uniqueGuilds.set(id, guild);
-        });
-        const guildList = Array.from(uniqueGuilds.values());
-        await db("user_guilds").where({ discord_id: String(user.id) }).del();
-        if (guildList.length) {
-          const rows = guildList.map((guild) => ({
-            discord_id: String(user.id),
-            guild_id: String(guild.id),
-            guild_name: guild.name || null,
-            icon: guild.icon || null,
-            owner: Boolean(guild.owner),
-            permissions: guild.permissions ? String(guild.permissions) : null,
-            permissions_new: guild.permissions_new ? String(guild.permissions_new) : null,
-            features: Array.isArray(guild.features) ? JSON.stringify(guild.features) : null,
-            raw: JSON.stringify(guild),
-            updated_at: new Date()
-          }));
-          await db("user_guilds").insert(rows);
-        }
-        const savedRow = await db("user_guilds")
-          .where({ discord_id: String(user.id) })
-          .count({ count: "*" })
-          .first();
-        savedGuildsCount = Number(savedRow?.count || 0);
-        const sampleRow = await db("user_guilds")
-          .where({ discord_id: String(user.id) })
-          .select("guild_id")
-          .first();
-        savedGuildsSample = sampleRow?.guild_id || "";
-      } catch (error) {
-        userGuildsInsertError = error?.message || String(error);
-        console.warn("[auth] user_guilds update failed", userGuildsInsertError);
-      }
-    }
-
-    try {
-      const payload = {
-        discord_id: String(user.id),
-        scopes: tokenScopes || null,
-        guilds_fetched: Boolean(userGuildsFetched),
-        guilds_count: guildCount,
-        guilds_error: userGuildsInsertError || null,
-        guilds_saved_count: savedGuildsCount,
-        guilds_sample: savedGuildsSample || null,
-        updated_at: new Date()
-      };
-      const existingState = await db("user_oauth_state").where({ discord_id: String(user.id) }).first();
-      if (existingState) {
-        await db("user_oauth_state").where({ discord_id: String(user.id) }).update(payload);
-      } else {
-        await db("user_oauth_state").insert(payload);
-      }
-    } catch (error) {
-      console.warn("[auth] oauth state update failed", error?.message || error);
-    }
-    if (state?.kind === "twitch-link") {
-      console.log("[auth] guilds", {
-        userId: user?.id,
-        scopes: tokenScopes,
-        guildsFetched: userGuildsFetched,
-        guildsCount: guildCount,
-        guildsError: userGuildsError || null
-      });
-    }
 
     if (state?.kind === "twitch-link") {
       const desiredLogin = String(state.twitchLogin || "").toLowerCase();
@@ -338,7 +249,183 @@ authRouter.get("/discord/callback", async (req, res) => {
           <a href="${liveUrl}" target="_blank" rel="noreferrer" style="display:inline-block;padding:10px 16px;border-radius:999px;background:#7c3aed;color:white;text-decoration:none;">Retourner sur le live</a>${scopeNote}${serversNote}`
         : `Ton Discord est bien associé à ton Twitch. Tu peux retourner sur le chat.${scopeNote}${serversNote}`;
 
+      const userPayload = {
+        username: user.username,
+        avatar: user.avatar,
+        twitch_id: twitchId,
+        twitch_login: twitchLogin
+      };
+      if (existing) {
+        await db("users").where({ discord_id: user.id }).update(userPayload);
+      } else {
+        await db("users").insert({
+          discord_id: user.id,
+          ...userPayload
+        });
+      }
+
+      const guildCount = Array.isArray(userGuilds) ? userGuilds.length : 0;
+      let userGuildsInsertError = userGuildsError || "";
+      let savedGuildsCount = 0;
+      let savedGuildsSample = "";
+
+      if (userGuildsFetched && Array.isArray(userGuilds) && userGuilds.length > 0) {
+        try {
+          const uniqueGuilds = new Map();
+          userGuilds.forEach((guild) => {
+            const id = guild?.id ? String(guild.id) : "";
+            if (!id) return;
+            if (!uniqueGuilds.has(id)) uniqueGuilds.set(id, guild);
+          });
+          const guildList = Array.from(uniqueGuilds.values());
+          await db("user_guilds").where({ discord_id: String(user.id) }).del();
+          if (guildList.length) {
+            const rows = guildList.map((guild) => ({
+              discord_id: String(user.id),
+              guild_id: String(guild.id),
+              guild_name: guild.name || null,
+              icon: guild.icon || null,
+              owner: Boolean(guild.owner),
+              permissions: guild.permissions ? String(guild.permissions) : null,
+              permissions_new: guild.permissions_new ? String(guild.permissions_new) : null,
+              features: Array.isArray(guild.features) ? JSON.stringify(guild.features) : null,
+              raw: JSON.stringify(guild),
+              updated_at: new Date()
+            }));
+            await db("user_guilds").insert(rows);
+          }
+          const savedRow = await db("user_guilds")
+            .where({ discord_id: String(user.id) })
+            .count({ count: "*" })
+            .first();
+          savedGuildsCount = Number(savedRow?.count || 0);
+          const sampleRow = await db("user_guilds")
+            .where({ discord_id: String(user.id) })
+            .select("guild_id")
+            .first();
+          savedGuildsSample = sampleRow?.guild_id || "";
+        } catch (error) {
+          userGuildsInsertError = error?.message || String(error);
+          console.warn("[auth] user_guilds update failed", userGuildsInsertError);
+        }
+      }
+
+      try {
+        const payload = {
+          discord_id: String(user.id),
+          scopes: tokenScopes || null,
+          guilds_fetched: Boolean(userGuildsFetched),
+          guilds_count: guildCount,
+          guilds_error: userGuildsInsertError || null,
+          guilds_saved_count: savedGuildsCount,
+          guilds_sample: savedGuildsSample || null,
+          updated_at: new Date()
+        };
+        const existingState = await db("user_oauth_state").where({ discord_id: String(user.id) }).first();
+        if (existingState) {
+          await db("user_oauth_state").where({ discord_id: String(user.id) }).update(payload);
+        } else {
+          await db("user_oauth_state").insert(payload);
+        }
+      } catch (error) {
+        console.warn("[auth] oauth state update failed", error?.message || error);
+      }
+      console.log("[auth] guilds", {
+        userId: user?.id,
+        scopes: tokenScopes,
+        guildsFetched: userGuildsFetched,
+        guildsCount: guildCount,
+        guildsError: userGuildsError || null
+      });
       return res.send(renderHtml("Compte lié", message));
+    }
+
+    const resolvedTwitch = twitchConnection
+      ? { id: twitchId, login: twitchLogin }
+      : connectionsFetched
+        ? { id: null, login: null }
+        : { id: previousTwitchId, login: previousTwitchLogin };
+
+    const userPayload = {
+      username: user.username,
+      avatar: user.avatar,
+      twitch_id: resolvedTwitch.id,
+      twitch_login: resolvedTwitch.login
+    };
+    if (existing) {
+      await db("users").where({ discord_id: user.id }).update(userPayload);
+    } else {
+      await db("users").insert({
+        discord_id: user.id,
+        ...userPayload
+      });
+    }
+
+    const guildCount = Array.isArray(userGuilds) ? userGuilds.length : 0;
+    let userGuildsInsertError = userGuildsError || "";
+    let savedGuildsCount = 0;
+    let savedGuildsSample = "";
+
+    if (userGuildsFetched && Array.isArray(userGuilds) && userGuilds.length > 0) {
+      try {
+        const uniqueGuilds = new Map();
+        userGuilds.forEach((guild) => {
+          const id = guild?.id ? String(guild.id) : "";
+          if (!id) return;
+          if (!uniqueGuilds.has(id)) uniqueGuilds.set(id, guild);
+        });
+        const guildList = Array.from(uniqueGuilds.values());
+        await db("user_guilds").where({ discord_id: String(user.id) }).del();
+        if (guildList.length) {
+          const rows = guildList.map((guild) => ({
+            discord_id: String(user.id),
+            guild_id: String(guild.id),
+            guild_name: guild.name || null,
+            icon: guild.icon || null,
+            owner: Boolean(guild.owner),
+            permissions: guild.permissions ? String(guild.permissions) : null,
+            permissions_new: guild.permissions_new ? String(guild.permissions_new) : null,
+            features: Array.isArray(guild.features) ? JSON.stringify(guild.features) : null,
+            raw: JSON.stringify(guild),
+            updated_at: new Date()
+          }));
+          await db("user_guilds").insert(rows);
+        }
+        const savedRow = await db("user_guilds")
+          .where({ discord_id: String(user.id) })
+          .count({ count: "*" })
+          .first();
+        savedGuildsCount = Number(savedRow?.count || 0);
+        const sampleRow = await db("user_guilds")
+          .where({ discord_id: String(user.id) })
+          .select("guild_id")
+          .first();
+        savedGuildsSample = sampleRow?.guild_id || "";
+      } catch (error) {
+        userGuildsInsertError = error?.message || String(error);
+        console.warn("[auth] user_guilds update failed", userGuildsInsertError);
+      }
+    }
+
+    try {
+      const payload = {
+        discord_id: String(user.id),
+        scopes: tokenScopes || null,
+        guilds_fetched: Boolean(userGuildsFetched),
+        guilds_count: guildCount,
+        guilds_error: userGuildsInsertError || null,
+        guilds_saved_count: savedGuildsCount,
+        guilds_sample: savedGuildsSample || null,
+        updated_at: new Date()
+      };
+      const existingState = await db("user_oauth_state").where({ discord_id: String(user.id) }).first();
+      if (existingState) {
+        await db("user_oauth_state").where({ discord_id: String(user.id) }).update(payload);
+      } else {
+        await db("user_oauth_state").insert(payload);
+      }
+    } catch (error) {
+      console.warn("[auth] oauth state update failed", error?.message || error);
     }
 
     const rawSecret = process.env.API_SECRET_KEY || "";
