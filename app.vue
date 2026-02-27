@@ -177,8 +177,12 @@ const showCookieBanner = computed(
   () => consentCookie.value !== "accepted" && consentCookie.value !== "refused"
 );
 const adsenseClient = computed(() => String(config.public.adsenseClient || "").trim());
+const tawkToWidgetUrl = computed(() => String(config.public.tawkToWidgetUrl || "").trim());
 const shouldLoadAdsense = computed(
   () => consentCookie.value === "accepted" && adsenseClient.value.length > 0
+);
+const shouldLoadTawk = computed(
+  () => consentCookie.value === "accepted" && tawkToWidgetUrl.value.length > 0
 );
 
 const colorMode = useColorMode();
@@ -226,8 +230,9 @@ useHead(() => ({
         }
       ]
     : [],
-  script: shouldLoadAdsense.value
-    ? [
+  script: [
+    ...(shouldLoadAdsense.value
+      ? [
         {
           key: "adsense-auto",
           async: true,
@@ -235,7 +240,23 @@ useHead(() => ({
           crossorigin: "anonymous"
         }
       ]
-    : []
+      : []),
+    ...(shouldLoadTawk.value
+      ? [
+        {
+          key: "tawk-to-init",
+          children: "window.Tawk_API=window.Tawk_API||{};window.Tawk_LoadStart=new Date();"
+        },
+        {
+          key: "tawk-to-widget",
+          async: true,
+          src: tawkToWidgetUrl.value,
+          charset: "UTF-8",
+          crossorigin: "*"
+        }
+      ]
+      : [])
+  ]
 }));
 
 const avatarUrl = computed(() => {

@@ -9,7 +9,9 @@ export default defineNuxtConfig({
       discordClientId: process.env.DISCORD_CLIENT_ID,
       baseUrl: process.env.BASE_URL || "",
       adminUserId: process.env.ADMIN_USER_ID || process.env.ADMIN_USER_IDS || "1328058083246608407",
-      adsenseClient: process.env.ADSENSE_CLIENT || ""
+      adsenseClient: process.env.ADSENSE_CLIENT || "",
+      tawkToWidgetUrl:
+        process.env.TAWK_TO_WIDGET_URL || "https://embed.tawk.to/69a1b03b37d2cc1c36f4a8a7/1jifpgq5r"
     }
   },
   i18n: {
