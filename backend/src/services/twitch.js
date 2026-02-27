@@ -646,7 +646,12 @@ const awardMessageGain = async ({ guildId, twitchLogin }) => {
   return gainResult;
 };
 
-const awardWatchGain = async ({ guildId, twitchLogin, trackedMinutes = 0 }) => {
+const awardWatchGain = async ({
+  guildId,
+  twitchLogin,
+  trackedMinutes = 0,
+  streamIsLive
+}) => {
   const config = await getCachedConfig(guildId);
   const rule = config.rules?.watch;
 
@@ -654,13 +659,18 @@ const awardWatchGain = async ({ guildId, twitchLogin, trackedMinutes = 0 }) => {
   if (!user) return { ok: false, reason: "not_linked" };
 
   const watchMinutes = Math.max(1, Math.floor(Number(trackedMinutes || 0)));
-  await trackTwitchAchievementByDiscordUser({
-    guildId,
-    discordUserId: user.discord_id,
-    eventKey: "twitch_watch_live_minutes",
-    increment: watchMinutes,
-    metadata: { source: "twitch_listener", event: "watch_tick" }
-  });
+  const liveNow = typeof streamIsLive === "boolean" ? streamIsLive : await isLiveCached(guildId);
+  if (liveNow) {
+    await trackTwitchAchievementByDiscordUser({
+      guildId,
+      discordUserId: user.discord_id,
+      eventKey: "twitch_watch_live_minutes",
+      increment: watchMinutes,
+      metadata: { source: "twitch_listener", event: "watch_tick" }
+    });
+  } else {
+    debugLog("watch-achievement-skip", { guildId, twitchLogin, reason: "not_live" });
+  }
 
   if (!rule?.enabled) return;
   if (rule.min_gain <= 0 && rule.max_gain <= 0) return;
@@ -1082,16 +1092,19 @@ export const startTwitchListener = async (guildId) => {
       try {
         const current = await getTwitchSettings(guildId);
         if (!current) return;
+        const streamIsLive = await isLiveCached(guildId);
         const liveOnly = normalizeLiveOnly(current.live_only);
-        if (liveOnly) {
-          const live = await isLiveCached(guildId);
-          if (!live) return;
-        }
+        if (liveOnly && !streamIsLive) return;
         const chatters = await fetchChatters(current);
         for (const chatter of chatters) {
           const login = chatter?.user_login;
           if (!login) continue;
-          await awardWatchGain({ guildId, twitchLogin: login, trackedMinutes: watchStepMinutes });
+          await awardWatchGain({
+            guildId,
+            twitchLogin: login,
+            trackedMinutes: watchStepMinutes,
+            streamIsLive
+          });
         }
       } catch {
         // ignore errors
