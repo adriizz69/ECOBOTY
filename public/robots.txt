@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /servers
+Disallow: /user
+Disallow: /guild/
+Disallow: /user/
+Disallow: /callback
+Sitemap: https://ecoboty.eu/sitemap.xml
