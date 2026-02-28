@@ -116,6 +116,45 @@
       </div>
     </section>
 
+    <section class="quick-links" aria-labelledby="quick-links-title">
+      <div class="section-head">
+        <h2 id="quick-links-title">{{ $t("landing.quick.title") }}</h2>
+        <p>{{ $t("landing.quick.subtitle") }}</p>
+      </div>
+      <div class="quick-grid">
+        <NuxtLink class="quick-card" to="/documentation">
+          <span class="quick-kicker">{{ $t("landing.quick.docs.kicker") }}</span>
+          <h3>{{ $t("landing.quick.docs.title") }}</h3>
+          <p>{{ $t("landing.quick.docs.text") }}</p>
+        </NuxtLink>
+        <NuxtLink class="quick-card" to="/documentation/admin">
+          <span class="quick-kicker">{{ $t("landing.quick.admin.kicker") }}</span>
+          <h3>{{ $t("landing.quick.admin.title") }}</h3>
+          <p>{{ $t("landing.quick.admin.text") }}</p>
+        </NuxtLink>
+        <NuxtLink class="quick-card" to="/documentation/utilisateur">
+          <span class="quick-kicker">{{ $t("landing.quick.user.kicker") }}</span>
+          <h3>{{ $t("landing.quick.user.title") }}</h3>
+          <p>{{ $t("landing.quick.user.text") }}</p>
+        </NuxtLink>
+        <NuxtLink class="quick-card" to="/setup">
+          <span class="quick-kicker">{{ $t("landing.quick.status.kicker") }}</span>
+          <h3>{{ $t("landing.quick.status.title") }}</h3>
+          <p>{{ $t("landing.quick.status.text") }}</p>
+        </NuxtLink>
+        <NuxtLink class="quick-card" to="/conditions">
+          <span class="quick-kicker">{{ $t("landing.quick.terms.kicker") }}</span>
+          <h3>{{ $t("landing.quick.terms.title") }}</h3>
+          <p>{{ $t("landing.quick.terms.text") }}</p>
+        </NuxtLink>
+        <NuxtLink class="quick-card" to="/confidentialite">
+          <span class="quick-kicker">{{ $t("landing.quick.privacy.kicker") }}</span>
+          <h3>{{ $t("landing.quick.privacy.title") }}</h3>
+          <p>{{ $t("landing.quick.privacy.text") }}</p>
+        </NuxtLink>
+      </div>
+    </section>
+
     <footer class="legal">
       <div class="legal-inner">
         <NuxtLink class="legal-link" to="/mentions-legales">{{ $t("landing.legal") }}</NuxtLink>
@@ -327,6 +366,55 @@ onMounted(async () => {
   margin: 0;
 }
 
+.quick-links {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.quick-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 16px;
+}
+
+.quick-card {
+  text-decoration: none;
+  color: inherit;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 18px;
+  display: grid;
+  gap: 10px;
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.quick-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow);
+}
+
+.quick-kicker {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.quick-card h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.quick-card p {
+  margin: 0;
+  color: var(--text-soft);
+  line-height: 1.45;
+}
+
 
 :global(body.theme-light) .hero-visual img,
 :global(html.light body) .hero-visual img,
@@ -337,6 +425,8 @@ onMounted(async () => {
 
 :global(body.theme-light) .feature-card,
 :global(html.light body) .feature-card,
+:global(body.theme-light) .quick-card,
+:global(html.light body) .quick-card,
 :global(body.theme-light) .cta,
 :global(html.light body) .cta {
   background: var(--surface);

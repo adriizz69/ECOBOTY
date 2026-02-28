@@ -92,7 +92,41 @@
     "terms": "Terms of service",
     "privacy": "Privacy policy",
     "heroAlt": "Dashboard preview",
-    "splitAlt": "Feature examples"
+    "splitAlt": "Feature examples",
+    "quick": {
+      "title": "Quick links",
+      "subtitle": "Public pages useful for Google and helpful for your visitors.",
+      "docs": {
+        "kicker": "Documentation",
+        "title": "Documentation hub",
+        "text": "Global entry point for admin and user guides."
+      },
+      "admin": {
+        "kicker": "Admin guide",
+        "title": "Admin documentation",
+        "text": "Full server-side bot configuration."
+      },
+      "user": {
+        "kicker": "User guide",
+        "title": "User documentation",
+        "text": "Member features: shop, inventory, games and logs."
+      },
+      "status": {
+        "kicker": "Monitoring",
+        "title": "Service status",
+        "text": "Live health status of services and integrations."
+      },
+      "terms": {
+        "kicker": "Legal",
+        "title": "Terms of service",
+        "text": "Platform usage framework."
+      },
+      "privacy": {
+        "kicker": "Data",
+        "title": "Privacy policy",
+        "text": "How data, cookies and privacy are handled."
+      }
+    }
   },
   "docHub": {
     "title": "ECONOMY BOT Documentation",

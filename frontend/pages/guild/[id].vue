@@ -2743,6 +2743,34 @@ const form = reactive({
 
 const activeTab = ref("economy");
 const mobileMenuOpen = ref(false);
+const adminTabLabel = computed(() => {
+  const map = {
+    economy: "Economie",
+    daily: "Daily",
+    leaderboard: "Classement",
+    shops: "Boutiques",
+    inventories: "Inventaires",
+    automation: "Gains auto",
+    logs: "Logs",
+    communityMessage: "Message communaute",
+    twitch: "Twitch",
+    games: "Jeux",
+    achievements: "Succes",
+    achievementsGiveaway: "Giveaways",
+    achievementsBirthday: "Anniversaire",
+    api: "API",
+    bot: "Parametres bot",
+    sensitive: "Parametres sensibles"
+  };
+  return map[activeTab.value] || "Administration serveur";
+});
+const guildDisplayName = computed(() => {
+  const value = String(form.name || id || "").trim();
+  return value || "Serveur";
+});
+useHead(() => ({
+  title: `${adminTabLabel.value} - ${guildDisplayName.value}`
+}));
 const overviewStats = reactive({ members: null, online: null, bots: null });
 const showUnsavedModal = ref(false);
 const showSavedModal = ref(false);

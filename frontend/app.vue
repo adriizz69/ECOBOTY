@@ -215,12 +215,283 @@ const selectedLocaleItem = computed(
 );
 const htmlLang = computed(() => locale.value || "fr");
 const htmlDir = computed(() => "ltr");
+const siteName = "ECOBOTY";
 
 useHead({
   htmlAttrs: {
     lang: htmlLang,
     dir: htmlDir
   }
+});
+
+const normalizedBaseUrl = computed(() => {
+  const raw = String(config.public.baseUrl || "").trim();
+  if (raw) return raw.replace(/\/+$/, "");
+  if (process.client && window?.location?.origin) return window.location.origin.replace(/\/+$/, "");
+  return "https://ecoboty.eu";
+});
+
+const pageSeo = computed(() => {
+  const path = String(route.path || "/");
+  const guildName = String(selectedGuild.value?.name || "").trim();
+  const guildSuffix = guildName ? ` - ${guildName}` : "";
+
+  if (path === "/") {
+    return {
+      title: "Accueil",
+      description:
+        "ECOBOTY: bot economie Discord avec dashboard complet, Twitch, succes, boutique, logs et automatisations.",
+      noindex: false
+    };
+  }
+  if (path === "/servers") {
+    return {
+      title: "Mes serveurs",
+      description: "Selectionne et gere tes serveurs Discord connectes a ECOBOTY.",
+      noindex: true
+    };
+  }
+  if (path === "/setup") {
+    return {
+      title: "Statut des services",
+      description: "Verifie l'etat des services et integrations ECOBOTY.",
+      noindex: false
+    };
+  }
+  if (path === "/documentation") {
+    return {
+      title: "Documentation",
+      description: "Documentation ECOBOTY pour configurer le bot, l'admin et l'espace utilisateur.",
+      noindex: false
+    };
+  }
+  if (path === "/documentation/admin") {
+    return {
+      title: "Documentation Admin",
+      description: "Guide administrateur ECOBOTY: economie, gains auto, Twitch, succes, anniversaires et logs.",
+      noindex: false
+    };
+  }
+  if (path === "/documentation/utilisateur") {
+    return {
+      title: "Documentation Utilisateur",
+      description: "Guide utilisateur ECOBOTY: boutique, inventaire, jeux, succes et compte.",
+      noindex: false
+    };
+  }
+  if (path === "/mentions-legales") {
+    return {
+      title: "Mentions legales",
+      description: "Mentions legales du site ECOBOTY.",
+      noindex: false
+    };
+  }
+  if (path === "/conditions") {
+    return {
+      title: "Conditions d'utilisation",
+      description: "Conditions d'utilisation de la plateforme ECOBOTY.",
+      noindex: false
+    };
+  }
+  if (path === "/confidentialite") {
+    return {
+      title: "Politique de confidentialite",
+      description: "Politique de confidentialite et gestion des donnees ECOBOTY.",
+      noindex: false
+    };
+  }
+  if (path === "/admin") {
+    return {
+      title: "Administration BOT",
+      description: "Configuration globale du bot ECOBOTY.",
+      noindex: true
+    };
+  }
+  if (path === "/user") {
+    return {
+      title: "Espace utilisateur",
+      description: "Vue utilisateur ECOBOTY: progression, serveurs et activite personnelle.",
+      noindex: true
+    };
+  }
+  if (path.startsWith("/guild/")) {
+    return {
+      title: `Administration serveur${guildSuffix}`,
+      description: "Panneau d'administration serveur ECOBOTY.",
+      noindex: true
+    };
+  }
+  if (path.startsWith("/user/guild/")) {
+    return {
+      title: `Espace serveur utilisateur${guildSuffix}`,
+      description: "Espace utilisateur par serveur: boutique, inventaire, logs, succes et mon compte.",
+      noindex: true
+    };
+  }
+  if (path === "/callback") {
+    return {
+      title: "Connexion en cours",
+      description: "Finalisation de la connexion ECOBOTY.",
+      noindex: true
+    };
+  }
+  return {
+    title: "Dashboard",
+    description: "Dashboard ECOBOTY.",
+    noindex: false
+  };
+});
+
+const canonicalUrl = computed(() => {
+  const base = normalizedBaseUrl.value;
+  const path = String(route.path || "/");
+  return `${base}${path.startsWith("/") ? path : `/${path}`}`;
+});
+
+const appLocale = computed(() => {
+  const key = String(locale.value || "fr").toLowerCase();
+  if (key.startsWith("en")) return "en-US";
+  if (key.startsWith("es")) return "es-ES";
+  return "fr-FR";
+});
+
+const buildAbsoluteUrl = (path) => {
+  const base = normalizedBaseUrl.value;
+  const value = String(path || "/");
+  return `${base}${value.startsWith("/") ? value : `/${value}`}`;
+};
+
+const breadcrumbLinks = computed(() => {
+  const path = String(route.path || "/");
+  const links = [{ name: "Accueil", path: "/" }];
+  if (path === "/") return links;
+  if (path === "/documentation") {
+    links.push({ name: "Documentation", path: "/documentation" });
+    return links;
+  }
+  if (path === "/documentation/admin") {
+    links.push({ name: "Documentation", path: "/documentation" });
+    links.push({ name: "Documentation Admin", path: "/documentation/admin" });
+    return links;
+  }
+  if (path === "/documentation/utilisateur") {
+    links.push({ name: "Documentation", path: "/documentation" });
+    links.push({ name: "Documentation Utilisateur", path: "/documentation/utilisateur" });
+    return links;
+  }
+  if (path === "/setup") {
+    links.push({ name: "Statut des services", path: "/setup" });
+    return links;
+  }
+  if (path === "/mentions-legales") {
+    links.push({ name: "Mentions legales", path: "/mentions-legales" });
+    return links;
+  }
+  if (path === "/conditions") {
+    links.push({ name: "Conditions d'utilisation", path: "/conditions" });
+    return links;
+  }
+  if (path === "/confidentialite") {
+    links.push({ name: "Politique de confidentialite", path: "/confidentialite" });
+    return links;
+  }
+  return null;
+});
+
+const organizationStructuredData = computed(() => ({
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  name: siteName,
+  url: normalizedBaseUrl.value,
+  logo: buildAbsoluteUrl("/logo.png"),
+  sameAs: ["https://discord.gg/e6eUHaqyGt"]
+}));
+
+const websiteStructuredData = computed(() => ({
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  name: siteName,
+  url: normalizedBaseUrl.value,
+  inLanguage: appLocale.value
+}));
+
+const webpageStructuredData = computed(() => ({
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  name: `${pageSeo.value.title} | ${siteName}`,
+  url: canonicalUrl.value,
+  description: pageSeo.value.description,
+  inLanguage: appLocale.value,
+  isPartOf: {
+    "@type": "WebSite",
+    name: siteName,
+    url: normalizedBaseUrl.value
+  }
+}));
+
+const breadcrumbStructuredData = computed(() => {
+  const links = breadcrumbLinks.value;
+  if (!Array.isArray(links) || !links.length) return null;
+  return {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: links.map((row, index) => ({
+      "@type": "ListItem",
+      position: index + 1,
+      name: row.name,
+      item: buildAbsoluteUrl(row.path)
+    }))
+  };
+});
+
+useHead(() => {
+  const seo = pageSeo.value;
+  const absoluteTitle = `${seo.title} | ${siteName}`;
+  const robots = seo.noindex ? "noindex, nofollow" : "index, follow";
+  const schemaScripts = [
+    {
+      key: "ld-organization",
+      type: "application/ld+json",
+      children: JSON.stringify(organizationStructuredData.value)
+    },
+    {
+      key: "ld-website",
+      type: "application/ld+json",
+      children: JSON.stringify(websiteStructuredData.value)
+    },
+    {
+      key: "ld-webpage",
+      type: "application/ld+json",
+      children: JSON.stringify(webpageStructuredData.value)
+    }
+  ];
+  if (breadcrumbStructuredData.value) {
+    schemaScripts.push({
+      key: "ld-breadcrumb",
+      type: "application/ld+json",
+      children: JSON.stringify(breadcrumbStructuredData.value)
+    });
+  }
+  return {
+    title: seo.title,
+    titleTemplate: (chunk) => (chunk ? `${chunk} | ${siteName}` : siteName),
+    link: [{ rel: "canonical", href: canonicalUrl.value }],
+    meta: [
+      { name: "description", content: seo.description },
+      { name: "robots", content: robots },
+      { property: "og:site_name", content: siteName },
+      { property: "og:type", content: "website" },
+      { property: "og:title", content: absoluteTitle },
+      { property: "og:description", content: seo.description },
+      { property: "og:url", content: canonicalUrl.value },
+      { property: "og:image", content: `${normalizedBaseUrl.value}/logo.png` },
+      { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:title", content: absoluteTitle },
+      { name: "twitter:description", content: seo.description },
+      { name: "twitter:image", content: `${normalizedBaseUrl.value}/logo.png` }
+    ],
+    script: schemaScripts
+  };
 });
 
 const ensureAdsenseLoaded = () => {
