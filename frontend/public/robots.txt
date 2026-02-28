@@ -6,4 +6,5 @@ Disallow: /user
 Disallow: /guild/
 Disallow: /user/
 Disallow: /callback
+Sitemap: https://ecoboty.eu/sitemap-main.xml
 Sitemap: https://ecoboty.eu/sitemap.xml
