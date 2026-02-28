@@ -92,7 +92,41 @@
     "terms": "Conditions d'utilisation",
     "privacy": "Politique de confidentialité",
     "heroAlt": "Aperçu du dashboard",
-    "splitAlt": "Exemples de fonctionnalités"
+    "splitAlt": "Exemples de fonctionnalités",
+    "quick": {
+      "title": "Acces rapides",
+      "subtitle": "Pages publiques utiles pour Google et pour guider tes visiteurs.",
+      "docs": {
+        "kicker": "Documentation",
+        "title": "Hub documentation",
+        "text": "Vue globale des guides admin et utilisateur."
+      },
+      "admin": {
+        "kicker": "Guide admin",
+        "title": "Documentation admin",
+        "text": "Parametrage complet du bot cote serveur."
+      },
+      "user": {
+        "kicker": "Guide utilisateur",
+        "title": "Documentation utilisateur",
+        "text": "Fonctions membres: boutique, inventaire, jeux et logs."
+      },
+      "status": {
+        "kicker": "Monitoring",
+        "title": "Statut des services",
+        "text": "Etat en direct des services et integrations."
+      },
+      "terms": {
+        "kicker": "Juridique",
+        "title": "Conditions d'utilisation",
+        "text": "Cadre d'utilisation de la plateforme."
+      },
+      "privacy": {
+        "kicker": "Donnees",
+        "title": "Politique de confidentialite",
+        "text": "Gestion des donnees, cookies et vie privee."
+      }
+    }
   },
   "docHub": {
     "title": "Documentation BOT ÉCONOMIE",

@@ -1069,6 +1069,17 @@ const activeTabHero = computed(() => {
   return heroByTab[activeTab.value] || heroByTab.shops;
 });
 
+const userGuildDisplayName = computed(() => {
+  const fromSummary = String(summary.value?.guild?.name || "").trim();
+  if (fromSummary) return fromSummary;
+  const fromRoute = String(guildId || "").trim();
+  return fromRoute || "Serveur";
+});
+
+useHead(() => ({
+  title: `${activeTabHero.value?.title || "Espace serveur"} - ${userGuildDisplayName.value}`
+}));
+
 const botTimeZone = computed(() => {
   const tz = logsTimeZoneOverride.value || summary.value?.bot?.timezone;
   return typeof tz === "string" && tz ? tz : "UTC";
