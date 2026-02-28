@@ -538,6 +538,18 @@ const isLiveCached = async (guildId) => {
   return live;
 };
 
+const fetchLiveStatusFresh = async (guildId, settings = null) => {
+  const key = String(guildId);
+  const currentSettings = settings || (await getTwitchSettings(guildId));
+  if (!currentSettings) {
+    liveStatusCache.set(key, { live: false, at: Date.now() });
+    return false;
+  }
+  const live = await fetchLiveStatus(currentSettings);
+  liveStatusCache.set(key, { live, at: Date.now() });
+  return live;
+};
+
 export const getTwitchLiveStatus = async (guildId) => {
   return isLiveCached(guildId);
 };
@@ -1092,10 +1104,16 @@ export const startTwitchListener = async (guildId) => {
       try {
         const current = await getTwitchSettings(guildId);
         if (!current) return;
-        const streamIsLive = await isLiveCached(guildId);
+        const streamIsLive = await fetchLiveStatusFresh(guildId, current);
         const liveOnly = normalizeLiveOnly(current.live_only);
         if (liveOnly && !streamIsLive) return;
         const chatters = await fetchChatters(current);
+        debugLog("watch-tick", {
+          guildId,
+          streamIsLive,
+          liveOnly,
+          chatters: Array.isArray(chatters) ? chatters.length : 0
+        });
         for (const chatter of chatters) {
           const login = chatter?.user_login;
           if (!login) continue;
