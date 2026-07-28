@@ -82,7 +82,7 @@
           <UTable v-else :data="rows" :columns="columns" :ui="{ td: 'align-top' }" />
 
           <template #footer>
-            <div class="flex items-center justify-end gap-2">
+            <div class="flex items-center justify-center gap-2">
               <UButton color="neutral" variant="outline" :disabled="usersPage <= 1" @click="changeUsersPage(-1)">
                 Précédent
               </UButton>

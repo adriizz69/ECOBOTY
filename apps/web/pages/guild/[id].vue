@@ -964,7 +964,7 @@
         </div>
 
         <div v-if="communityMessageMessageId" class="doc-callout" style="margin-bottom: 12px;">
-          {{ $t("adminGuild.communityMessage.alreadySent") }}
+          {{ $t("adminGuild.communityMessage.alreadySent", { count: communityMessageMessageIds.length || 1 }) }}
         </div>
 
         <div class="grid">
@@ -3058,7 +3058,11 @@
 
         <div v-if="leaderboardStats" class="grid">
           <div class="stat-card">
-            <div class="stat-title">{{ $t("adminGuild.leaderboard.total") }}</div>
+            <div class="stat-title">{{ $t("adminGuild.leaderboard.currentBalance") }}</div>
+            <div class="stat-value">{{ selectedLeaderboardUser?.balance ?? 0 }}</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-title">{{ $t("adminGuild.leaderboard.periodGains") }}</div>
             <div class="stat-value">{{ leaderboardStats.total }}</div>
           </div>
           <div class="stat-card">
@@ -4214,6 +4218,7 @@ const communityMessageShopIds = ref([]);
 const communityMessageIncludeGameChances = ref(false);
 const communityMessageIncludeShopDiscounts = ref(true);
 const communityMessageMessageId = ref(null);
+const communityMessageMessageIds = ref([]);
 const communityMessagePreview = ref("");
 const communityMessagePreviewLength = ref(0);
 const communityMessageLoading = ref(false);
@@ -5902,6 +5907,11 @@ const loadCommunityMessage = async ({ force = false } = {}) => {
     communityMessageIncludeGameChances.value = Boolean(settings.include_game_chances);
     communityMessageIncludeShopDiscounts.value = settings.include_shop_discounts !== false;
     communityMessageMessageId.value = settings.message_id || null;
+    communityMessageMessageIds.value = Array.isArray(settings.message_ids)
+      ? settings.message_ids.map(String).filter(Boolean)
+      : settings.message_id
+        ? [String(settings.message_id)]
+        : [];
   }
   communityMessageLoading.value = false;
   loadedTabs.communityMessage = true;
@@ -5959,6 +5969,11 @@ const sendCommunityMessage = async () => {
   if (res.ok) {
     const data = await parseJsonSafe(res, {});
     communityMessageMessageId.value = data.messageId || null;
+    communityMessageMessageIds.value = Array.isArray(data.messageIds)
+      ? data.messageIds.map(String).filter(Boolean)
+      : data.messageId
+        ? [String(data.messageId)]
+        : [];
     communityMessageStatus.value = t("adminGuild.communityMessage.sendSuccess");
   } else {
     const data = await parseJsonSafe(res, {});
@@ -5990,6 +6005,11 @@ const updateCommunityMessage = async () => {
   if (res.ok) {
     const data = await parseJsonSafe(res, {});
     if (data.messageId) communityMessageMessageId.value = data.messageId;
+    communityMessageMessageIds.value = Array.isArray(data.messageIds)
+      ? data.messageIds.map(String).filter(Boolean)
+      : data.messageId
+        ? [String(data.messageId)]
+        : communityMessageMessageIds.value;
     communityMessageStatus.value = t("adminGuild.communityMessage.updateSuccess");
   } else {
     const data = await parseJsonSafe(res, {});
@@ -6017,6 +6037,7 @@ const deleteCommunityMessage = async () => {
   }
   if (res.ok) {
     communityMessageMessageId.value = null;
+    communityMessageMessageIds.value = [];
     communityMessageStatus.value = t("adminGuild.communityMessage.deleteSuccess");
   } else {
     communityMessageStatus.value = t("adminGuild.communityMessage.deleteError");
@@ -9366,7 +9387,7 @@ label {
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: center;
   margin-top: 14px;
 }
 

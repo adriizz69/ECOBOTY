@@ -146,15 +146,29 @@
             }}
           </div>
 
+          <button
+            v-if="guild.botPresent === false"
+            type="button"
+            class="add-bot-tile"
+            @click="addBotToGuild(guild)"
+          >
+            <span class="add-bot-icon" aria-hidden="true">+</span>
+            <span class="add-bot-copy">
+              <strong>{{ $t("servers.ctaAddBot") }}</strong>
+              <span>{{ $t("servers.ctaAddBotHint") }}</span>
+            </span>
+          </button>
+
           <UButton
-            :color="guild.botPresent === false ? 'neutral' : 'primary'"
-            :variant="guild.botPresent === false ? 'soft' : 'solid'"
+            v-else
+            color="primary"
+            variant="solid"
             block
             class="server-cta"
-            :to="guild.botPresent === false ? undefined : `/guild/${guild.id}`"
-            @click="guild.botPresent !== false && selectGuild(guild)"
+            :to="`/guild/${guild.id}`"
+            @click="selectGuild(guild)"
           >
-            {{ guildCtaLabel(guild) }}
+            {{ $t("servers.ctaManage") }}
           </UButton>
           <UButton
             v-if="guild.botPresent !== false && !guild.billing?.isPremium"
@@ -179,6 +193,28 @@
         </article>
       </div>
     </div>
+
+    <UModal
+      v-model:open="inviteWatchOpen"
+      :title="$t('servers.inviteWatchTitle')"
+      :description="$t('servers.inviteWatchText')"
+    >
+      <template #body>
+        <div class="invite-watch-body">
+          <p v-if="inviteNotDetected" class="invite-watch-error">
+            {{ $t("servers.inviteWatchNotDetected") }}
+          </p>
+          <div class="invite-watch-actions">
+            <UButton color="primary" :loading="inviteChecking" @click="manualContinueInvite">
+              {{ $t("servers.inviteWatchContinue") }}
+            </UButton>
+            <UButton color="neutral" variant="outline" @click="cancelInviteWatch">
+              {{ $t("common.cancel") }}
+            </UButton>
+          </div>
+        </div>
+      </template>
+    </UModal>
   </section>
 </template>
 
@@ -269,7 +305,97 @@ const cardText = (guild) => {
   return t("servers.cardUnknownText");
 };
 
-const guildCtaLabel = (guild) => (guild.botPresent === false ? t("servers.ctaBotAbsent") : t("servers.ctaManage"));
+const inviteWatchOpen = ref(false);
+const inviteWatchGuildId = ref("");
+const inviteWatchGuildName = ref("");
+const inviteChecking = ref(false);
+const inviteNotDetected = ref(false);
+let invitePollTimer = null;
+
+const botInviteUrl = (guildId) => {
+  const clientId = config.public.discordClientId || "CLIENT_ID";
+  const permissions = "9";
+  const scopes = "bot%20applications.commands";
+  return `https://discord.com/api/oauth2/authorize?client_id=${clientId}&permissions=${permissions}&scope=${scopes}&guild_id=${encodeURIComponent(String(guildId))}&disable_guild_select=true`;
+};
+
+const stopInviteWatch = () => {
+  if (invitePollTimer) {
+    clearInterval(invitePollTimer);
+    invitePollTimer = null;
+  }
+};
+
+const goToInvitedGuild = (guildId, guildName = "") => {
+  stopInviteWatch();
+  inviteWatchOpen.value = false;
+  inviteChecking.value = false;
+  if (process.client) {
+    localStorage.setItem(
+      "selectedGuild",
+      JSON.stringify({ id: String(guildId), name: guildName || inviteWatchGuildName.value || "" })
+    );
+  }
+  router.push(`/guild/${guildId}`);
+};
+
+const checkInvitePresence = async (guildId = inviteWatchGuildId.value) => {
+  if (!guildId) return false;
+  const token = getToken();
+  if (!token) return false;
+  try {
+    const res = await fetch(`${config.public.apiBase}/api/servers`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    const servers = data.servers || [];
+    guilds.value = servers;
+    const current = servers.find((g) => String(g.id) === String(guildId));
+    if (current?.botPresent === true) {
+      goToInvitedGuild(guildId, current.name);
+      return true;
+    }
+  } catch {
+    // keep waiting
+  }
+  return false;
+};
+
+const startInviteWatch = (guild) => {
+  inviteWatchGuildId.value = String(guild.id);
+  inviteWatchGuildName.value = guild.name || "";
+  inviteNotDetected.value = false;
+  inviteWatchOpen.value = true;
+  stopInviteWatch();
+  invitePollTimer = setInterval(() => {
+    checkInvitePresence(guild.id);
+  }, 2500);
+  setTimeout(() => checkInvitePresence(guild.id), 1200);
+};
+
+const addBotToGuild = (guild) => {
+  if (!guild?.id || !process.client) return;
+  selectGuild(guild);
+  window.open(botInviteUrl(guild.id), "_blank", "noopener,noreferrer");
+  startInviteWatch(guild);
+};
+
+const manualContinueInvite = async () => {
+  inviteChecking.value = true;
+  inviteNotDetected.value = false;
+  const ok = await checkInvitePresence(inviteWatchGuildId.value);
+  inviteChecking.value = false;
+  if (!ok) inviteNotDetected.value = true;
+};
+
+const cancelInviteWatch = () => {
+  stopInviteWatch();
+  inviteWatchOpen.value = false;
+  inviteWatchGuildId.value = "";
+  inviteWatchGuildName.value = "";
+  inviteNotDetected.value = false;
+};
 
 const loadMe = async () => {
   const token = getToken();
@@ -366,6 +492,17 @@ onMounted(async () => {
     return;
   }
   await fetchServers();
+});
+
+watch(inviteWatchOpen, (open) => {
+  if (!open) {
+    stopInviteWatch();
+    inviteNotDetected.value = false;
+  }
+});
+
+onUnmounted(() => {
+  stopInviteWatch();
 });
 </script>
 
@@ -670,6 +807,77 @@ onMounted(async () => {
 .hint {
   font-size: 12px;
   color: #fbbf24;
+}
+
+.add-bot-tile {
+  margin-top: auto;
+  width: 100%;
+  border: 1px dashed rgba(45, 212, 160, 0.55);
+  background: linear-gradient(160deg, rgba(45, 212, 160, 0.14), rgba(45, 212, 160, 0.04));
+  border-radius: 14px;
+  padding: 14px 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+}
+
+.add-bot-tile:hover {
+  border-color: rgba(45, 212, 160, 0.9);
+  background: linear-gradient(160deg, rgba(45, 212, 160, 0.2), rgba(45, 212, 160, 0.06));
+  transform: translateY(-1px);
+}
+
+.add-bot-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1;
+  color: #0f172a;
+  background: #2dd4a0;
+  box-shadow: 0 8px 18px rgba(45, 212, 160, 0.28);
+}
+
+.add-bot-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.add-bot-copy strong {
+  font-size: 14px;
+  color: var(--text);
+}
+
+.add-bot-copy span {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.invite-watch-body {
+  display: grid;
+  gap: 14px;
+}
+
+.invite-watch-error {
+  margin: 0;
+  font-size: 13px;
+  color: #fbbf24;
+}
+
+.invite-watch-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
 }
 
 .server-cta {

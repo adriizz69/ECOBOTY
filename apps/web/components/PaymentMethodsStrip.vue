@@ -19,34 +19,13 @@ const props = defineProps({
 const displayLabel = computed(() => props.label || t("landing.paymentsAccepted"));
 
 const methods = [
-  {
-    name: "Visa",
-    src: "https://upload.wikimedia.org/wikipedia/commons/5/5e/Visa_Inc._logo.svg"
-  },
-  {
-    name: "Mastercard",
-    src: "https://upload.wikimedia.org/wikipedia/commons/2/2a/Mastercard-logo.svg"
-  },
-  {
-    name: "Apple Pay",
-    src: "https://upload.wikimedia.org/wikipedia/commons/b/b0/Apple_Pay_logo.svg"
-  },
-  {
-    name: "Google Pay",
-    src: "https://upload.wikimedia.org/wikipedia/commons/f/f2/Google_Pay_Logo.svg"
-  },
-  {
-    name: "Link",
-    src: "https://upload.wikimedia.org/wikipedia/commons/2/2f/Link_%28Stripe%29_logo.svg"
-  },
-  {
-    name: "Revolut",
-    src: "https://upload.wikimedia.org/wikipedia/commons/7/7b/Revolut_logo.svg"
-  },
-  {
-    name: "PayPal",
-    src: "https://upload.wikimedia.org/wikipedia/commons/b/b5/PayPal.svg"
-  }
+  { name: "Visa", src: "/payments/visa.svg" },
+  { name: "Mastercard", src: "/payments/mastercard.svg" },
+  { name: "Apple Pay", src: "/payments/apple-pay.svg" },
+  { name: "Google Pay", src: "/payments/google-pay.svg" },
+  { name: "Link", src: "/payments/link.svg" },
+  { name: "Revolut", src: "/payments/revolut.svg" },
+  { name: "PayPal", src: "/payments/paypal.svg" }
 ];
 </script>
 
@@ -94,13 +73,8 @@ const methods = [
 .payments-badge img {
   display: block;
   max-height: 18px;
-  max-width: 64px;
+  max-width: 72px;
   width: auto;
   object-fit: contain;
-}
-
-.payments-badge:nth-child(5) img {
-  max-height: 16px;
-  max-width: 48px;
 }
 </style>

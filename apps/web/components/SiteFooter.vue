@@ -9,7 +9,10 @@
       </div>
       <div class="site-footer-col">
         <p class="site-footer-label">{{ $t("landing.footer.sites") }}</p>
-        <a href="https://khaorys.com" target="_blank" rel="noreferrer">khaorys.com</a>
+        <a href="https://khaorys.com" target="_blank" rel="noreferrer" class="site-footer-ext">
+          <img src="/khaorys-favicon.ico" alt="" class="site-footer-favicon" width="16" height="16" />
+          khaorys.com
+        </a>
       </div>
       <div class="site-footer-col site-footer-brand">
         <img src="/logo.png" alt="EcoBoty" class="site-footer-logo" />
@@ -58,6 +61,20 @@
 
 .site-footer a:hover {
   color: var(--accent);
+}
+
+.site-footer-ext {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.site-footer-favicon {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  object-fit: cover;
+  flex-shrink: 0;
 }
 
 .site-footer-brand {

@@ -7,7 +7,7 @@ export function useBillingComparison() {
       rows: [
         { key: "billedEntity", free: t("pricing.compareValues.none"), premium: t("pricing.compareValues.guild") },
       { key: "shops", free: "1", premium: "10" },
-      { key: "items", free: "6", premium: "6" },
+      { key: "items", free: "6", premium: "50" },
       { key: "lootbox", free: false, premium: true },
         { key: "logs", free: t("pricing.compareValues.logsFree"), premium: t("pricing.compareValues.logsPremium") }
       ]
@@ -44,8 +44,8 @@ export function useBillingComparison() {
     {
       title: t("pricing.compareSections.twitch"),
       rows: [
-        { key: "twitchConnect", free: false, premium: true },
-        { key: "twitchMessageGains", free: false, premium: true },
+        { key: "twitchConnect", free: true, premium: true },
+        { key: "twitchMessageGains", free: true, premium: true },
         { key: "twitchWatch", free: false, premium: true },
         { key: "twitchSubsBits", free: false, premium: true },
         { key: "twitchDaily", free: false, premium: true },
