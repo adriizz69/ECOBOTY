@@ -16,9 +16,17 @@ npm run build
 npm start   # exécute aussi les migrations (prestart)
 ```
 
-Les migrations ne lisent pas un fichier `.env` obligatoire sur Plesk : elles utilisent les **variables Node.js** du panel, injectées quand Plesk lance `npm start` / `server.js`.
+Sur Plesk, **ne lance pas** `npm run migrate` en SSH : les variables du panel ne sont pas disponibles dans le terminal.
 
-> Un `npm run migrate` lancé à la main en SSH **n’a pas** les variables du panel — préférer **Restart app** après deploy, ou `export DATABASE_URL=...` avant la commande.
+Les migrations s'exécutent **au démarrage** de l'app (`server.js` / Restart app), avec les variables Node.js Plesk.
+
+```bash
+npm ci
+npm run build
+# Puis « Restart app » dans Plesk
+```
+
+Si tu dois migrer à la main en SSH : `export DATABASE_URL='mysql://...'` puis `npm run migrate`.
 
 Plesk Application Node.js :
 

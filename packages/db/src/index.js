@@ -1,6 +1,10 @@
 import net from "node:net";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import knex from "knex";
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const migrationsDir = path.join(__dirname, "../migrations");
 const DEFAULT_DB_PORT = 3306;
 const DEFAULT_DB_TIMEOUT_MS = 2000;
 
@@ -83,6 +87,37 @@ export const createDb = () =>
     }
   });
 
-export const db = createDb();
+export const runMigrations = async () => {
+  const databaseUrl = String(process.env.DATABASE_URL || "").trim();
+  if (!databaseUrl) {
+    const error = new Error("DATABASE_URL missing");
+    error.code = "DATABASE_URL_MISSING";
+    throw error;
+  }
 
+  const migrationDb = knex({
+    client: "mysql2",
+    connection: buildDatabaseConnection(),
+    pool: {
+      afterCreate: setConnectionUtcTimeZone
+    },
+    migrations: {
+      directory: migrationsDir
+    }
+  });
+
+  try {
+    const [batch, log] = await migrationDb.migrate.latest();
+    if (log.length) {
+      console.log(`[db] migrations applied (batch ${batch}): ${log.join(", ")}`);
+    } else {
+      console.log("[db] migrations up to date");
+    }
+    return { ok: true, batch, log };
+  } finally {
+    await migrationDb.destroy();
+  }
+};
+
+export const db = createDb();
 export default db;

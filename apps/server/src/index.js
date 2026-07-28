@@ -12,6 +12,7 @@ dotenv.config({ path: path.join(rootDir, ".env") });
 dotenv.config();
 
 const { loadEnv, applyEnv } = await import("@ecoboty/config");
+const { runMigrations } = await import("@ecoboty/db");
 const {
   createApp,
   probeDatabaseConnection,
@@ -24,6 +25,13 @@ const { startBot, getDiscordClient } = await import("./bot/index.js");
 const env = applyEnv(loadEnv(process.env));
 const port = env.PORT;
 const isProd = env.NODE_ENV === "production";
+
+try {
+  await runMigrations();
+} catch (error) {
+  console.error(`[db] migration failed: ${error?.message || error}`);
+  if (isProd) process.exit(1);
+}
 
 const app = createApp({
   corsOrigins: [
