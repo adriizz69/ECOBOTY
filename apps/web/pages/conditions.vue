@@ -451,8 +451,8 @@
       <h2>4. Destinataires et sous-traitants</h2>
       <p>
         Les données ne sont pas vendues. Elles peuvent être traitées par : hébergeur (IONOS SE),
-        Discord Inc., Twitch / Amazon (si intégration), Stripe (facturation), et outils d'assistance /
-        mesure d'audience uniquement si vous avez accepté les cookies concernés. Ces tiers appliquent
+        Discord Inc., Twitch / Amazon (si intégration), Stripe (facturation), et le chat de support
+        (Tawk.to) uniquement si vous avez accepté les cookies concernés. Ces tiers appliquent
         leurs propres politiques.
       </p>
     </article>
@@ -571,11 +571,6 @@
             </tr>
           </thead>
           <tbody>
-            <tr>
-              <td>Google AdSense</td>
-              <td>Publicité et mesure d'audience (si activé)</td>
-              <td>Google Ireland Limited</td>
-            </tr>
             <tr>
               <td>Tawk.to</td>
               <td>Chat de support en ligne (si activé)</td>

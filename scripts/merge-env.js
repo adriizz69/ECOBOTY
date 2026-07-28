@@ -51,7 +51,6 @@ const merged = {
   ADMIN_USER_ID: pick(root.ADMIN_USER_ID, ""),
 
   // Public web
-  ADSENSE_CLIENT: pick(root.ADSENSE_CLIENT, web.ADSENSE_CLIENT, legacyFront.ADSENSE_CLIENT),
   TAWK_TO_WIDGET_URL: pick(root.TAWK_TO_WIDGET_URL, web.TAWK_TO_WIDGET_URL, legacyFront.TAWK_TO_WIDGET_URL),
 
   // MySQL
@@ -102,7 +101,6 @@ const lines = [
   merged.ADMIN_USER_ID ? `ADMIN_USER_ID=${merged.ADMIN_USER_ID}` : "# ADMIN_USER_ID=",
   "",
   "# --- Public web (Nuxt runtimeConfig) ---",
-  `ADSENSE_CLIENT=${merged.ADSENSE_CLIENT}`,
   `TAWK_TO_WIDGET_URL=${merged.TAWK_TO_WIDGET_URL}`,
   "",
   "# --- MySQL ---",

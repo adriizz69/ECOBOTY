@@ -14,3 +14,9 @@ apps/web/dist/
 apps/web/.env
 *.log
 .tmp-*
+
+# IDE / Cursor (local, ne pas versionner)
+.vscode/
+.agents/
+skills-lock.json
+.cursor/

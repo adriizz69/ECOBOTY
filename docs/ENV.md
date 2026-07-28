@@ -13,7 +13,7 @@ Un seul fichier : **`.env` à la racine**.
 | `API_JWT_TTL` | Durée JWT |
 | `PREMIUM_FEATURE_ENFORCEMENT_MODE` | `off` / `warn` / `enforce` |
 | `ADMIN_USER_IDS` | Admins Discord |
-| `ADSENSE_CLIENT` / `TAWK_TO_WIDGET_URL` | Widgets front |
+| `TAWK_TO_WIDGET_URL` | Chat support front |
 | `DATABASE_URL` | MySQL |
 | `DISCORD_*` | Bot + OAuth |
 | `TWITCH_*` | Optionnel (module Twitch) |

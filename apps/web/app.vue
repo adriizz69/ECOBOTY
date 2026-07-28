@@ -266,12 +266,8 @@ const showCookieBanner = computed(
   () => consentCookie.value !== "accepted" && consentCookie.value !== "refused"
 );
 const defaultTawkWidgetUrl = "https://embed.tawk.to/69a1b03b37d2cc1c36f4a8a7/1jifpgq5r";
-const adsenseClient = computed(() => String(config.public.adsenseClient || "").trim());
 const tawkToWidgetUrl = computed(
   () => String(config.public.tawkToWidgetUrl || defaultTawkWidgetUrl).trim()
-);
-const shouldLoadAdsense = computed(
-  () => consentCookie.value === "accepted" && adsenseClient.value.length > 0
 );
 const shouldLoadTawk = computed(
   () => consentCookie.value === "accepted" && tawkToWidgetUrl.value.length > 0
@@ -586,34 +582,6 @@ useHead(() => {
   };
 });
 
-const ensureAdsenseLoaded = () => {
-  if (!process.client) return;
-  if (!shouldLoadAdsense.value) return;
-  if (!adsenseClient.value) return;
-
-  let meta = document.querySelector('meta[name="google-adsense-account"]');
-  if (!meta) {
-    meta = document.createElement("meta");
-    meta.setAttribute("name", "google-adsense-account");
-    document.head.appendChild(meta);
-  }
-  meta.setAttribute("content", adsenseClient.value);
-
-  const targetSrc = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(adsenseClient.value)}`;
-  const existingScripts = Array.from(
-    document.querySelectorAll('script[src*="pagead2.googlesyndication.com/pagead/js/adsbygoogle.js"]')
-  );
-  const hasExactScript = existingScripts.some((s) => (s.getAttribute("src") || "") === targetSrc);
-  if (hasExactScript) return;
-  existingScripts.forEach((s) => s.remove());
-
-  const script = document.createElement("script");
-  script.async = true;
-  script.src = targetSrc;
-  script.crossOrigin = "anonymous";
-  document.head.appendChild(script);
-};
-
 const ensureTawkLoaded = () => {
   if (!process.client) return;
   if (!shouldLoadTawk.value) return;
@@ -634,10 +602,6 @@ const ensureTawkLoaded = () => {
   script.setAttribute("data-tawk-widget", "1");
   document.head.appendChild(script);
 };
-
-watch([shouldLoadAdsense, adsenseClient], () => {
-  ensureAdsenseLoaded();
-}, { immediate: true });
 
 watch([shouldLoadTawk, tawkToWidgetUrl], () => {
   ensureTawkLoaded();
