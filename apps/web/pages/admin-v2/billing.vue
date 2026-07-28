@@ -43,11 +43,23 @@
         <!-- Vue d'ensemble -->
         <template v-if="activeTab === 'overview'">
           <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <UPageCard title="MRR estimé" variant="subtle">
+            <UPageCard title="MRR estimé net" variant="subtle">
               <p class="text-3xl font-semibold">{{ dashboard?.mrrLabel || "—" }}</p>
+            </UPageCard>
+            <UPageCard title="Brut mensualisé" variant="subtle">
+              <p class="text-3xl font-semibold">{{ dashboard?.grossMrrLabel || "—" }}</p>
+            </UPageCard>
+            <UPageCard title="Remises mensualisées" variant="subtle">
+              <p class="text-3xl font-semibold text-warning">-{{ dashboard?.discountMrrLabel || "—" }}</p>
+            </UPageCard>
+            <UPageCard title="Frais Stripe mensualisés" variant="subtle">
+              <p class="text-3xl font-semibold text-warning">-{{ dashboard?.stripeFeesMrrLabel || "—" }}</p>
             </UPageCard>
             <UPageCard title="Abonnements actifs" variant="subtle">
               <p class="text-3xl font-semibold">{{ dashboard?.activeSubscriptions ?? "—" }}</p>
+            </UPageCard>
+            <UPageCard title="Net après frais" variant="subtle">
+              <p class="text-3xl font-semibold text-success">{{ dashboard?.netAfterFeesMrrLabel || "—" }}</p>
             </UPageCard>
             <UPageCard title="Impayés" variant="subtle">
               <p class="text-3xl font-semibold text-warning">{{ dashboard?.unpaidInvoices ?? "—" }}</p>
@@ -540,6 +552,27 @@ const accountColumns = [
     accessorKey: "currentPeriodEnd",
     header: "Fin période",
     cell: ({ row }) => formatDate(row.original.currentPeriodEnd)
+  },
+  {
+    accessorKey: "billedAmountLabel",
+    header: "Montant cycle",
+    cell: ({ row }) => row.original.billedAmountLabel || "—"
+  },
+  {
+    accessorKey: "promoValueLabel",
+    header: "Promo",
+    cell: ({ row }) => {
+      if (!row.original.promoCode && !row.original.promoLabel) return "—";
+      return h("div", { class: "space-y-1" }, [
+        h("div", { class: "text-sm font-medium" }, row.original.promoCode || row.original.promoLabel),
+        h("div", { class: "text-xs text-muted" }, row.original.promoValueLabel || "—")
+      ]);
+    }
+  },
+  {
+    accessorKey: "stripeFeeLabel",
+    header: "Frais Stripe",
+    cell: ({ row }) => row.original.stripeFeeLabel || "—"
   },
   {
     id: "payer",

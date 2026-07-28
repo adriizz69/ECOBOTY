@@ -191,6 +191,7 @@
         <NuxtLayout>
           <NuxtPage />
         </NuxtLayout>
+        <SiteFooter />
       </main>
     </div>
     </div>
@@ -832,9 +833,6 @@ onMounted(() => {
   syncAuthState();
   loadSelectedGuild();
   loadMe();
-  if (process.client) {
-    void loadManagedServers().then(() => syncGuildFromRoute());
-  }
   if (disableLightMode) {
     colorMode.value = "dark";
   }
@@ -848,7 +846,6 @@ watch(
   () => {
     syncAuthState();
     loadSelectedGuild();
-    loadMe();
     syncGuildFromRoute();
   }
 );

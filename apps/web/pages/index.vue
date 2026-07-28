@@ -158,25 +158,6 @@
       </div>
     </section>
 
-    <footer class="footer">
-      <div class="footer-cols">
-        <div class="footer-col">
-          <p class="footer-label">{{ $t("landing.footer.legal") }}</p>
-          <NuxtLink to="/mentions-legales">{{ $t("landing.legal") }}</NuxtLink>
-          <NuxtLink to="/conditions">{{ $t("landing.legalDocs") }}</NuxtLink>
-          <NuxtLink to="/documentation">{{ $t("nav.documentation") }}</NuxtLink>
-        </div>
-        <div class="footer-col">
-          <p class="footer-label">{{ $t("landing.footer.sites") }}</p>
-          <a href="https://khaorys.com" target="_blank" rel="noreferrer">khaorys.com</a>
-        </div>
-        <div class="footer-col footer-brand">
-          <img src="/logo.png" alt="EcoBoty" class="footer-logo" />
-          <p>{{ $t("landing.footer.credit") }}</p>
-        </div>
-      </div>
-      <PaymentMethodsStrip />
-    </footer>
   </main>
 </template>
 
@@ -216,15 +197,16 @@ onMounted(async () => {
 
 <style scoped>
 .landing {
-  width: min(1180px, 100%);
-  margin: 0 auto;
-  padding: 0 16px 72px;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0 clamp(12px, 2vw, 28px) 72px;
 }
 
 .hero {
   position: relative;
   min-height: min(78vh, 720px);
-  padding: 48px 32px 56px;
+  padding: clamp(28px, 4vw, 52px) clamp(18px, 3vw, 40px) clamp(32px, 4vw, 56px);
   overflow: hidden;
   border-radius: 28px;
   border: 1px solid rgba(45, 212, 160, 0.22);
@@ -286,8 +268,8 @@ onMounted(async () => {
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: 1.05fr 0.95fr;
-  gap: 40px;
+  grid-template-columns: minmax(320px, 1.15fr) minmax(280px, 0.95fr);
+  gap: clamp(24px, 4vw, 56px);
   align-items: center;
   min-height: inherit;
 }
@@ -355,18 +337,18 @@ onMounted(async () => {
 }
 
 .section {
-  margin-top: 88px;
+  margin-top: clamp(48px, 7vw, 88px);
 }
 
 .focus {
   display: grid;
-  grid-template-columns: 1fr 1.05fr;
-  gap: 48px;
+  grid-template-columns: minmax(320px, 0.95fr) minmax(340px, 1.05fr);
+  gap: clamp(24px, 4vw, 56px);
   align-items: center;
 }
 
 .focus--reverse {
-  grid-template-columns: 1.05fr 1fr;
+  grid-template-columns: minmax(340px, 1.05fr) minmax(320px, 0.95fr);
 }
 
 .focus--reverse .focus-copy {
@@ -432,7 +414,7 @@ onMounted(async () => {
 }
 
 .maker {
-  padding: 40px 36px;
+  padding: clamp(24px, 3vw, 40px) clamp(20px, 3vw, 36px);
   border-radius: 24px;
   border: 1px solid rgba(45, 212, 160, 0.2);
   background:
@@ -455,7 +437,7 @@ onMounted(async () => {
 }
 
 .cta-box {
-  padding: 44px 32px;
+  padding: clamp(24px, 3vw, 44px) clamp(20px, 3vw, 32px);
   border-radius: 24px;
   border: 1px solid rgba(45, 212, 160, 0.28);
   background:
@@ -479,78 +461,16 @@ onMounted(async () => {
   margin-top: 22px;
 }
 
-.footer {
-  margin-top: 72px;
-  padding-top: 32px;
-  border-top: 1px solid var(--border);
-}
-
-.footer-cols {
-  display: grid;
-  grid-template-columns: 1.2fr 1fr 1.2fr;
-  gap: 32px;
-}
-
-.footer-col {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 10px;
-}
-
-.footer-label {
-  margin: 0 0 4px;
-  font-size: 0.78rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-
-.footer a {
-  color: var(--text-soft);
-  font-size: 0.95rem;
-}
-
-.footer a:hover {
-  color: var(--accent);
-}
-
-.footer-brand {
-  justify-content: flex-start;
-  color: var(--text-muted);
-  font-size: 0.9rem;
-  line-height: 1.5;
-}
-
-.footer-logo {
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  object-fit: cover;
-  margin-bottom: 4px;
-}
-
-.footer-brand p {
-  margin: 0;
-  max-width: 36ch;
-}
-
 @media (max-width: 960px) {
   .hero-grid,
   .focus,
-  .focus--reverse,
-  .footer-cols {
+  .focus--reverse {
     grid-template-columns: 1fr;
   }
 
   .focus--reverse .focus-copy,
   .focus--reverse .focus-media {
     order: initial;
-  }
-
-  .landing {
-    padding: 0 12px 56px;
   }
 
   .hero {
@@ -615,9 +535,6 @@ onMounted(async () => {
     justify-content: center;
   }
 
-  .footer {
-    margin-top: 48px;
-  }
 }
 
 @media (max-width: 560px) {
@@ -629,9 +546,6 @@ onMounted(async () => {
     font-size: 1rem;
   }
 
-  .footer-cols {
-    gap: 24px;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

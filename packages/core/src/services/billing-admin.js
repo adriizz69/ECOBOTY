@@ -9,12 +9,6 @@ import {
 
 const ACTIVE_STATUSES = new Set(["active", "trialing"]);
 
-const MRR_CENTS_BY_INTERVAL = Object.freeze({
-  monthly: 499,
-  quarterly: Math.round(1347 / 3),
-  yearly: Math.round(4790 / 12)
-});
-
 const assertStripeReady = () => {
   if (!isStripeConfigured()) {
     const error = new Error("stripe_not_configured");
@@ -22,16 +16,6 @@ const assertStripeReady = () => {
     error.expose = true;
     throw error;
   }
-};
-
-const estimateMrrCents = (subscriptionRow) => {
-  if (!subscriptionRow) return 0;
-  const status = String(subscriptionRow.status || "").toLowerCase();
-  if (!ACTIVE_STATUSES.has(status) || String(subscriptionRow.plan_key || "") !== "premium") {
-    return 0;
-  }
-  const interval = String(subscriptionRow.interval_key || "monthly").toLowerCase();
-  return MRR_CENTS_BY_INTERVAL[interval] || MRR_CENTS_BY_INTERVAL.monthly;
 };
 
 const formatPromoCode = (promotionCode) => {
@@ -69,7 +53,21 @@ export const getBillingDashboardOverview = async () => {
       String(row.plan_key || "") === "premium"
   );
 
-  const mrrCents = activeSubscriptions.reduce((sum, row) => sum + estimateMrrCents(row), 0);
+  const subscriptionMetrics = (
+    await Promise.all(
+      activeSubscriptions.map((row) =>
+        resolveSubscriptionMetrics(row.stripe_subscription_id, row.interval_key).catch(() => null)
+      )
+    )
+  ).filter(Boolean);
+  const grossMrrCents = subscriptionMetrics.reduce((sum, row) => sum + Number(row.grossMrrCents || 0), 0);
+  const discountMrrCents = subscriptionMetrics.reduce((sum, row) => sum + Number(row.discountMrrCents || 0), 0);
+  const mrrCents = subscriptionMetrics.reduce((sum, row) => sum + Number(row.netMrrCents || 0), 0);
+  const stripeFeesMrrCents = subscriptionMetrics.reduce((sum, row) => sum + Number(row.stripeFeeMrrCents || 0), 0);
+  const netAfterFeesMrrCents = subscriptionMetrics.reduce(
+    (sum, row) => sum + Number(row.netAfterFeesMrrCents || 0),
+    0
+  );
 
   const totalGuildsRow = await db("guilds").count({ count: "*" }).first();
   const totalGuilds = Number(totalGuildsRow?.count || 0);
@@ -113,7 +111,15 @@ export const getBillingDashboardOverview = async () => {
   return {
     stripeConfigured: true,
     mrrCents,
-    mrrLabel: `${(mrrCents / 100).toFixed(2)} €`,
+    mrrLabel: formatMoney(mrrCents),
+    grossMrrCents,
+    grossMrrLabel: formatMoney(grossMrrCents),
+    discountMrrCents,
+    discountMrrLabel: formatMoney(discountMrrCents),
+    stripeFeesMrrCents,
+    stripeFeesMrrLabel: formatMoney(stripeFeesMrrCents),
+    netAfterFeesMrrCents,
+    netAfterFeesMrrLabel: formatMoney(netAfterFeesMrrCents),
     activeSubscriptions: activeSubscriptions.length,
     unpaidInvoices: (openInvoices.data || []).length,
     freeServers: Math.max(0, totalGuilds - premiumGuildIds.size),
@@ -161,10 +167,21 @@ export const listAdminBillingAccounts = async () => {
       : [];
   const payerMap = new Map(payerUsers.map((row) => [String(row.discord_id), row]));
 
+  const metricsEntries = await Promise.all(
+    subscriptions
+      .filter((row) => row?.stripe_subscription_id)
+      .map(async (row) => [
+        String(row.guild_discord_id),
+        await resolveSubscriptionMetrics(row.stripe_subscription_id, row.interval_key).catch(() => null)
+      ])
+  );
+  const metricsMap = new Map(metricsEntries);
+
   return [...guildIds].map((guildId) => {
     const account = accountMap.get(guildId) || null;
     const subscription = subscriptionMap.get(guildId) || null;
     const guild = guildMap.get(guildId) || null;
+    const metrics = metricsMap.get(guildId) || null;
     const status = String(subscription?.status || "free").toLowerCase();
     const isPremium = ACTIVE_STATUSES.has(status) && String(subscription?.plan_key || "") === "premium";
     const payerId = account?.payer_discord_id ? String(account.payer_discord_id) : null;
@@ -184,7 +201,12 @@ export const listAdminBillingAccounts = async () => {
       stripeSubscriptionId: subscription?.stripe_subscription_id || null,
       payerDiscordId: payerId,
       payerUsername: payerUser?.username || null,
-      payerAvatar: payerUser?.avatar || null
+      payerAvatar: payerUser?.avatar || null,
+      promoCode: metrics?.promoCode || null,
+      promoLabel: metrics?.promoLabel || null,
+      promoValueLabel: metrics?.promoValueLabel || "—",
+      stripeFeeLabel: metrics ? formatMoney(metrics.stripeFeeCycleCents, metrics.currency) : "—",
+      billedAmountLabel: metrics ? formatMoney(metrics.netCycleBeforeFeesCents, metrics.currency) : "—"
     };
   });
 };
@@ -285,6 +307,150 @@ const formatMoney = (amountCents, currency = "eur") =>
     style: "currency",
     currency: String(currency || "eur").toUpperCase()
   }).format(Number(amountCents || 0) / 100);
+
+const getIntervalMonths = ({ intervalKey = null, recurring = null } = {}) => {
+  const interval = String(recurring?.interval || intervalKey || "month").toLowerCase();
+  const count = Math.max(1, Number(recurring?.interval_count || 1));
+  if (interval === "year" || interval === "yearly") return 12 * count;
+  if (interval === "quarter" || interval === "quarterly") return 3 * count;
+  if (interval === "month" || interval === "monthly") return count;
+  if (interval === "week" || interval === "weekly") return Math.max(1, Math.round(count / 4.345));
+  if (interval === "day" || interval === "daily") return Math.max(1, Math.round(count / 30.4375));
+  return 1;
+};
+
+const annualizeToMonthlyCents = (amountCents, months) =>
+  Math.round(Number(amountCents || 0) / Math.max(1, Number(months || 1)));
+
+const getInvoiceNetBeforeTaxCents = (invoice) => {
+  if (!invoice) return 0;
+  if (invoice.total_excluding_tax != null) return Number(invoice.total_excluding_tax || 0);
+  const total = Number(invoice.total || 0);
+  const tax = Number(invoice.tax || 0);
+  return Math.max(0, total - tax);
+};
+
+const getInvoiceSubtotalCents = (invoice) => {
+  if (!invoice) return 0;
+  if (invoice.subtotal_excluding_tax != null) return Number(invoice.subtotal_excluding_tax || 0);
+  if (invoice.subtotal != null) return Number(invoice.subtotal || 0);
+  return getInvoiceNetBeforeTaxCents(invoice);
+};
+
+const getDiscountSummary = (subscription, invoice, currency = "eur") => {
+  const discountAmounts = Array.isArray(invoice?.total_discount_amounts) ? invoice.total_discount_amounts : [];
+  const discountCycleCents = discountAmounts.reduce((sum, row) => sum + Number(row?.amount || 0), 0);
+  const subscriptionDiscount = subscription?.discount || null;
+  const coupon = subscriptionDiscount?.coupon || null;
+  const promotionCode = subscriptionDiscount?.promotion_code || null;
+  const percentOff = coupon?.percent_off != null ? Number(coupon.percent_off) : null;
+  const amountOff = coupon?.amount_off != null ? Number(coupon.amount_off) : null;
+  const code =
+    typeof promotionCode === "object" && promotionCode?.code
+      ? promotionCode.code
+      : typeof promotionCode === "string"
+        ? promotionCode
+        : null;
+  let valueLabel = "—";
+  if (percentOff != null) valueLabel = `${percentOff}%`;
+  else if (amountOff != null) valueLabel = formatMoney(amountOff, coupon?.currency || currency);
+  return {
+    discountCycleCents,
+    promoCode: code,
+    promoLabel: coupon?.name || code || null,
+    promoValueLabel: discountCycleCents > 0 ? valueLabel : "—",
+    hasDiscount: discountCycleCents > 0
+  };
+};
+
+const resolveChargeBalanceTransaction = async (stripe, charge) => {
+  if (!charge) return null;
+  const tx = charge.balance_transaction;
+  if (tx && typeof tx === "object") return tx;
+  if (!tx) return null;
+  try {
+    return await stripe.balanceTransactions.retrieve(String(tx));
+  } catch {
+    return null;
+  }
+};
+
+const resolveSubscriptionMetrics = async (stripeSubscriptionId, fallbackIntervalKey = null) => {
+  if (!stripeSubscriptionId) return null;
+  const stripe = getStripeClient();
+  const subscription = await stripe.subscriptions.retrieve(String(stripeSubscriptionId), {
+    expand: [
+      "discount.coupon",
+      "discount.promotion_code",
+      "items.data.price",
+      "latest_invoice.charge",
+      "latest_invoice.payment_intent"
+    ]
+  });
+
+  let latestInvoice = subscription.latest_invoice || null;
+  if (typeof latestInvoice === "string") {
+    latestInvoice = await stripe.invoices.retrieve(latestInvoice, {
+      expand: ["charge", "payment_intent"]
+    });
+  }
+
+  let charge = null;
+  if (latestInvoice?.charge) {
+    charge =
+      typeof latestInvoice.charge === "object"
+        ? latestInvoice.charge
+        : await stripe.charges.retrieve(String(latestInvoice.charge));
+  } else if (latestInvoice?.payment_intent) {
+    const paymentIntent =
+      typeof latestInvoice.payment_intent === "object"
+        ? latestInvoice.payment_intent
+        : await stripe.paymentIntents.retrieve(String(latestInvoice.payment_intent), {
+            expand: ["latest_charge"]
+          });
+    const latestCharge = paymentIntent?.latest_charge || null;
+    if (latestCharge) {
+      charge =
+        typeof latestCharge === "object"
+          ? latestCharge
+          : await stripe.charges.retrieve(String(latestCharge));
+    }
+  }
+
+  const balanceTransaction = await resolveChargeBalanceTransaction(stripe, charge);
+  const currency = String(latestInvoice?.currency || charge?.currency || "eur").toLowerCase();
+  const intervalMonths = getIntervalMonths({
+    intervalKey: fallbackIntervalKey,
+    recurring: subscription?.items?.data?.[0]?.price?.recurring || null
+  });
+  const grossCycleCents = getInvoiceSubtotalCents(latestInvoice);
+  const netCycleBeforeFeesCents = getInvoiceNetBeforeTaxCents(latestInvoice);
+  const discount = getDiscountSummary(subscription, latestInvoice, currency);
+  const stripeFeeCycleCents = Number(balanceTransaction?.fee || 0);
+
+  return {
+    subscription,
+    latestInvoice,
+    charge,
+    currency,
+    intervalMonths,
+    grossCycleCents,
+    netCycleBeforeFeesCents,
+    discountCycleCents: discount.discountCycleCents,
+    stripeFeeCycleCents,
+    grossMrrCents: annualizeToMonthlyCents(grossCycleCents, intervalMonths),
+    discountMrrCents: annualizeToMonthlyCents(discount.discountCycleCents, intervalMonths),
+    netMrrCents: annualizeToMonthlyCents(netCycleBeforeFeesCents, intervalMonths),
+    stripeFeeMrrCents: annualizeToMonthlyCents(stripeFeeCycleCents, intervalMonths),
+    netAfterFeesMrrCents:
+      annualizeToMonthlyCents(netCycleBeforeFeesCents, intervalMonths) -
+      annualizeToMonthlyCents(stripeFeeCycleCents, intervalMonths),
+    promoCode: discount.promoCode,
+    promoLabel: discount.promoLabel,
+    promoValueLabel: discount.promoValueLabel,
+    hasDiscount: discount.hasDiscount
+  };
+};
 
 const resolveSubscriptionContext = async (guildDiscordId) => {
   const guildId = String(guildDiscordId || "").replace(/\D/g, "");
