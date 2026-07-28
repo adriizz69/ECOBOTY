@@ -12,34 +12,41 @@ const REQUIRED_KEYS = [
 ];
 
 /**
- * Load repo-root .env files without overriding variables already set
- * (Plesk / systemd / Passenger inject process.env first).
+ * Production (Plesk/Passenger): use panel variables only — they are injected into
+ * process.env before Node starts. No .env file needed.
+ *
+ * Optional: ECOBOTY_USE_DOTENV=1 loads .env from repo root (local dev / fallback).
  */
 export const bootstrapEnv = (rootDir) => {
   const loaded = [];
+  const useDotenv =
+    process.env.ECOBOTY_USE_DOTENV === "1" ||
+    (process.env.NODE_ENV !== "production" && process.env.ECOBOTY_USE_DOTENV !== "0");
 
-  for (const name of [".env", ".env.production"]) {
-    const filePath = path.join(rootDir, name);
-    if (!fs.existsSync(filePath)) continue;
-    const result = dotenv.config({ path: filePath });
-    if (!result.error) loaded.push(name);
+  if (useDotenv) {
+    for (const name of [".env", ".env.production"]) {
+      const filePath = path.join(rootDir, name);
+      if (!fs.existsSync(filePath)) continue;
+      const result = dotenv.config({ path: filePath });
+      if (!result.error) loaded.push(name);
+    }
   }
 
   const missing = REQUIRED_KEYS.filter((key) => !String(process.env[key] || "").trim());
-  const source =
-    loaded.length > 0
-      ? `file (${loaded.join(", ")})`
-      : missing.length === 0
-        ? "process (Plesk/Passenger)"
-        : "none";
+  const hasPleskVars = missing.length === 0 && loaded.length === 0;
+  const source = loaded.length
+    ? `file (${loaded.join(", ")})`
+    : hasPleskVars
+      ? "process (Plesk/Passenger)"
+      : "none";
 
   console.log(`[env] source=${source}${missing.length ? ` missing=${missing.join(",")}` : ""}`);
 
-  if (missing.length && loaded.length === 0) {
+  if (missing.length && !loaded.length) {
     console.error(
-      "[env] Plesk variables not visible to Node. Fix Application Root = /httpdocs (not .output/public), " +
-        "startup = server.js or .output/server/index.mjs, then Restart app — " +
-        "or create /httpdocs/.env (same keys as Plesk panel)."
+      "[env] Variables Plesk absentes au démarrage Node. Vérifie dans Plesk Node.js : " +
+        "Racine application = /httpdocs (pas .output/public), " +
+        "Fichier démarrage = server.js, puis Restart app + redémarrage Apache."
     );
   }
 

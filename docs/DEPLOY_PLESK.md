@@ -35,30 +35,38 @@ Si tu mets la racine de l'application sur `.output/public`, Plesk **n'injecte pa
 
 Les variables du panel Plesk ne sont **pas** disponibles en SSH (`node server.js` sans export). C'est normal.
 
-## Variables d'environnement
+## Variables d'environnement (Plesk uniquement — pas de `.env` en prod)
 
-Deux méthodes (une suffit) :
+Plesk injecte les variables du panel **directement** dans `process.env` quand Passenger lance le fichier de démarrage.  
+Il n'existe **pas** de fichier `.env` qui « redirige » vers Plesk : c'est Passenger qui passe les vars à Node.
 
-1. **Panel Plesk → Node.js → variables** (si racine application = `/httpdocs`)
-2. **Fichier `/httpdocs/.env`** (recommandé si le panel ne passe pas les vars)
+Conditions pour que ça marche :
+
+| Paramètre | Valeur |
+|---|---|
+| **Racine de l'application** | `/httpdocs` |
+| **Fichier de démarrage** | `server.js` |
+| **Racine du document** | `/httpdocs/.output/public` *(optionnel)* |
+
+Puis **Restart app** dans Node.js, et si besoin **redémarrer Apache** (Services → Apache).
+
+Vérifier que Plesk a bien écrit les vars pour Passenger (SSH) :
 
 ```bash
-nano /var/www/vhosts/ecoboty.eu/httpdocs/.env
-chmod 600 /var/www/vhosts/ecoboty.eu/httpdocs/.env
-chown ecoboty.eu_rpf6do5lh5:psacln /var/www/vhosts/ecoboty.eu/httpdocs/.env
+grep -r "PassengerEnvVar\|DATABASE_URL" /var/www/vhosts/system/ecoboty.eu/conf/ 2>/dev/null | head -20
 ```
 
-Copie les mêmes clés que dans le panel. Au démarrage, le serveur log :
+Si cette commande ne retourne rien → le panel Node.js n'est pas lié au bon domaine/racine.
 
-```
-[env] source=file (.env)
-```
-
-ou
+Au démarrage, le log doit afficher :
 
 ```
 [env] source=process (Plesk/Passenger)
 ```
+
+Les variables du panel ne sont **pas** visibles en SSH (`node server.js` sans export) — seulement via Passenger.
+
+Fichier `.env` : réservé au **local** (`NODE_ENV=development`). En prod, ne pas créer de `.env` sur le serveur.
 
 ## Migrations
 
