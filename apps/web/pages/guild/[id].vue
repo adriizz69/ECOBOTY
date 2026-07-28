@@ -1969,7 +1969,7 @@
                     color="error"
                     variant="outline"
                     size="xs"
-                    @click="deleteAdminUserShopItem(shop, item)"
+                    @click="requestDeleteAdminUserShopItem(shop, item)"
                   >
                     {{ $t("adminGuild.userShops.deleteItem") }}
                   </UButton>
@@ -1978,7 +1978,7 @@
               <div v-else class="muted small">{{ $t("adminGuild.userShops.noItems") }}</div>
 
               <div class="shop-actions">
-                <UButton color="error" variant="outline" @click="deleteAdminUserShop(shop)">
+                <UButton color="error" variant="outline" @click="requestDeleteAdminUserShop(shop)">
                   {{ $t("adminGuild.userShops.deleteShop") }}
                 </UButton>
               </div>
@@ -3315,6 +3315,23 @@
       </UCard>
     </div>
     <BillingPremiumGate v-model:open="premiumUpsellOpen" modal-only :feature-key="premiumUpsellFeatureKey" />
+
+    <UModal
+      v-model:open="userShopDeleteModalOpen"
+      :title="userShopDeleteModalTitle"
+      :description="userShopDeleteModalDescription"
+    >
+      <template #body>
+        <div class="flex justify-end gap-2">
+          <UButton color="neutral" variant="outline" @click="userShopDeleteModalOpen = false">
+            {{ $t("common.cancel") }}
+          </UButton>
+          <UButton color="error" :loading="userShopDeleteLoading" @click="confirmDeleteAdminUserShop">
+            {{ $t("adminGuild.userShops.deleteConfirmAction") }}
+          </UButton>
+        </div>
+      </template>
+    </UModal>
     </div>
     </section>
     <template #fallback>
@@ -3858,18 +3875,43 @@ const loadedTabs = reactive({
   bot: false,
   sensitive: false
 });
-const userShopTypeOptions = ["inventory", "role", "temp_role", "irl"];
+const userShopTypeOptions = ["inventory", "irl"];
 const userShopsSettings = reactive({
   enabled: false,
-  allowedTypes: ["inventory"]
+  allowedTypes: ["inventory", "irl"]
 });
 const adminUserShops = ref([]);
 const userShopsSaving = ref(false);
 const userShopsStatus = ref("");
+const userShopDeleteModalOpen = ref(false);
+const userShopDeleteLoading = ref(false);
+const userShopDeletePending = ref(null);
+
+const userShopDeleteModalTitle = computed(() => {
+  if (userShopDeletePending.value?.kind === "item") {
+    return t("adminGuild.userShops.deleteItemConfirmTitle");
+  }
+  return t("adminGuild.userShops.deleteShopConfirmTitle");
+});
+
+const userShopDeleteModalDescription = computed(() => {
+  const pending = userShopDeletePending.value;
+  if (!pending) return "";
+  if (pending.kind === "item") {
+    return t("adminGuild.userShops.deleteItemConfirmText", {
+      item: pending.item?.name || t("common.na"),
+      shop: pending.shop?.name || t("common.na"),
+      owner: userShopOwnerName(pending.shop)
+    });
+  }
+  return t("adminGuild.userShops.deleteShopConfirmText", {
+    shop: pending.shop?.name || t("common.na"),
+    owner: userShopOwnerName(pending.shop),
+    count: (pending.shop?.items || []).length
+  });
+});
 const userShopTypeLabel = (typeKey) => {
   if (typeKey === "inventory") return t("adminGuild.userShops.typeInventory");
-  if (typeKey === "role") return t("adminGuild.userShops.typeRole");
-  if (typeKey === "temp_role") return t("adminGuild.userShops.typeTempRole");
   if (typeKey === "irl") return t("adminGuild.userShops.typeIrl");
   return typeKey;
 };
@@ -6385,8 +6427,8 @@ const loadAdminUserShops = async () => {
   userShopsSettings.enabled = Boolean(settingsData.settings?.enabled);
   userShopsSettings.allowedTypes = Array.isArray(settingsData.settings?.allowedTypes)
     ? settingsData.settings.allowedTypes.filter((entry) => userShopTypeOptions.includes(entry))
-    : ["inventory"];
-  if (!userShopsSettings.allowedTypes.length) userShopsSettings.allowedTypes = ["inventory"];
+    : ["inventory", "irl"];
+  if (!userShopsSettings.allowedTypes.length) userShopsSettings.allowedTypes = ["inventory", "irl"];
   adminUserShops.value = listData.shops || [];
   const ownerIds = adminUserShops.value.map((shop) => shop.owner_discord_id).filter(Boolean);
   await resolveUserIds(ownerIds);
@@ -6419,6 +6461,35 @@ const saveUserShopsSettings = async () => {
     await loadAdminUserShops();
   } finally {
     userShopsSaving.value = false;
+  }
+};
+
+const requestDeleteAdminUserShop = (shop) => {
+  if (!shop?.id) return;
+  userShopDeletePending.value = { kind: "shop", shop };
+  userShopDeleteModalOpen.value = true;
+};
+
+const requestDeleteAdminUserShopItem = (shop, item) => {
+  if (!shop?.id || !item?.id) return;
+  userShopDeletePending.value = { kind: "item", shop, item };
+  userShopDeleteModalOpen.value = true;
+};
+
+const confirmDeleteAdminUserShop = async () => {
+  const pending = userShopDeletePending.value;
+  if (!pending?.shop?.id) return;
+  userShopDeleteLoading.value = true;
+  try {
+    if (pending.kind === "item" && pending.item?.id) {
+      await deleteAdminUserShopItem(pending.shop, pending.item);
+    } else {
+      await deleteAdminUserShop(pending.shop);
+    }
+    userShopDeleteModalOpen.value = false;
+    userShopDeletePending.value = null;
+  } finally {
+    userShopDeleteLoading.value = false;
   }
 };
 

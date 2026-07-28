@@ -35,22 +35,69 @@ const getBotHealthTimeoutMs = () => {
   return safeSeconds * 1000;
 };
 
-export const fetchBotGuilds = async () => {
-  const token = getBotToken();
-  if (!token) return { map: new Map(), error: "missing_bot_token" };
-  try {
-    const res = await fetch("https://discord.com/api/users/@me/guilds?with_counts=true", {
-      headers: { Authorization: `Bot ${token}` }
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      return { map: new Map(), error: "bot_guilds_failed", details: data };
-    }
-    const map = new Map((data || []).map((g) => [String(g.id), g]));
-    return { map, error: null };
-  } catch (error) {
-    return { map: new Map(), error: "bot_guilds_failed", details: String(error?.message || error) };
+let botGuildIdsProvider = null;
+let botGuildsCache = { map: new Map(), expiresAt: 0 };
+const BOT_GUILDS_CACHE_TTL_MS = 45_000;
+
+export const setBotGuildIdsProvider = (provider) => {
+  botGuildIdsProvider = typeof provider === "function" ? provider : null;
+};
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+export const fetchBotGuilds = async ({ forceRefresh = false } = {}) => {
+  const now = Date.now();
+  if (!forceRefresh && botGuildsCache.expiresAt > now) {
+    return { map: botGuildsCache.map, error: null, cached: true };
   }
+
+  if (botGuildIdsProvider) {
+    try {
+      const ids = botGuildIdsProvider();
+      if (ids instanceof Set) {
+        const map = new Map([...ids].map((id) => [String(id), { id: String(id) }]));
+        botGuildsCache = { map, expiresAt: now + BOT_GUILDS_CACHE_TTL_MS };
+        return { map, error: null, source: "client" };
+      }
+    } catch {
+      // fall through to REST
+    }
+  }
+
+  const token = getBotToken();
+  if (!token) {
+    if (botGuildsCache.map.size > 0) {
+      return { map: botGuildsCache.map, error: null, stale: true, cached: true };
+    }
+    return { map: new Map(), error: "missing_bot_token" };
+  }
+
+  let lastError = "bot_guilds_failed";
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (attempt > 0) await sleep(350 * attempt);
+    try {
+      const res = await fetch("https://discord.com/api/users/@me/guilds?with_counts=true", {
+        headers: { Authorization: `Bot ${token}` }
+      });
+      const data = await res.json();
+      if (res.ok) {
+        const map = new Map((data || []).map((g) => [String(g.id), g]));
+        botGuildsCache = { map, expiresAt: now + BOT_GUILDS_CACHE_TTL_MS };
+        return { map, error: null, source: "rest" };
+      }
+      lastError = "bot_guilds_failed";
+      if (res.status === 429 || res.status >= 500) continue;
+      break;
+    } catch {
+      lastError = "bot_guilds_failed";
+    }
+  }
+
+  if (botGuildsCache.map.size > 0) {
+    return { map: botGuildsCache.map, error: null, stale: true, cached: true };
+  }
+
+  return { map: new Map(), error: lastError };
 };
 
 const fetchDiscordUser = async (discordId) => {

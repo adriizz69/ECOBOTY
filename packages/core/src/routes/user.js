@@ -19,7 +19,6 @@ import {
   updateUserShop,
   deleteUserShop,
   createUserShopItem,
-  updateUserShopItem,
   deleteUserShopItem
 } from "../services/shop.js";
 import { getGamesSettings, playGame } from "../services/games.js";
@@ -190,14 +189,15 @@ userRouter.get("/servers", async (req, res) => {
       )
       .orderBy("guilds.name", "asc");
 
-    const { map: botGuilds, error: botGuildsError } = await fetchBotGuilds();
-    const filtered = botGuildsError
-      ? servers
-      : servers.filter((server) => botGuilds.has(String(server.guild_id)));
+    const { map: botGuilds, error: botGuildsError, stale } = await fetchBotGuilds();
+    const canFilter = !botGuildsError || stale;
+    const filtered = canFilter
+      ? servers.filter((server) => botGuilds.has(String(server.guild_id)))
+      : servers;
     return res.json({
       disabled: false,
       servers: filtered,
-      bot_guilds_error: botGuildsError || null
+      bot_guilds_error: botGuildsError && !stale ? botGuildsError : null
     });
   } catch (error) {
     return res.status(400).json({ error: error.message || "user_servers_failed" });
@@ -594,26 +594,8 @@ userRouter.post("/guilds/:id/user-shops/mine/items", async (req, res) => {
   }
 });
 
-userRouter.put("/guilds/:id/user-shops/mine/items/:itemId", async (req, res) => {
-  const userId = getActiveUser(req);
-  const guildId = req.params.id;
-  const itemId = req.params.itemId;
-  if (!userId || !guildId || !itemId) return res.status(401).json({ error: "missing_params" });
-  try {
-    await ensureUserGuildAccess({ guildId, userId });
-    const existing = await getUserShopByOwner(guildId, userId);
-    if (!existing) return res.status(404).json({ error: "shop_not_found" });
-    const item = await updateUserShopItem({
-      guildId,
-      ownerDiscordId: userId,
-      shopId: existing.id,
-      itemId,
-      data: req.body || {}
-    });
-    return res.json({ item });
-  } catch (error) {
-    return res.status(400).json({ error: error.message || "my_shop_item_update_failed" });
-  }
+userRouter.put("/guilds/:id/user-shops/mine/items/:itemId", async (_req, res) => {
+  return res.status(403).json({ error: "user_shop_item_readonly" });
 });
 
 userRouter.delete("/guilds/:id/user-shops/mine/items/:itemId", async (req, res) => {

@@ -89,7 +89,7 @@ import {
   resolveItemLockOffset
 } from "./billing-runtime-locks.js";
 
-const USER_SHOP_TYPE_ALLOWLIST = Object.freeze(["inventory", "role", "temp_role", "irl"]);
+const USER_SHOP_TYPE_ALLOWLIST = Object.freeze(["inventory", "irl"]);
 
 const assertUserShopsFeature = async (guildId, context = "shop.user") => {
   const policy = await getShopPremiumPolicy(guildId);
@@ -120,7 +120,7 @@ export const normalizeUserShopAllowedTypes = (value) => {
   const list = (Array.isArray(raw) ? raw : [])
     .map((entry) => String(entry || "").trim().toLowerCase())
     .filter((entry) => USER_SHOP_TYPE_ALLOWLIST.includes(entry));
-  return list.length ? Array.from(new Set(list)) : ["inventory"];
+  return list.length ? Array.from(new Set(list)) : ["inventory", "irl"];
 };
 
 export const getUserShopsSettings = async (guildId, trx = db) => {
@@ -772,6 +772,9 @@ export const createItem = async (shopId, data) => {
     const settings = await getUserShopsSettings(guildDiscordId);
     if (!settings.enabled) throw new Error("user_shops_disabled");
     const itemType = String(data.type || "inventory").toLowerCase();
+    if (!USER_SHOP_TYPE_ALLOWLIST.includes(itemType)) {
+      throw new Error("item_type_not_allowed");
+    }
     if (!settings.allowedTypes.includes(itemType)) {
       throw new Error("item_type_not_allowed");
     }
@@ -1258,7 +1261,7 @@ export const createUserShopItem = async ({ guildId, ownerDiscordId, shopId, data
   if (!shop) throw new Error("shop_not_found");
 
   const itemType = String(data.type || "inventory").toLowerCase();
-  if (itemType === "lootbox") throw new Error("lootbox_forbidden");
+  if (!USER_SHOP_TYPE_ALLOWLIST.includes(itemType)) throw new Error("item_type_not_allowed");
   if (!settings.allowedTypes.includes(itemType)) throw new Error("item_type_not_allowed");
 
   const name = String(data.name || "").trim();
@@ -1280,29 +1283,8 @@ export const createUserShopItem = async ({ guildId, ownerDiscordId, shopId, data
   });
 };
 
-export const updateUserShopItem = async ({ guildId, ownerDiscordId, shopId, itemId, data = {} }) => {
-  const settings = await getUserShopsSettings(guildId);
-  if (!settings.enabled) throw new Error("user_shops_disabled");
-
-  const guild = await ensureGuild(guildId, db);
-  const shop = await db("shops")
-    .where({ id: shopId, guild_id: guild.id, owner_discord_id: String(ownerDiscordId) })
-    .first();
-  if (!shop) throw new Error("shop_not_found");
-
-  if (Object.prototype.hasOwnProperty.call(data, "type")) {
-    const itemType = String(data.type || "inventory").toLowerCase();
-    if (itemType === "lootbox") throw new Error("lootbox_forbidden");
-    if (!settings.allowedTypes.includes(itemType)) throw new Error("item_type_not_allowed");
-    data = { ...data, type: itemType, discount_percent: 0 };
-  }
-
-  return updateItem(shop.id, itemId, {
-    ...data,
-    discount_percent: Object.prototype.hasOwnProperty.call(data, "discount_percent")
-      ? 0
-      : undefined
-  });
+export const updateUserShopItem = async () => {
+  throw new Error("user_shop_item_readonly");
 };
 
 export const deleteUserShopItem = async ({

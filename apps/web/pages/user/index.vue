@@ -91,7 +91,7 @@ const openServer = async (server) => {
   await router.push(`/user/guild/${guildId}`);
 };
 
-const fetchServers = async () => {
+const fetchServers = async (isRetry = false) => {
   const token = getToken();
   if (!token) {
     login();
@@ -109,8 +109,16 @@ const fetchServers = async () => {
     const data = await res.json();
     disabled.value = Boolean(data.disabled);
     disabledReason.value = data.reason || "";
+
+    if (data.bot_guilds_error && !isRetry) {
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      return fetchServers(true);
+    }
+
     botGuildsWarning.value = data.bot_guilds_error
-      ? t("userHome.botCheckError")
+      ? data.bot_guilds_error === "missing_bot_token"
+        ? t("userHome.botCheckErrorToken")
+        : t("userHome.botCheckErrorTransient")
       : "";
     servers.value = data.servers || [];
     if (process.client && servers.value.length) {

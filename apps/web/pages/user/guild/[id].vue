@@ -341,7 +341,7 @@
                   {{ $t("userGuild.myShop.create") }}
                 </UButton>
                 <UButton v-else color="primary" @click="saveMyShop">
-                  {{ $t("userGuild.myShop.save") }}
+                  {{ $t("userGuild.myShop.saveChanges") }}
                 </UButton>
                 <UButton v-if="myShop" color="error" variant="outline" @click="deleteMyShop">
                   {{ $t("userGuild.myShop.delete") }}
@@ -390,15 +390,12 @@
               {{ $t("userGuild.myShop.itemDescription") }}
               <input v-model="myItemForm.description" />
             </label>
-            <label v-if="myItemForm.type === 'role' || myItemForm.type === 'temp_role'">
-              {{ $t("userGuild.myShop.roleId") }}
-              <input v-model="myItemForm.roleId" />
-            </label>
-            <label v-if="myItemForm.type === 'temp_role'">
-              {{ $t("userGuild.myShop.tempDuration") }}
-              <input v-model.number="myItemForm.durationMinutes" type="number" min="1" />
+            <label class="my-shop-form-full">
+              {{ $t("userGuild.myShop.itemImage") }}
+              <input v-model="myItemForm.image_url" placeholder="https://..." />
             </label>
           </div>
+          <p class="muted small" style="margin-bottom: 12px;">{{ $t("userGuild.myShop.itemsReadonlyNote") }}</p>
           <UButton color="primary" variant="outline" @click="addMyShopItem">
             {{ $t("userGuild.myShop.addItem") }}
           </UButton>
@@ -1025,6 +1022,15 @@ const itemPageSize = 8;
 const userShopsEnabled = ref(false);
 const billingFeatures = ref({});
 const billingLoaded = ref(false);
+const USER_SHOP_ITEM_TYPES = ["inventory", "irl"];
+
+const filterUserShopAllowedTypes = (types) => {
+  const list = (Array.isArray(types) ? types : []).filter((entry) =>
+    USER_SHOP_ITEM_TYPES.includes(String(entry || "").toLowerCase())
+  );
+  return list.length ? list : ["inventory"];
+};
+
 const myShopAllowedTypes = ref(["inventory"]);
 const memberShops = ref([]);
 const selectedMemberShopId = ref("");
@@ -1040,8 +1046,7 @@ const myItemForm = reactive({
   price: 1,
   stock: "",
   description: "",
-  roleId: "",
-  durationMinutes: 60
+  image_url: ""
 });
 
 const userShopsEntitled = computed(() => {
@@ -1501,8 +1506,6 @@ const loadShops = async () => {
 
 const myShopTypeLabel = (typeKey) => {
   if (typeKey === "inventory") return t("userGuild.myShop.typeInventory");
-  if (typeKey === "role") return t("userGuild.myShop.typeRole");
-  if (typeKey === "temp_role") return t("userGuild.myShop.typeTempRole");
   if (typeKey === "irl") return t("userGuild.myShop.typeIrl");
   return typeKey;
 };
@@ -1544,10 +1547,7 @@ const loadUserShopsFeature = async () => {
     billingLoaded.value = true;
   }
   userShopsEnabled.value = Boolean(res.data?.settings?.enabled);
-  myShopAllowedTypes.value = Array.isArray(res.data?.settings?.allowedTypes)
-    ? res.data.settings.allowedTypes
-    : ["inventory"];
-  if (!myShopAllowedTypes.value.length) myShopAllowedTypes.value = ["inventory"];
+  myShopAllowedTypes.value = filterUserShopAllowedTypes(res.data?.settings?.allowedTypes);
   if (!myShopAllowedTypes.value.includes(myItemForm.type)) {
     myItemForm.type = myShopAllowedTypes.value[0];
   }
@@ -1599,9 +1599,7 @@ const loadMyShop = async () => {
     return;
   }
   userShopsEnabled.value = Boolean(res.data?.settings?.enabled);
-  myShopAllowedTypes.value = Array.isArray(res.data?.settings?.allowedTypes)
-    ? res.data.settings.allowedTypes
-    : myShopAllowedTypes.value;
+  myShopAllowedTypes.value = filterUserShopAllowedTypes(res.data?.settings?.allowedTypes);
   myShop.value = res.data.shop || null;
   myShopItems.value = res.data.items || [];
   if (myShop.value) {
@@ -1615,6 +1613,10 @@ const createMyShop = async () => {
   myShopStatus.value = "";
   if (!userShopsEntitled.value) {
     myShopStatus.value = t("userGuild.myShop.disabled");
+    return;
+  }
+  if (!String(myShopForm.name || "").trim()) {
+    myShopStatus.value = t("userGuild.myShop.nameRequired");
     return;
   }
   const res = await fetchJson(`${config.public.apiBase}/api/user/guilds/${guildId}/user-shops/mine`, {
@@ -1642,6 +1644,10 @@ const createMyShop = async () => {
 
 const saveMyShop = async () => {
   myShopStatus.value = "";
+  if (!String(myShopForm.name || "").trim()) {
+    myShopStatus.value = t("userGuild.myShop.nameRequired");
+    return;
+  }
   const res = await fetchJson(`${config.public.apiBase}/api/user/guilds/${guildId}/user-shops/mine`, {
     method: "PUT",
     body: JSON.stringify({
@@ -1683,17 +1689,9 @@ const addMyShopItem = async () => {
     type: myItemForm.type,
     price: Number(myItemForm.price || 0),
     stock: myItemForm.stock === "" || myItemForm.stock === null ? null : Number(myItemForm.stock),
-    description: myItemForm.description || null
+    description: myItemForm.description || null,
+    image_url: String(myItemForm.image_url || "").trim() || null
   };
-  if (myItemForm.type === "role" || myItemForm.type === "temp_role") {
-    data.data = {
-      role_ids: myItemForm.roleId ? [String(myItemForm.roleId)] : [],
-      duration_seconds:
-        myItemForm.type === "temp_role"
-          ? Math.max(60, Math.floor(Number(myItemForm.durationMinutes || 60) * 60))
-          : undefined
-    };
-  }
   const res = await fetchJson(`${config.public.apiBase}/api/user/guilds/${guildId}/user-shops/mine/items`, {
     method: "POST",
     body: JSON.stringify(data)
@@ -1706,7 +1704,7 @@ const addMyShopItem = async () => {
   myItemForm.price = 1;
   myItemForm.stock = "";
   myItemForm.description = "";
-  myItemForm.roleId = "";
+  myItemForm.image_url = "";
   myShopStatus.value = t("userGuild.myShop.statusOk");
   await loadMyShop();
 };

@@ -15,7 +15,8 @@ const {
   probeDatabaseConnection,
   startBirthdayScheduler,
   startAllTwitchListeners,
-  startBillingCleanupScheduler
+  startBillingCleanupScheduler,
+  setBotGuildIdsProvider
 } = await import("@ecoboty/core");
 const { startBot, getDiscordClient } = await import("./bot/index.js");
 
@@ -124,6 +125,11 @@ const server = app.listen(port, () => {
         console.warn("[bot] Skipped (ECOBOTY_SKIP_BOT=1)");
       } else {
         await startBot();
+        setBotGuildIdsProvider(() => {
+          const client = getDiscordClient();
+          if (!client?.isReady?.()) return null;
+          return new Set(client.guilds.cache.map((guild) => String(guild.id)));
+        });
         console.log("[bot] Discord client started in unified process");
       }
     } catch (error) {

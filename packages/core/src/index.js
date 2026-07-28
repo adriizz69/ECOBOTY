@@ -5,3 +5,4 @@ export { startAllTwitchListeners } from "./services/twitch.js";
 export { syncStripeCatalog, syncStripeCatalogFromEnv, bootstrapStripeCatalog, getBillingCatalogAdminOverview } from "./services/billing-catalog.js";
 export { getGuildEntitlements, isGuildFeatureEnabled } from "./services/billing-entitlements.js";
 export { startBillingCleanupScheduler } from "./services/billing-cleanup.js";
+export { setBotGuildIdsProvider } from "./services/admin.js";
