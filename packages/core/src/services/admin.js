@@ -672,29 +672,14 @@ const parseLogPayload = (value) => {
   }
 };
 
-const botGuildsCache = {
-  map: new Map(),
-  fetchedAt: 0
-};
-const BOT_GUILDS_CACHE_TTL_MS = 60_000;
-
 const getBotGuildsSnapshot = async () => {
-  const now = Date.now();
-  if (botGuildsCache.fetchedAt && now - botGuildsCache.fetchedAt < BOT_GUILDS_CACHE_TTL_MS) {
-    return { map: botGuildsCache.map, error: null, cached: true };
-  }
-
   const result = await fetchBotGuilds();
   if (!result?.error && result?.map instanceof Map) {
-    botGuildsCache.map = result.map;
-    botGuildsCache.fetchedAt = now;
-    return { map: result.map, error: null, cached: false };
+    return { map: result.map, error: null, cached: Boolean(result.cached), stale: Boolean(result.stale) };
   }
-
-  if (botGuildsCache.map.size > 0) {
-    return { map: botGuildsCache.map, error: null, cached: true, stale: true };
+  if (result?.map instanceof Map && result.map.size > 0) {
+    return { map: result.map, error: null, cached: true, stale: true };
   }
-
   return { map: new Map(), error: result?.error || "bot_guilds_failed", cached: false };
 };
 
