@@ -2,16 +2,13 @@ import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import express from "express";
-import dotenv from "dotenv";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "../../..");
 
 // MUST load env before importing packages that create Knex at module scope
-dotenv.config({ path: path.join(rootDir, ".env") });
-dotenv.config();
-
-const { loadEnv, applyEnv } = await import("@ecoboty/config");
+const { bootstrapEnv, loadEnv, applyEnv } = await import("@ecoboty/config");
+bootstrapEnv(rootDir);
 const { runMigrations } = await import("@ecoboty/db");
 const {
   createApp,
@@ -44,6 +41,7 @@ const app = createApp({
 });
 
 const webOutputCandidates = [
+  path.join(rootDir, ".output/public"),
   path.join(rootDir, "apps/web/.output/public"),
   path.join(rootDir, "apps/web/dist")
 ];

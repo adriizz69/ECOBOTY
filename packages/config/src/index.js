@@ -27,6 +27,8 @@ const envSchema = z.object({
   TOPGG_ENABLED: z.string().optional().default("1")
 });
 
+export { bootstrapEnv } from "./bootstrap-env.js";
+
 export const loadEnv = (source = process.env) => {
   const normalized = { ...source };
   if (normalized.BASE_URL && !/^https?:\/\//i.test(String(normalized.BASE_URL))) {
