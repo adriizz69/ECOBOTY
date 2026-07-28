@@ -1,21 +1,28 @@
 {
-  "name": "bot-economie-discord",
+  "name": "ecoboty",
   "private": true,
+  "type": "module",
   "workspaces": [
-    "backend",
-    "bot",
-    "frontend",
-    "shared"
+    "apps/*",
+    "packages/*"
   ],
   "scripts": {
-    "backend": "npm --workspace backend run dev",
-    "start": "npm --workspace backend run start",
-    "bot": "npm --workspace bot run start",
-    "frontend": "npm --workspace frontend run dev",
-    "lint": "npm --workspace backend run lint && npm --workspace bot run lint && npm --workspace frontend run lint",
-    "dev:all": "concurrently -k -n backend,bot,frontend -c blue,magenta,green \"npm --workspace backend run dev\" \"npm --workspace bot run start\" \"npm --workspace frontend run dev\""
+    "predev": "npm run build",
+    "dev": "npm run dev -w @ecoboty/server",
+    "dev:web": "npm run dev -w @ecoboty/web",
+    "dev:all": "concurrently -k -n server,web -c blue,green \"npm run dev -w @ecoboty/server\" \"npm run dev:web\"",
+    "build": "node scripts/build-web.js",
+    "start": "npm run start -w @ecoboty/server",
+    "migrate": "npm run migrate -w @ecoboty/db",
+    "register-commands": "npm run register-commands -w @ecoboty/server",
+    "lint": "node --check apps/server/src/index.js && node --check packages/core/src/create-app.js",
+    "smoke": "node scripts/smoke.js"
   },
   "devDependencies": {
-    "concurrently": "^9.2.1"
+    "concurrently": "^9.2.1",
+    "dotenv": "^16.4.5"
+  },
+  "engines": {
+    "node": ">=26.5.0"
   }
 }

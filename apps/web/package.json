@@ -1,0 +1,24 @@
+{
+  "name": "@ecoboty/web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "nuxt dev --port 3000",
+    "build": "nuxt generate",
+    "preview": "nuxt preview",
+    "lint": "node -e \"console.log('lint: skipped')\""
+  },
+  "dependencies": {
+    "@nuxt/ui": "^4.10.0",
+    "@nuxtjs/i18n": "^10.5.0",
+    "emoji-picker-element": "^1.29.1",
+    "nuxt": "^4.5.0",
+    "tailwindcss": "^4.3.3"
+  },
+  "engines": {
+    "node": ">=26.5.0"
+  },
+  "devDependencies": {
+    "@iconify-json/lucide": "^1.2.120"
+  }
+}

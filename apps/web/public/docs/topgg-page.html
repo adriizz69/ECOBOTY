@@ -1,0 +1,177 @@
+<style>
+  .eb-wrap{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#e8eef4;line-height:1.55;max-width:920px;margin:0 auto}
+  .eb-lang{margin:0 0 48px;padding-bottom:36px;border-bottom:1px solid rgba(148,163,184,.16)}
+  .eb-lang:last-child{border-bottom:0;margin-bottom:0;padding-bottom:0}
+  .eb-lang-tag{display:inline-flex;align-items:center;gap:8px;margin:0 0 14px;padding:5px 11px;border-radius:999px;background:rgba(56,189,248,.1);border:1px solid rgba(56,189,248,.28);color:#7dd3fc;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+  .eb-hero{position:relative;padding:42px 28px 36px;border-radius:22px;overflow:hidden;background:linear-gradient(165deg,#0d141c 0%,#070b10 60%,#05080c 100%);border:1px solid rgba(45,212,160,.28)}
+  .eb-hero:before{content:"";position:absolute;inset:-40px;background:radial-gradient(500px 220px at 15% 0%,rgba(45,212,160,.35),transparent 55%),radial-gradient(420px 200px at 90% 20%,rgba(56,189,248,.22),transparent 50%);pointer-events:none}
+  .eb-inner{position:relative;z-index:1}
+  .eb-kicker{display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:999px;background:rgba(45,212,160,.12);border:1px solid rgba(45,212,160,.35);color:#2dd4a0;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+  .eb-dot{width:8px;height:8px;border-radius:50%;background:#2dd4a0;box-shadow:0 0 10px #2dd4a0}
+  .eb-hero h1{margin:18px 0 12px;font-size:clamp(1.8rem,4vw,2.6rem);line-height:1.15;letter-spacing:-.03em;color:#fff}
+  .eb-hero p{margin:0 0 22px;max-width:52ch;color:#9fb0c0;font-size:1.05rem}
+  .eb-actions{display:flex;flex-wrap:wrap;gap:10px}
+  .eb-btn{display:inline-flex;align-items:center;justify-content:center;padding:12px 18px;border-radius:12px;font-weight:700;text-decoration:none!important;border:1px solid transparent}
+  .eb-btn-primary{background:linear-gradient(135deg,#2dd4a0,#1aa87a);color:#04120c!important;box-shadow:0 10px 28px rgba(45,212,160,.35)}
+  .eb-btn-secondary{background:rgba(15,23,42,.55);border-color:rgba(148,163,184,.28);color:#e8eef4!important}
+  .eb-section{margin-top:36px}
+  .eb-section h2{margin:0 0 8px;font-size:1.55rem;color:#fff;letter-spacing:-.02em}
+  .eb-muted{color:#8b9aab;margin:0 0 18px}
+  .eb-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+  @media (max-width:760px){.eb-grid{grid-template-columns:1fr}}
+  .eb-card{padding:18px 16px;border-radius:16px;background:rgba(13,20,28,.92);border:1px solid rgba(45,212,160,.18)}
+  .eb-num{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:999px;background:rgba(45,212,160,.18);color:#2dd4a0;font-weight:800;font-size:13px;margin-bottom:10px}
+  .eb-card h3{margin:0 0 8px;font-size:1.05rem;color:#fff}
+  .eb-card p{margin:0;color:#9fb0c0;font-size:.95rem}
+  .eb-list{margin:0;padding:0;list-style:none;display:grid;gap:10px}
+  .eb-list li{padding:12px 14px;border-radius:12px;background:rgba(13,20,28,.85);border:1px solid rgba(148,163,184,.14);color:#c9d5e1}
+  .eb-list strong{color:#2dd4a0}
+  .eb-cta{margin-top:28px;padding:24px;border-radius:18px;border:1px solid rgba(45,212,160,.28);background:radial-gradient(500px 180px at 10% 0%,rgba(45,212,160,.18),transparent 55%),rgba(13,20,28,.95)}
+  .eb-links{margin-top:14px;display:flex;flex-wrap:wrap;gap:10px}
+  .eb-links a{color:#7dd3fc!important;text-decoration:none}
+</style>
+
+<div class="eb-wrap">
+
+  <!-- EN -->
+  <section class="eb-lang">
+    <div class="eb-lang-tag">English</div>
+    <div class="eb-hero"><div class="eb-inner">
+      <div class="eb-kicker"><span class="eb-dot"></span> Discord &amp; Twitch economy</div>
+      <h1>Grow your server with a real economy.</h1>
+      <p>Shop, daily, games, lootboxes, achievements and Twitch rewards. Configure everything from a clear web panel.</p>
+      <div class="eb-actions">
+        <a class="eb-btn eb-btn-primary" href="https://ecoboty.eu" target="_blank" rel="noreferrer">Open panel</a>
+        <a class="eb-btn eb-btn-secondary" href="https://ecoboty.eu/documentation" target="_blank" rel="noreferrer">Documentation</a>
+      </div>
+    </div></div>
+    <div class="eb-section">
+      <div class="eb-kicker">How it works</div>
+      <h2>In 3 steps.</h2>
+      <p class="eb-muted">Add the bot, configure on ecoboty.eu, and let your community play.</p>
+      <div class="eb-grid">
+        <div class="eb-card"><div class="eb-num">1</div><h3>Add ECOBOTY</h3><p>Invite the bot to your Discord server in a few clicks.</p></div>
+        <div class="eb-card"><div class="eb-num">2</div><h3>Configure the panel</h3><p>Economy, shops, Twitch, games… from <strong>ecoboty.eu</strong>.</p></div>
+        <div class="eb-card"><div class="eb-num">3</div><h3>Engage your community</h3><p>Daily, Top.gg vote (<code>/vote</code>), inventory, leaderboard.</p></div>
+      </div>
+    </div>
+    <div class="eb-section"><h2>Features</h2>
+      <ul class="eb-list">
+        <li><strong>Economy</strong> — daily, messages, voice, leaderboard</li>
+        <li><strong>Shops</strong> — items, roles, lootboxes, inventory &amp; resale</li>
+        <li><strong>Games</strong> — bets and rewards on your server</li>
+        <li><strong>Twitch</strong> — rewards tied to live activity</li>
+        <li><strong>Achievements &amp; birthdays</strong> — long-term engagement</li>
+        <li><strong>Multilingual</strong> — EN / FR / ES</li>
+      </ul>
+    </div>
+    <div class="eb-cta">
+      <h2>Ready to launch your economy?</h2>
+      <p class="eb-muted">Panel, docs and support are ready. A Top.gg vote helps a lot too.</p>
+      <div class="eb-actions">
+        <a class="eb-btn eb-btn-primary" href="https://top.gg/bot/1465377603090383161/vote" target="_blank" rel="noreferrer">Vote for ECOBOTY</a>
+        <a class="eb-btn eb-btn-secondary" href="https://discord.gg/e6eUHaqyGt" target="_blank" rel="noreferrer">Discord support</a>
+      </div>
+      <div class="eb-links">
+        <a href="https://ecoboty.eu" target="_blank" rel="noreferrer">ecoboty.eu</a>
+        <a href="https://ecoboty.eu/documentation" target="_blank" rel="noreferrer">Docs</a>
+        <a href="https://top.gg/bot/1465377603090383161" target="_blank" rel="noreferrer">Top.gg page</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- FR -->
+  <section class="eb-lang">
+    <div class="eb-lang-tag">Français</div>
+    <div class="eb-hero"><div class="eb-inner">
+      <div class="eb-kicker"><span class="eb-dot"></span> Économie Discord &amp; Twitch</div>
+      <h1>Fais grandir ton serveur avec une vraie économie.</h1>
+      <p>Boutique, daily, jeux, lootboxes, succès et récompenses Twitch. Tout se configure depuis un panel web clair.</p>
+      <div class="eb-actions">
+        <a class="eb-btn eb-btn-primary" href="https://ecoboty.eu" target="_blank" rel="noreferrer">Ouvrir le panel</a>
+        <a class="eb-btn eb-btn-secondary" href="https://ecoboty.eu/documentation" target="_blank" rel="noreferrer">Documentation</a>
+      </div>
+    </div></div>
+    <div class="eb-section">
+      <div class="eb-kicker">Comment ça marche</div>
+      <h2>En 3 étapes.</h2>
+      <p class="eb-muted">Ajoute le bot, configure sur ecoboty.eu, et laisse ta communauté jouer.</p>
+      <div class="eb-grid">
+        <div class="eb-card"><div class="eb-num">1</div><h3>Ajoute ECOBOTY</h3><p>Invite le bot sur ton serveur Discord en quelques clics.</p></div>
+        <div class="eb-card"><div class="eb-num">2</div><h3>Configure le panel</h3><p>Économie, boutiques, Twitch, jeux… depuis <strong>ecoboty.eu</strong>.</p></div>
+        <div class="eb-card"><div class="eb-num">3</div><h3>Engage ta communauté</h3><p>Daily, vote Top.gg (<code>/vote</code>), inventaire, leaderboard.</p></div>
+      </div>
+    </div>
+    <div class="eb-section"><h2>Fonctionnalités</h2>
+      <ul class="eb-list">
+        <li><strong>Économie</strong> — daily, messages, vocal, classement</li>
+        <li><strong>Boutiques</strong> — items, rôles, lootboxes, inventaire &amp; revente</li>
+        <li><strong>Jeux</strong> — mises et gains sur ton serveur</li>
+        <li><strong>Twitch</strong> — récompenses liées à l’activité live</li>
+        <li><strong>Succès &amp; anniversaires</strong> — engagement long terme</li>
+        <li><strong>Multilingue</strong> — EN / FR / ES</li>
+      </ul>
+    </div>
+    <div class="eb-cta">
+      <h2>Prêt à lancer ton économie ?</h2>
+      <p class="eb-muted">Panel, docs et support sont déjà là. Un vote sur Top.gg aide aussi énormément.</p>
+      <div class="eb-actions">
+        <a class="eb-btn eb-btn-primary" href="https://top.gg/fr/bot/1465377603090383161/vote" target="_blank" rel="noreferrer">Voter pour ECOBOTY</a>
+        <a class="eb-btn eb-btn-secondary" href="https://discord.gg/e6eUHaqyGt" target="_blank" rel="noreferrer">Support Discord</a>
+      </div>
+      <div class="eb-links">
+        <a href="https://ecoboty.eu" target="_blank" rel="noreferrer">ecoboty.eu</a>
+        <a href="https://ecoboty.eu/documentation" target="_blank" rel="noreferrer">Documentation</a>
+        <a href="https://top.gg/fr/bot/1465377603090383161" target="_blank" rel="noreferrer">Fiche Top.gg</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ES -->
+  <section class="eb-lang">
+    <div class="eb-lang-tag">Español</div>
+    <div class="eb-hero"><div class="eb-inner">
+      <div class="eb-kicker"><span class="eb-dot"></span> Economía Discord &amp; Twitch</div>
+      <h1>Haz crecer tu servidor con una economía real.</h1>
+      <p>Tienda, daily, juegos, lootboxes, logros y recompensas Twitch. Configúralo todo desde un panel web claro.</p>
+      <div class="eb-actions">
+        <a class="eb-btn eb-btn-primary" href="https://ecoboty.eu" target="_blank" rel="noreferrer">Abrir panel</a>
+        <a class="eb-btn eb-btn-secondary" href="https://ecoboty.eu/documentation" target="_blank" rel="noreferrer">Documentación</a>
+      </div>
+    </div></div>
+    <div class="eb-section">
+      <div class="eb-kicker">Cómo funciona</div>
+      <h2>En 3 pasos.</h2>
+      <p class="eb-muted">Añade el bot, configúralo en ecoboty.eu y deja que tu comunidad juegue.</p>
+      <div class="eb-grid">
+        <div class="eb-card"><div class="eb-num">1</div><h3>Añade ECOBOTY</h3><p>Invita el bot a tu servidor Discord en unos clics.</p></div>
+        <div class="eb-card"><div class="eb-num">2</div><h3>Configura el panel</h3><p>Economía, tiendas, Twitch, juegos… desde <strong>ecoboty.eu</strong>.</p></div>
+        <div class="eb-card"><div class="eb-num">3</div><h3>Engancha a tu comunidad</h3><p>Daily, voto Top.gg (<code>/vote</code>), inventario, ranking.</p></div>
+      </div>
+    </div>
+    <div class="eb-section"><h2>Funciones</h2>
+      <ul class="eb-list">
+        <li><strong>Economía</strong> — daily, mensajes, voz, ranking</li>
+        <li><strong>Tiendas</strong> — items, roles, lootboxes, inventario y reventa</li>
+        <li><strong>Juegos</strong> — apuestas y recompensas en tu servidor</li>
+        <li><strong>Twitch</strong> — recompensas ligadas a la actividad en directo</li>
+        <li><strong>Logros y cumpleaños</strong> — engagement a largo plazo</li>
+        <li><strong>Multidioma</strong> — EN / FR / ES</li>
+      </ul>
+    </div>
+    <div class="eb-cta">
+      <h2>¿Listo para lanzar tu economía?</h2>
+      <p class="eb-muted">Panel, docs y soporte están listos. Un voto en Top.gg también ayuda mucho.</p>
+      <div class="eb-actions">
+        <a class="eb-btn eb-btn-primary" href="https://top.gg/bot/1465377603090383161/vote" target="_blank" rel="noreferrer">Votar por ECOBOTY</a>
+        <a class="eb-btn eb-btn-secondary" href="https://discord.gg/e6eUHaqyGt" target="_blank" rel="noreferrer">Soporte Discord</a>
+      </div>
+      <div class="eb-links">
+        <a href="https://ecoboty.eu" target="_blank" rel="noreferrer">ecoboty.eu</a>
+        <a href="https://ecoboty.eu/documentation" target="_blank" rel="noreferrer">Docs</a>
+        <a href="https://top.gg/bot/1465377603090383161" target="_blank" rel="noreferrer">Página Top.gg</a>
+      </div>
+    </div>
+  </section>
+
+</div>

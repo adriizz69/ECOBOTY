@@ -1,58 +1,44 @@
-# Bot d’économie Discord
+# EcoBoty
 
-## Prérequis
-- Node.js (version recommandée : 20 LTS)
-- MySQL installé et démarré
-- Application Discord (bot)
+Bot Discord d’économie + dashboard web.  
+**1 repo · 1 process Node** (API + bot + front).
 
-## Étapes détaillées
+## Structure
 
-### 1. Créer l’application Discord
-- Récupérer : `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_BOT_TOKEN`
-- Scopes : `bot`, `applications.commands`, `identify`, `guilds`
-- Générer l’URL d’invitation du bot
+```
+apps/web        Nuxt 4 + Nuxt UI
+apps/server     Entry unique (Express + Discord + static)
+packages/core   API + métier
+packages/db     Migrations MySQL (Knex)
+packages/config Validation .env
+docs/           Déploiement & env
+server.js       Point d’entrée Plesk
+```
 
-### 2. Configurer OAuth Discord (site)
-- Ajouter l’URL de redirection OAuth :
-  - `http://localhost:4000/auth/discord/callback`
+## Démarrage
 
-### 3. Configurer MySQL
-- Créer la base de données
-- Importer les migrations
-- Créer un utilisateur SQL dédié
+```bash
+cp .env.example .env
+npm ci
+npm run migrate
+npm run build
+npm start
+```
 
-### 4. Configurer les variables d’environnement
-- Copier `.env.example` vers `.env` à la racine
-- Renseigner les variables :
-  - `DATABASE_URL`
-  - `DISCORD_BOT_TOKEN`
-  - `DISCORD_CLIENT_ID`
-  - `DISCORD_CLIENT_SECRET`
-  - `DISCORD_REDIRECT_URI`
-  - `API_SECRET_KEY`
-  - `BASE_URL`
-  - `API_BASE`
+Dev avec HMR front :
 
-### 5. Lancer le projet
-- Tout en une commande : `npm run dev:all`
-- Ou séparément :
-  - Backend : `npm run start`
-  - Bot : `npm run bot`
-  - Frontend : `npm run frontend`
+```bash
+npm run dev:all
+```
 
-## Première configuration (UI)
-Une page “Première configuration” est disponible dans l’interface web :
-- Vérification connexion DB
-- Vérification Auth Discord (token)
-- Vérification bot
+Un seul `.env` à la racine — détails : [docs/ENV.md](docs/ENV.md).
 
-## Assistant de démarrage (setup wizard)
-Le dashboard propose un assistant avec les étapes suivantes :
-1. Nom de l’économie + emoji
-2. Argent de départ + limite max
-3. Daily (montant + streak)
-4. Activation des gains (message / vocal)
-5. Configuration rapide d’un shop par défaut
-6. Activation du leaderboard
+## Admin & Premium
 
-Chaque étape est sauvegardée en base et modifiable ultérieurement.
+- Admin : `/admin-v2` uniquement (`/admin` redirige)
+- Premium v2 : Free / Premium / Premium+ — `PREMIUM_FEATURE_ENFORCEMENT_MODE=off|warn|enforce`
+
+## Un seul site
+
+Tout sur **https://ecoboty.eu** (plus d’API sur un sous-domaine).  
+→ [docs/SINGLE_SITE.md](docs/SINGLE_SITE.md) · [docs/PROD.md](docs/PROD.md) · [docs/DEPLOY_PLESK.md](docs/DEPLOY_PLESK.md)

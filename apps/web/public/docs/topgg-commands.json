@@ -1,0 +1,309 @@
+[
+  {
+    "type": 1,
+    "name": "daily",
+    "name_localizations": {
+      "en-US": "daily",
+      "fr": "daily",
+      "es-ES": "diario"
+    },
+    "description": "Claim your daily reward",
+    "description_localizations": {
+      "en-US": "Claim your daily reward",
+      "fr": "Récupérer votre récompense quotidienne",
+      "es-ES": "Reclamar tu recompensa diaria"
+    }
+  },
+  {
+    "type": 1,
+    "name": "shop",
+    "name_localizations": {
+      "en-US": "shop",
+      "fr": "boutique",
+      "es-ES": "tienda"
+    },
+    "description": "Show the list of shops",
+    "description_localizations": {
+      "en-US": "Show the list of shops",
+      "fr": "Afficher la liste des shops",
+      "es-ES": "Mostrar la lista de tiendas"
+    },
+    "options": [
+      {
+        "name": "user",
+        "name_localizations": {
+          "en-US": "user",
+          "fr": "utilisateur",
+          "es-ES": "usuario"
+        },
+        "description": "Target member",
+        "description_localizations": {
+          "en-US": "Target member",
+          "fr": "Membre concerné",
+          "es-ES": "Miembro"
+        },
+        "required": false,
+        "type": 6
+      }
+    ]
+  },
+  {
+    "type": 1,
+    "name": "buy",
+    "name_localizations": {
+      "en-US": "buy",
+      "fr": "acheter",
+      "es-ES": "comprar"
+    },
+    "description": "Buy an item by ID",
+    "description_localizations": {
+      "en-US": "Buy an item by ID",
+      "fr": "Acheter un article par ID",
+      "es-ES": "Comprar un artículo por ID"
+    },
+    "options": [
+      {
+        "type": 4,
+        "name": "item_id",
+        "name_localizations": {
+          "en-US": "item_id",
+          "fr": "item_id",
+          "es-ES": "id_articulo"
+        },
+        "description": "Item ID",
+        "description_localizations": {
+          "en-US": "Item ID",
+          "fr": "ID de l'article",
+          "es-ES": "ID del artículo"
+        },
+        "required": true
+      }
+    ]
+  },
+  {
+    "type": 1,
+    "name": "achievements",
+    "name_localizations": {
+      "en-US": "achievements",
+      "fr": "succes",
+      "es-ES": "logros"
+    },
+    "description": "View your achievements and progress",
+    "description_localizations": {
+      "en-US": "View your achievements and progress",
+      "fr": "Voir tes succes et ta progression",
+      "es-ES": "Ver tus logros y tu progreso"
+    },
+    "options": [
+      {
+        "max_value": 30,
+        "min_value": 1,
+        "type": 4,
+        "name": "page",
+        "name_localizations": {
+          "en-US": "page",
+          "fr": "page",
+          "es-ES": "pagina"
+        },
+        "description": "Page number",
+        "description_localizations": {
+          "en-US": "Page number",
+          "fr": "Numéro de page",
+          "es-ES": "Número de página"
+        },
+        "required": false
+      }
+    ]
+  },
+  {
+    "type": 1,
+    "name": "birthday",
+    "name_localizations": {
+      "en-US": "birthday",
+      "fr": "anniversaire",
+      "es-ES": "cumpleanos"
+    },
+    "description": "Add or edit your birthday date",
+    "description_localizations": {
+      "en-US": "Add or edit your birthday date",
+      "fr": "Ajouter ou modifier ta date d'anniversaire",
+      "es-ES": "Añadir o editar tu fecha de cumpleaños"
+    }
+  },
+  {
+    "type": 1,
+    "name": "birthday-list",
+    "name_localizations": {
+      "en-US": "birthday-list",
+      "fr": "anniversaire-list",
+      "es-ES": "lista-cumpleanos"
+    },
+    "description": "Show the next 10 birthdays",
+    "description_localizations": {
+      "en-US": "Show the next 10 birthdays",
+      "fr": "Afficher les 10 prochains anniversaires",
+      "es-ES": "Mostrar los 10 próximos cumpleaños"
+    }
+  },
+  {
+    "type": 1,
+    "name": "add-money",
+    "name_localizations": {
+      "en-US": "add-money",
+      "fr": "ajouter-argent",
+      "es-ES": "agregar-dinero"
+    },
+    "description": "Add money to a member (admin / sensitive role)",
+    "description_localizations": {
+      "en-US": "Add money to a member (admin / sensitive role)",
+      "fr": "Ajouter de l'argent à un membre (admin / rôle sensible)",
+      "es-ES": "Añadir dinero a un miembro (admin / rol sensible)"
+    },
+    "default_member_permissions": "8",
+    "dm_permission": false,
+    "options": [
+      {
+        "name": "user",
+        "name_localizations": {
+          "en-US": "user",
+          "fr": "utilisateur",
+          "es-ES": "usuario"
+        },
+        "description": "Target member",
+        "description_localizations": {
+          "en-US": "Target member",
+          "fr": "Membre concerné",
+          "es-ES": "Miembro"
+        },
+        "required": true,
+        "type": 6
+      },
+      {
+        "min_value": 1,
+        "type": 4,
+        "name": "amount",
+        "name_localizations": {
+          "en-US": "amount",
+          "fr": "montant",
+          "es-ES": "cantidad"
+        },
+        "description": "Amount",
+        "description_localizations": {
+          "en-US": "Amount",
+          "fr": "Montant",
+          "es-ES": "Cantidad"
+        },
+        "required": true
+      }
+    ]
+  },
+  {
+    "type": 1,
+    "name": "leaderboard",
+    "name_localizations": {
+      "en-US": "leaderboard",
+      "fr": "classement",
+      "es-ES": "clasificacion"
+    },
+    "description": "Show the leaderboard",
+    "description_localizations": {
+      "en-US": "Show the leaderboard",
+      "fr": "Afficher le classement",
+      "es-ES": "Mostrar la clasificación"
+    }
+  },
+  {
+    "type": 1,
+    "name": "games",
+    "name_localizations": {
+      "en-US": "games",
+      "fr": "jeux",
+      "es-ES": "juegos"
+    },
+    "description": "Betting mini-games",
+    "description_localizations": {
+      "en-US": "Betting mini-games",
+      "fr": "Mini-jeux de paris",
+      "es-ES": "Mini-juegos de apuestas"
+    }
+  },
+  {
+    "type": 1,
+    "name": "inventory",
+    "name_localizations": {
+      "en-US": "inventory",
+      "fr": "inventaire",
+      "es-ES": "inventario"
+    },
+    "description": "Show your inventory",
+    "description_localizations": {
+      "en-US": "Show your inventory",
+      "fr": "Afficher votre inventaire",
+      "es-ES": "Mostrar tu inventario"
+    }
+  },
+  {
+    "type": 1,
+    "name": "sale",
+    "name_localizations": {
+      "en-US": "sale",
+      "fr": "vente",
+      "es-ES": "venta"
+    },
+    "description": "Sell or buy items",
+    "description_localizations": {
+      "en-US": "Sell or buy items",
+      "fr": "Vendre ou acheter des objets",
+      "es-ES": "Vender o comprar objetos"
+    }
+  },
+  {
+    "type": 1,
+    "name": "vote",
+    "name_localizations": {
+      "en-US": "vote",
+      "fr": "vote",
+      "es-ES": "votar"
+    },
+    "description": "Vote for EcoBoty on Top.gg and claim your reward",
+    "description_localizations": {
+      "en-US": "Vote for EcoBoty on Top.gg and claim your reward",
+      "fr": "Voter pour EcoBoty sur Top.gg et récupérer la récompense",
+      "es-ES": "Votar por EcoBoty en Top.gg y reclamar tu recompensa"
+    },
+    "options": [
+      {
+        "type": 1,
+        "name": "link",
+        "name_localizations": {
+          "en-US": "link",
+          "fr": "lien",
+          "es-ES": "enlace"
+        },
+        "description": "Open the Top.gg vote link",
+        "description_localizations": {
+          "en-US": "Open the Top.gg vote link",
+          "fr": "Ouvre le lien de vote Top.gg",
+          "es-ES": "Abre el enlace de voto de Top.gg"
+        },
+        "options": []
+      },
+      {
+        "type": 1,
+        "name": "claim",
+        "name_localizations": {
+          "en-US": "claim",
+          "fr": "reclamer",
+          "es-ES": "reclamar"
+        },
+        "description": "Claim your reward after voting",
+        "description_localizations": {
+          "en-US": "Claim your reward after voting",
+          "fr": "Récupérer la récompense après avoir voté",
+          "es-ES": "Reclama tu recompensa después de votar"
+        },
+        "options": []
+      }
+    ]
+  }
+]
