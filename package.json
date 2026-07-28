@@ -12,6 +12,7 @@
     "dev:web": "npm run dev -w @ecoboty/web",
     "dev:all": "concurrently -k -n server,web -c blue,green \"npm run dev -w @ecoboty/server\" \"npm run dev:web\"",
     "build": "node scripts/build-web.js",
+    "prestart": "npm run migrate",
     "start": "npm run start -w @ecoboty/server",
     "migrate": "npm run migrate -w @ecoboty/db",
     "register-commands": "npm run register-commands -w @ecoboty/server",

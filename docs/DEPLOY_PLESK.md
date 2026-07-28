@@ -12,16 +12,19 @@
 
 ```bash
 npm ci
-npm run migrate
 npm run build
-npm start
+npm start   # exécute aussi les migrations (prestart)
 ```
+
+Les migrations ne lisent pas un fichier `.env` obligatoire sur Plesk : elles utilisent les **variables Node.js** du panel, injectées quand Plesk lance `npm start` / `server.js`.
+
+> Un `npm run migrate` lancé à la main en SSH **n’a pas** les variables du panel — préférer **Restart app** après deploy, ou `export DATABASE_URL=...` avant la commande.
 
 Plesk Application Node.js :
 
 - Root = racine du repo
 - Startup = `server.js` (ou `npm start`)
-- Env = fichier `.env` racine (voir [ENV.md](ENV.md))
+- Env = variables Node.js dans le panel (ou `.env` racine en local)
 
 ## Notes
 
