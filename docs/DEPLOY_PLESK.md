@@ -27,7 +27,7 @@ npm run build
 |---|---|
 | **Racine de l'application** | `/httpdocs` |
 | **Racine du document** | `/httpdocs/.output/public` *(optionnel)* ou `/httpdocs` |
-| **Fichier de démarrage** | `server.js` **ou** `.output/server/index.mjs` |
+| **Fichier de démarrage** | `server.js` **ou** `bootstrap.cjs` (les deux pointent vers le même serveur) |
 | **Mode** | `production` |
 
 **Important :** la **racine de l'application** doit rester `/httpdocs`.  
