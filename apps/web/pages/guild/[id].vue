@@ -5906,12 +5906,18 @@ const loadCommunityMessage = async ({ force = false } = {}) => {
     communityMessageShopIds.value = Array.isArray(settings.shop_ids) ? settings.shop_ids.map(String) : [];
     communityMessageIncludeGameChances.value = Boolean(settings.include_game_chances);
     communityMessageIncludeShopDiscounts.value = settings.include_shop_discounts !== false;
-    communityMessageMessageId.value = settings.message_id || null;
-    communityMessageMessageIds.value = Array.isArray(settings.message_ids)
+    const messageIds = Array.isArray(settings.message_ids)
       ? settings.message_ids.map(String).filter(Boolean)
       : settings.message_id
         ? [String(settings.message_id)]
         : [];
+    communityMessageMessageIds.value = messageIds;
+    communityMessageMessageId.value = messageIds[0] || settings.message_id || null;
+    if (data.missingDetected) {
+      communityMessageStatus.value = messageIds.length
+        ? t("adminGuild.communityMessage.partialDeleteDetected")
+        : t("adminGuild.communityMessage.deletedDetected");
+    }
   }
   communityMessageLoading.value = false;
   loadedTabs.communityMessage = true;
@@ -5978,7 +5984,10 @@ const sendCommunityMessage = async () => {
   } else {
     const data = await parseJsonSafe(res, {});
     if (data.error === "message_already_sent") {
-      communityMessageStatus.value = t("adminGuild.communityMessage.alreadySent");
+      communityMessageStatus.value = t("adminGuild.communityMessage.alreadySent", {
+        count: communityMessageMessageIds.value.length || 1
+      });
+      await loadCommunityMessage({ force: true });
     } else if (data.error === "message_too_long") {
       communityMessageStatus.value = t("adminGuild.communityMessage.tooLong");
     } else {
@@ -6004,17 +6013,22 @@ const updateCommunityMessage = async () => {
   }
   if (res.ok) {
     const data = await parseJsonSafe(res, {});
-    if (data.messageId) communityMessageMessageId.value = data.messageId;
-    communityMessageMessageIds.value = Array.isArray(data.messageIds)
+    const messageIds = Array.isArray(data.messageIds)
       ? data.messageIds.map(String).filter(Boolean)
       : data.messageId
         ? [String(data.messageId)]
-        : communityMessageMessageIds.value;
+        : [];
+    communityMessageMessageIds.value = messageIds;
+    communityMessageMessageId.value = messageIds[0] || data.messageId || null;
     communityMessageStatus.value = t("adminGuild.communityMessage.updateSuccess");
   } else {
     const data = await parseJsonSafe(res, {});
     if (data.error === "message_too_long") {
       communityMessageStatus.value = t("adminGuild.communityMessage.tooLong");
+    } else if (data.error === "message_not_sent") {
+      communityMessageMessageId.value = null;
+      communityMessageMessageIds.value = [];
+      communityMessageStatus.value = t("adminGuild.communityMessage.deletedDetected");
     } else {
       communityMessageStatus.value = t("adminGuild.communityMessage.updateError");
     }

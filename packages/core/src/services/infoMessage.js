@@ -206,6 +206,16 @@ const i18n = {
 
 const resolveLang = (lang) => (i18n[lang] ? lang : "fr");
 
+const parseJsonField = (value, fallback) => {
+  if (value == null) return fallback;
+  if (typeof value === "object") return value;
+  try {
+    return JSON.parse(String(value));
+  } catch {
+    return fallback;
+  }
+};
+
 const normalizeSections = (sections) => {
   if (!Array.isArray(sections) || !sections.length) return DEFAULT_SECTIONS;
   return sections.filter(Boolean);
@@ -214,6 +224,13 @@ const normalizeSections = (sections) => {
 const normalizeShopIds = (value) => {
   if (!Array.isArray(value)) return [];
   return value.map((id) => String(id)).filter(Boolean);
+};
+
+const normalizeMessageIds = (value, fallbackId = null) => {
+  const fromList = Array.isArray(value) ? value.map(String).filter(Boolean) : [];
+  if (fromList.length) return [...new Set(fromList)];
+  if (fallbackId) return [String(fallbackId)];
+  return [];
 };
 
 const buildUserInterfaceUrl = () => {
@@ -242,12 +259,13 @@ export const getInfoMessageSettings = async (guildId) => {
       include_shop_discounts: true
     };
   }
+  const messageIds = normalizeMessageIds(parseJsonField(row.message_ids, []), row.message_id);
   return {
     channel_id: row.channel_id || "",
-    message_id: row.message_id || null,
-    message_ids: row.message_ids ? JSON.parse(row.message_ids) : [],
-    sections: row.sections ? JSON.parse(row.sections) : DEFAULT_SECTIONS,
-    shop_ids: row.shop_ids ? JSON.parse(row.shop_ids) : [],
+    message_id: messageIds[0] || row.message_id || null,
+    message_ids: messageIds,
+    sections: normalizeSections(parseJsonField(row.sections, DEFAULT_SECTIONS)),
+    shop_ids: normalizeShopIds(parseJsonField(row.shop_ids, [])),
     include_game_chances: row.include_game_chances === true,
     include_shop_discounts: row.include_shop_discounts !== false
   };
@@ -292,13 +310,67 @@ export const updateInfoMessageMessageId = async (guildId, messageId) => {
 
 export const updateInfoMessageMessageIds = async (guildId, messageIds = []) => {
   const guild = await ensureGuild(guildId, db);
+  const normalized = normalizeMessageIds(messageIds);
   await db("guild_info_message_settings")
     .where({ guild_id: guild.id })
     .update({
-      message_ids: JSON.stringify(messageIds),
-      message_id: messageIds.length ? String(messageIds[0]) : null,
+      message_ids: JSON.stringify(normalized),
+      message_id: normalized.length ? String(normalized[0]) : null,
       updated_at: new Date()
     });
+};
+
+const discordFetchMessage = async (channelId, messageId) => {
+  const botToken = process.env.DISCORD_BOT_TOKEN;
+  if (!botToken || !channelId || !messageId) return { exists: false, status: 0 };
+  const res = await fetch(`https://discord.com/api/channels/${channelId}/messages/${messageId}`, {
+    headers: { Authorization: `Bot ${botToken}` }
+  });
+  if (res.status === 404) return { exists: false, status: 404 };
+  if (!res.ok) return { exists: false, status: res.status };
+  return { exists: true, status: res.status };
+};
+
+/** Drop message IDs that no longer exist on Discord (manual delete, purge, etc.). */
+export const syncInfoMessagePresence = async (guildId) => {
+  const settings = await getInfoMessageSettings(guildId);
+  const ids = normalizeMessageIds(settings.message_ids, settings.message_id);
+  if (!settings.channel_id || !ids.length) {
+    return { settings: { ...settings, message_ids: ids, message_id: ids[0] || null }, missingDetected: false };
+  }
+
+  const alive = [];
+  for (const messageId of ids) {
+    const check = await discordFetchMessage(settings.channel_id, messageId);
+    if (check.exists) alive.push(messageId);
+  }
+
+  const missingDetected = alive.length !== ids.length;
+  if (missingDetected) {
+    await updateInfoMessageMessageIds(guildId, alive);
+  }
+
+  const refreshed = await getInfoMessageSettings(guildId);
+  return { settings: refreshed, missingDetected };
+};
+
+/** Called when Discord reports a community message was deleted. */
+export const handleInfoMessageDeleted = async ({ guildDiscordId, channelId, messageId }) => {
+  const guildId = String(guildDiscordId || "").trim();
+  const deletedId = String(messageId || "").trim();
+  if (!guildId || !deletedId) return { updated: false };
+
+  const settings = await getInfoMessageSettings(guildId);
+  if (channelId && settings.channel_id && String(settings.channel_id) !== String(channelId)) {
+    return { updated: false };
+  }
+
+  const ids = normalizeMessageIds(settings.message_ids, settings.message_id);
+  if (!ids.includes(deletedId)) return { updated: false };
+
+  const next = ids.filter((id) => id !== deletedId);
+  await updateInfoMessageMessageIds(guildId, next);
+  return { updated: true, remaining: next.length };
 };
 
 const formatRoleMentions = (roleIds = []) => {
@@ -634,34 +706,17 @@ export const updateInfoMessage = async ({ guildId, channelId, settings, existing
   const payload = await buildInfoMessageChunks({ guildId, settings });
   if (!payload.chunks.length) throw new Error("message_too_long");
 
-  const previousIds = Array.isArray(existingMessageIds)
-    ? existingMessageIds.map(String).filter(Boolean)
-    : [];
+  const previousIds = normalizeMessageIds(existingMessageIds);
   const messageIds = [];
+  const discordHeaders = {
+    Authorization: `Bot ${botToken}`,
+    "Content-Type": "application/json"
+  };
 
-  for (let i = 0; i < payload.chunks.length; i += 1) {
-    const chunk = payload.chunks[i];
-    const existingId = previousIds[i] || null;
-    if (existingId) {
-      const patchRes = await fetch(`https://discord.com/api/channels/${channelId}/messages/${existingId}`, {
-        method: "PATCH",
-        headers: {
-          Authorization: `Bot ${botToken}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ content: chunk })
-      });
-      if (patchRes.ok) {
-        messageIds.push(existingId);
-        continue;
-      }
-    }
+  const createChunk = async (chunk) => {
     const createRes = await fetch(`https://discord.com/api/channels/${channelId}/messages`, {
       method: "POST",
-      headers: {
-        Authorization: `Bot ${botToken}`,
-        "Content-Type": "application/json"
-      },
+      headers: discordHeaders,
       body: JSON.stringify({ content: chunk })
     });
     if (!createRes.ok) {
@@ -669,7 +724,30 @@ export const updateInfoMessage = async ({ guildId, channelId, settings, existing
       throw new Error(`discord_message_update_failed:${JSON.stringify(err)}`);
     }
     const sent = await createRes.json();
-    if (sent?.id) messageIds.push(String(sent.id));
+    if (!sent?.id) throw new Error("discord_message_update_failed:missing_id");
+    return String(sent.id);
+  };
+
+  for (let i = 0; i < payload.chunks.length; i += 1) {
+    const chunk = payload.chunks[i];
+    const existingId = previousIds[i] || null;
+    if (existingId) {
+      const patchRes = await fetch(`https://discord.com/api/channels/${channelId}/messages/${existingId}`, {
+        method: "PATCH",
+        headers: discordHeaders,
+        body: JSON.stringify({ content: chunk })
+      });
+      if (patchRes.ok) {
+        messageIds.push(String(existingId));
+        continue;
+      }
+      // Message deleted manually (or wrong channel) → recreate this chunk.
+      if (patchRes.status !== 404) {
+        const err = await patchRes.json().catch(() => ({}));
+        throw new Error(`discord_message_update_failed:${JSON.stringify(err)}`);
+      }
+    }
+    messageIds.push(await createChunk(chunk));
   }
 
   for (let i = payload.chunks.length; i < previousIds.length; i += 1) {

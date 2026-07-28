@@ -1315,6 +1315,8 @@
       "sendError": "Erreur lors de l'envoi.",
       "deleteSuccess": "Message supprimé.",
       "deleteError": "Erreur lors de la suppression.",
+      "deletedDetected": "Le message a été supprimé sur Discord. Tu peux le renvoyer.",
+      "partialDeleteDetected": "Une partie du message a été supprimée sur Discord. Utilise « Mettre à jour » ou renvoie-le.",
       "tooLong": "Le message dépasse 2000 caractères."
     },
     "daily": {

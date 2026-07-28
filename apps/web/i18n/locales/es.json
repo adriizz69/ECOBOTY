@@ -1308,6 +1308,8 @@
       "sendError": "Error al enviar el mensaje.",
       "deleteSuccess": "Mensaje eliminado.",
       "deleteError": "Error al eliminar el mensaje.",
+      "deletedDetected": "El mensaje se eliminó en Discord. Puedes enviarlo de nuevo.",
+      "partialDeleteDetected": "Se eliminó una parte del mensaje en Discord. Usa Actualizar o envíalo de nuevo.",
       "tooLong": "El mensaje supera los 2000 caracteres."
     },
     "daily": {

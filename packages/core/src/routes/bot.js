@@ -208,6 +208,22 @@ botRouter.post("/guilds/remove", async (req, res) => {
   }
 });
 
+botRouter.post("/community-message/deleted", async (req, res) => {
+  const { guildId, channelId, messageId } = req.body || {};
+  if (!guildId || !messageId) return res.status(400).json({ error: "missing_params" });
+  try {
+    const { handleInfoMessageDeleted } = await import("../services/infoMessage.js");
+    const result = await handleInfoMessageDeleted({
+      guildDiscordId: String(guildId),
+      channelId: channelId ? String(channelId) : null,
+      messageId: String(messageId)
+    });
+    return res.json({ ok: true, ...result });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "community_message_delete_sync_failed" });
+  }
+});
+
 botRouter.post("/temp-roles", async (req, res) => {
   const { guildId, userId, roleId, durationSeconds } = req.body || {};
   if (!guildId || !userId || !roleId || !durationSeconds) {

@@ -118,6 +118,49 @@ client.on(Events.GuildDelete, async (guild) => {
   }
 });
 
+const reportCommunityMessageDeleted = async ({ guildId, channelId, messageId }) => {
+  if (!guildId || !messageId) return;
+  try {
+    const { handleInfoMessageDeleted } = await import("@ecoboty/core");
+    await handleInfoMessageDeleted({
+      guildDiscordId: String(guildId),
+      channelId: channelId ? String(channelId) : null,
+      messageId: String(messageId)
+    });
+  } catch {
+    // ignore
+  }
+};
+
+client.on(Events.MessageDelete, async (message) => {
+  try {
+    const guildId = message.guildId || message.guild?.id;
+    const channelId = message.channelId || message.channel?.id;
+    const messageId = message.id;
+    if (!guildId || !messageId) return;
+    await reportCommunityMessageDeleted({ guildId, channelId, messageId });
+  } catch {
+    // ignore
+  }
+});
+
+client.on(Events.MessageBulkDelete, async (messages, channel) => {
+  try {
+    const guildId = channel?.guildId || channel?.guild?.id || messages.first()?.guildId;
+    const channelId = channel?.id;
+    if (!guildId) return;
+    for (const message of messages.values()) {
+      await reportCommunityMessageDeleted({
+        guildId,
+        channelId: channelId || message.channelId,
+        messageId: message.id
+      });
+    }
+  } catch {
+    // ignore
+  }
+});
+
 const voiceIntervals = new Map();
 const bannedCache = {
   map: new Map(),

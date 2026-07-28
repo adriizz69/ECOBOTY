@@ -6,3 +6,4 @@ export { syncStripeCatalog, syncStripeCatalogFromEnv, bootstrapStripeCatalog, ge
 export { getGuildEntitlements, isGuildFeatureEnabled } from "./services/billing-entitlements.js";
 export { startBillingCleanupScheduler } from "./services/billing-cleanup.js";
 export { setBotGuildIdsProvider } from "./services/admin.js";
+export { handleInfoMessageDeleted } from "./services/infoMessage.js";

@@ -45,7 +45,8 @@ import {
   sendInfoMessage,
   updateInfoMessage,
   updateInfoMessageMessageId,
-  updateInfoMessageMessageIds
+  updateInfoMessageMessageIds,
+  syncInfoMessagePresence
 } from "../services/infoMessage.js";
 import {
   getAchievementConfigPayload,
@@ -1553,8 +1554,8 @@ apiRouter.get("/economy/gains", async (req, res) => {
 
 apiRouter.get("/guilds/:id/community-message", async (req, res) => {
   try {
-    const settings = await getInfoMessageSettings(req.params.id);
-    return res.json({ settings });
+    const { settings, missingDetected } = await syncInfoMessagePresence(req.params.id);
+    return res.json({ settings, missingDetected: Boolean(missingDetected) });
   } catch (error) {
     return res.status(400).json({ error: error.message || "community_message_failed" });
   }
@@ -1583,20 +1584,29 @@ apiRouter.post("/guilds/:id/community-message/send", async (req, res) => {
   const botToken = process.env.DISCORD_BOT_TOKEN;
   if (!botToken) return res.status(500).json({ error: "bot_token_missing" });
   try {
-    const settings = await saveInfoMessageSettings(req.params.id, req.body || {});
+    await saveInfoMessageSettings(req.params.id, req.body || {});
+    const { settings } = await syncInfoMessagePresence(req.params.id);
     if (!settings.channel_id) return res.status(400).json({ error: "missing_channel" });
-    if (settings.message_id) return res.status(400).json({ error: "message_already_sent" });
+    if (settings.message_id || (Array.isArray(settings.message_ids) && settings.message_ids.length)) {
+      return res.status(400).json({ error: "message_already_sent" });
+    }
     const result = await sendInfoMessage({
       guildId: req.params.id,
       channelId: settings.channel_id,
       settings
     });
-    if (result.messageIds) {
-      await updateInfoMessageMessageIds(req.params.id, result.messageIds);
+    const messageIds = Array.isArray(result.messageIds) ? result.messageIds.map(String).filter(Boolean) : [];
+    if (messageIds.length) {
+      await updateInfoMessageMessageIds(req.params.id, messageIds);
     } else if (result.messageId) {
       await updateInfoMessageMessageId(req.params.id, result.messageId);
     }
-    return res.json({ ok: true, messageId: result.messageId, length: result.length });
+    return res.json({
+      ok: true,
+      messageId: result.messageId || messageIds[0] || null,
+      messageIds,
+      length: result.length
+    });
   } catch (error) {
     return res.status(400).json({ error: error.message || "community_message_failed" });
   }
@@ -1606,7 +1616,8 @@ apiRouter.post("/guilds/:id/community-message/update", async (req, res) => {
   const botToken = process.env.DISCORD_BOT_TOKEN;
   if (!botToken) return res.status(500).json({ error: "bot_token_missing" });
   try {
-    const settings = await saveInfoMessageSettings(req.params.id, req.body || {});
+    await saveInfoMessageSettings(req.params.id, req.body || {});
+    const { settings } = await syncInfoMessagePresence(req.params.id);
     if (!settings.channel_id) return res.status(400).json({ error: "missing_channel" });
     const existingIds =
       Array.isArray(settings.message_ids) && settings.message_ids.length
@@ -1621,12 +1632,19 @@ apiRouter.post("/guilds/:id/community-message/update", async (req, res) => {
       settings,
       existingMessageIds: existingIds
     });
-    if (result.messageIds) {
-      await updateInfoMessageMessageIds(req.params.id, result.messageIds);
+    const messageIds = Array.isArray(result.messageIds) ? result.messageIds.map(String).filter(Boolean) : [];
+    if (messageIds.length) {
+      await updateInfoMessageMessageIds(req.params.id, messageIds);
     } else if (result.messageId) {
       await updateInfoMessageMessageId(req.params.id, result.messageId);
     }
-    return res.json({ ok: true, updated: true, messageId: result.messageId, length: result.length });
+    return res.json({
+      ok: true,
+      updated: true,
+      messageId: result.messageId || messageIds[0] || null,
+      messageIds,
+      length: result.length
+    });
   } catch (error) {
     return res.status(400).json({ error: error.message || "community_message_failed" });
   }
@@ -1637,21 +1655,21 @@ apiRouter.delete("/guilds/:id/community-message", async (req, res) => {
   if (!botToken) return res.status(500).json({ error: "bot_token_missing" });
   try {
     const settings = await getInfoMessageSettings(req.params.id);
-    if (settings?.channel_id && Array.isArray(settings?.message_ids) && settings.message_ids.length) {
-      for (const id of settings.message_ids) {
+    const ids =
+      Array.isArray(settings?.message_ids) && settings.message_ids.length
+        ? settings.message_ids
+        : settings?.message_id
+          ? [settings.message_id]
+          : [];
+    if (settings?.channel_id && ids.length) {
+      for (const id of ids) {
         await fetch(`https://discord.com/api/channels/${settings.channel_id}/messages/${id}`, {
           method: "DELETE",
           headers: { Authorization: `Bot ${botToken}` }
         });
       }
-      await updateInfoMessageMessageIds(req.params.id, []);
-    } else if (settings?.channel_id && settings?.message_id) {
-      await fetch(`https://discord.com/api/channels/${settings.channel_id}/messages/${settings.message_id}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bot ${botToken}` }
-      });
-      await updateInfoMessageMessageId(req.params.id, null);
     }
+    await updateInfoMessageMessageIds(req.params.id, []);
     return res.json({ ok: true });
   } catch (error) {
     return res.status(400).json({ error: error.message || "community_message_failed" });
