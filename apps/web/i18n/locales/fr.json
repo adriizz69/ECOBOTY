@@ -1317,6 +1317,8 @@
       "deleteError": "Erreur lors de la suppression.",
       "deletedDetected": "Le message a été supprimé sur Discord. Tu peux le renvoyer.",
       "partialDeleteDetected": "Une partie du message a été supprimée sur Discord. Utilise « Mettre à jour » ou renvoie-le.",
+      "resetRefs": "Messages disparus ? Réinitialiser",
+      "resetRefsError": "Impossible de réinitialiser le statut du message.",
       "tooLong": "Le message dépasse 2000 caractères."
     },
     "daily": {

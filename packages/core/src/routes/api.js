@@ -46,7 +46,8 @@ import {
   updateInfoMessage,
   updateInfoMessageMessageId,
   updateInfoMessageMessageIds,
-  syncInfoMessagePresence
+  syncInfoMessagePresence,
+  clearInfoMessageRefs
 } from "../services/infoMessage.js";
 import {
   getAchievementConfigPayload,
@@ -1556,6 +1557,15 @@ apiRouter.get("/guilds/:id/community-message", async (req, res) => {
   try {
     const { settings, missingDetected } = await syncInfoMessagePresence(req.params.id);
     return res.json({ settings, missingDetected: Boolean(missingDetected) });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "community_message_failed" });
+  }
+});
+
+apiRouter.post("/guilds/:id/community-message/reset-refs", async (req, res) => {
+  try {
+    const settings = await clearInfoMessageRefs(req.params.id);
+    return res.json({ ok: true, settings, missingDetected: true });
   } catch (error) {
     return res.status(400).json({ error: error.message || "community_message_failed" });
   }

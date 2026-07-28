@@ -227,7 +227,19 @@ const normalizeShopIds = (value) => {
 };
 
 const normalizeMessageIds = (value, fallbackId = null) => {
-  const fromList = Array.isArray(value) ? value.map(String).filter(Boolean) : [];
+  let list = value;
+  if (typeof list === "string") {
+    const trimmed = list.trim();
+    if (!trimmed) list = [];
+    else {
+      try {
+        list = JSON.parse(trimmed);
+      } catch {
+        list = trimmed.includes(",") ? trimmed.split(",") : [trimmed];
+      }
+    }
+  }
+  const fromList = Array.isArray(list) ? list.map(String).filter(Boolean) : [];
   if (fromList.length) return [...new Set(fromList)];
   if (fallbackId) return [String(fallbackId)];
   return [];
@@ -311,47 +323,105 @@ export const updateInfoMessageMessageId = async (guildId, messageId) => {
 export const updateInfoMessageMessageIds = async (guildId, messageIds = []) => {
   const guild = await ensureGuild(guildId, db);
   const normalized = normalizeMessageIds(messageIds);
-  await db("guild_info_message_settings")
-    .where({ guild_id: guild.id })
-    .update({
-      message_ids: JSON.stringify(normalized),
-      message_id: normalized.length ? String(normalized[0]) : null,
-      updated_at: new Date()
+  const payload = {
+    message_ids: JSON.stringify(normalized),
+    message_id: normalized.length ? String(normalized[0]) : null,
+    updated_at: new Date()
+  };
+  const changed = await db("guild_info_message_settings").where({ guild_id: guild.id }).update(payload);
+  if (!changed) {
+    await db("guild_info_message_settings").insert({
+      guild_id: guild.id,
+      channel_id: null,
+      sections: JSON.stringify(DEFAULT_SECTIONS),
+      shop_ids: JSON.stringify([]),
+      include_game_chances: false,
+      include_shop_discounts: true,
+      created_at: new Date(),
+      ...payload
     });
+  }
 };
 
 const discordFetchMessage = async (channelId, messageId) => {
   const botToken = process.env.DISCORD_BOT_TOKEN;
-  if (!botToken || !channelId || !messageId) return { exists: false, status: 0 };
-  const res = await fetch(`https://discord.com/api/channels/${channelId}/messages/${messageId}`, {
-    headers: { Authorization: `Bot ${botToken}` }
-  });
-  if (res.status === 404) return { exists: false, status: 404 };
-  if (!res.ok) return { exists: false, status: res.status };
-  return { exists: true, status: res.status };
+  if (!botToken || !channelId || !messageId) {
+    return { exists: false, definitive: true, status: 0 };
+  }
+  try {
+    const res = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages/${messageId}`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bot ${botToken}`,
+        "Content-Type": "application/json"
+      }
+    });
+    const body = await res.json().catch(() => ({}));
+    if (res.status === 404 || Number(body?.code) === 10008 || Number(body?.code) === 10003) {
+      return { exists: false, definitive: true, status: res.status };
+    }
+    if (res.status === 401 || res.status === 403) {
+      return { exists: false, definitive: true, status: res.status };
+    }
+    if (res.status === 429 || res.status >= 500) {
+      return { exists: false, definitive: false, status: res.status };
+    }
+    if (!res.ok) {
+      return { exists: false, definitive: true, status: res.status };
+    }
+    if (body?.id && String(body.id) === String(messageId)) {
+      return { exists: true, definitive: true, status: res.status };
+    }
+    return { exists: false, definitive: true, status: res.status };
+  } catch {
+    return { exists: false, definitive: false, status: 0 };
+  }
 };
 
 /** Drop message IDs that no longer exist on Discord (manual delete, purge, etc.). */
 export const syncInfoMessagePresence = async (guildId) => {
   const settings = await getInfoMessageSettings(guildId);
   const ids = normalizeMessageIds(settings.message_ids, settings.message_id);
-  if (!settings.channel_id || !ids.length) {
-    return { settings: { ...settings, message_ids: ids, message_id: ids[0] || null }, missingDetected: false };
+
+  if (!ids.length) {
+    return { settings: { ...settings, message_ids: [], message_id: null }, missingDetected: false };
+  }
+
+  if (!settings.channel_id) {
+    await updateInfoMessageMessageIds(guildId, []);
+    const refreshed = await getInfoMessageSettings(guildId);
+    return { settings: refreshed, missingDetected: true };
   }
 
   const alive = [];
+  let definitiveMisses = 0;
   for (const messageId of ids) {
     const check = await discordFetchMessage(settings.channel_id, messageId);
-    if (check.exists) alive.push(messageId);
+    if (check.exists) {
+      alive.push(messageId);
+      continue;
+    }
+    if (check.definitive) {
+      definitiveMisses += 1;
+    } else {
+      // Keep on transient Discord errors
+      alive.push(messageId);
+    }
   }
 
-  const missingDetected = alive.length !== ids.length;
-  if (missingDetected) {
+  const missingDetected = definitiveMisses > 0;
+  if (missingDetected || alive.length !== ids.length) {
     await updateInfoMessageMessageIds(guildId, alive);
   }
 
   const refreshed = await getInfoMessageSettings(guildId);
   return { settings: refreshed, missingDetected };
+};
+
+/** Clear stored Discord message refs without deleting Discord messages. */
+export const clearInfoMessageRefs = async (guildId) => {
+  await updateInfoMessageMessageIds(guildId, []);
+  return getInfoMessageSettings(guildId);
 };
 
 /** Called when Discord reports a community message was deleted. */

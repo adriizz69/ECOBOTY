@@ -964,7 +964,12 @@
         </div>
 
         <div v-if="communityMessageMessageId" class="doc-callout" style="margin-bottom: 12px;">
-          {{ $t("adminGuild.communityMessage.alreadySent", { count: communityMessageMessageIds.length || 1 }) }}
+          <p style="margin: 0 0 10px;">
+            {{ $t("adminGuild.communityMessage.alreadySent", { count: communityMessageMessageIds.length || 1 }) }}
+          </p>
+          <UButton color="neutral" variant="outline" size="sm" :loading="communityMessageResetting" @click="resetCommunityMessageRefs">
+            {{ $t("adminGuild.communityMessage.resetRefs") }}
+          </UButton>
         </div>
 
         <div class="grid">
@@ -4226,6 +4231,7 @@ const communityMessagePreviewing = ref(false);
 const communityMessageSending = ref(false);
 const communityMessageUpdating = ref(false);
 const communityMessageDeleting = ref(false);
+const communityMessageResetting = ref(false);
 const communityMessageStatus = ref("");
 const communitySectionOptions = computed(() => [
   { key: "overview", label: t("adminGuild.communityMessage.sections.overview") },
@@ -5884,6 +5890,29 @@ const buildCommunityMessagePayload = () => ({
   include_shop_discounts: communityMessageIncludeShopDiscounts.value !== false
 });
 
+const applyCommunityMessageSettings = (settings = {}, { missingDetected = false } = {}) => {
+  communityMessageChannelId.value = settings.channel_id || "";
+  const rawSections = Array.isArray(settings.sections) ? settings.sections : [];
+  communityMessageSections.value = rawSections.length
+    ? rawSections
+    : communitySectionOptions.value.map((item) => item.key);
+  communityMessageShopIds.value = Array.isArray(settings.shop_ids) ? settings.shop_ids.map(String) : [];
+  communityMessageIncludeGameChances.value = Boolean(settings.include_game_chances);
+  communityMessageIncludeShopDiscounts.value = settings.include_shop_discounts !== false;
+  const messageIds = Array.isArray(settings.message_ids)
+    ? settings.message_ids.map(String).filter(Boolean)
+    : settings.message_id
+      ? [String(settings.message_id)]
+      : [];
+  communityMessageMessageIds.value = messageIds;
+  communityMessageMessageId.value = messageIds[0] || null;
+  if (missingDetected) {
+    communityMessageStatus.value = messageIds.length
+      ? t("adminGuild.communityMessage.partialDeleteDetected")
+      : t("adminGuild.communityMessage.deletedDetected");
+  }
+};
+
 const loadCommunityMessage = async ({ force = false } = {}) => {
   if (!force && loadedTabs.communityMessage) return;
   communityMessageLoading.value = true;
@@ -5897,31 +5926,32 @@ const loadCommunityMessage = async ({ force = false } = {}) => {
   }
   if (res.ok) {
     const data = await parseJsonSafe(res, {});
-    const settings = data.settings || {};
-    communityMessageChannelId.value = settings.channel_id || "";
-    const rawSections = Array.isArray(settings.sections) ? settings.sections : [];
-    communityMessageSections.value = rawSections.length
-      ? rawSections
-      : communitySectionOptions.value.map((item) => item.key);
-    communityMessageShopIds.value = Array.isArray(settings.shop_ids) ? settings.shop_ids.map(String) : [];
-    communityMessageIncludeGameChances.value = Boolean(settings.include_game_chances);
-    communityMessageIncludeShopDiscounts.value = settings.include_shop_discounts !== false;
-    const messageIds = Array.isArray(settings.message_ids)
-      ? settings.message_ids.map(String).filter(Boolean)
-      : settings.message_id
-        ? [String(settings.message_id)]
-        : [];
-    communityMessageMessageIds.value = messageIds;
-    communityMessageMessageId.value = messageIds[0] || settings.message_id || null;
-    if (data.missingDetected) {
-      communityMessageStatus.value = messageIds.length
-        ? t("adminGuild.communityMessage.partialDeleteDetected")
-        : t("adminGuild.communityMessage.deletedDetected");
-    }
+    applyCommunityMessageSettings(data.settings || {}, { missingDetected: Boolean(data.missingDetected) });
   }
   communityMessageLoading.value = false;
   loadedTabs.communityMessage = true;
   scheduleCommunityPreview();
+};
+
+const resetCommunityMessageRefs = async () => {
+  communityMessageResetting.value = true;
+  communityMessageStatus.value = "";
+  const token = getToken();
+  const res = await fetch(`${config.public.apiBase}/api/guilds/${id}/community-message/reset-refs`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (handleUnauthorized(res)) {
+    communityMessageResetting.value = false;
+    return;
+  }
+  if (res.ok) {
+    const data = await parseJsonSafe(res, {});
+    applyCommunityMessageSettings(data.settings || {}, { missingDetected: true });
+  } else {
+    communityMessageStatus.value = t("adminGuild.communityMessage.resetRefsError");
+  }
+  communityMessageResetting.value = false;
 };
 
 const previewCommunityMessage = async () => {

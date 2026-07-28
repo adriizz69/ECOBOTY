@@ -1310,6 +1310,8 @@
       "deleteError": "Error al eliminar el mensaje.",
       "deletedDetected": "El mensaje se eliminó en Discord. Puedes enviarlo de nuevo.",
       "partialDeleteDetected": "Se eliminó una parte del mensaje en Discord. Usa Actualizar o envíalo de nuevo.",
+      "resetRefs": "¿Mensajes eliminados? Reiniciar",
+      "resetRefsError": "No se pudo reiniciar el estado del mensaje.",
       "tooLong": "El mensaje supera los 2000 caracteres."
     },
     "daily": {

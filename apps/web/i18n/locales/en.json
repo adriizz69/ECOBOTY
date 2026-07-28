@@ -1310,6 +1310,8 @@
       "deleteError": "Failed to delete message.",
       "deletedDetected": "The message was deleted on Discord. You can send it again.",
       "partialDeleteDetected": "Part of the message was deleted on Discord. Use Update or send it again.",
+      "resetRefs": "Messages gone? Reset status",
+      "resetRefsError": "Unable to reset message status.",
       "tooLong": "Message exceeds 2000 characters."
     },
     "daily": {
