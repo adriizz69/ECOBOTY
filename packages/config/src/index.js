@@ -46,13 +46,27 @@ export const loadEnv = (source = process.env) => {
   return parsed.data;
 };
 
+export const resolveApiBase = (env = {}) => {
+  const explicit = String(process.env.API_BASE ?? env.API_BASE ?? "").trim();
+  if (explicit) return explicit.replace(/\/+$/, "");
+
+  const nodeEnv = String(process.env.NODE_ENV ?? env.NODE_ENV ?? "").toLowerCase();
+  const baseUrl = String(process.env.BASE_URL ?? env.BASE_URL ?? "")
+    .trim()
+    .replace(/\/+$/, "");
+
+  // Plesk/Passenger: loopback :PORT is often unreachable — use public same-origin URL.
+  if (nodeEnv === "production" && baseUrl) return baseUrl;
+
+  const port = Number(process.env.PORT ?? env.PORT ?? 4000);
+  return `http://127.0.0.1:${port}`;
+};
+
 export const applyEnv = (env) => {
   for (const [key, value] of Object.entries(env)) {
     if (value === undefined || value === null) continue;
     process.env[key] = String(value);
   }
-  if (!process.env.API_BASE) {
-    process.env.API_BASE = `http://127.0.0.1:${env.PORT}`;
-  }
+  process.env.API_BASE = resolveApiBase(env);
   return env;
 };

@@ -87,7 +87,9 @@ if (webPublicDir) {
 }
 
 const server = app.listen(port, () => {
-  console.log(`[server] EcoBoty listening on :${port} (${env.NODE_ENV}) site=${env.BASE_URL}`);
+  console.log(
+    `[server] EcoBoty listening on :${port} (${env.NODE_ENV}) site=${env.BASE_URL} api=${process.env.API_BASE}`
+  );
   void (async () => {
     const probe = await probeDatabaseConnection(Number(process.env.DB_STATUS_TIMEOUT_MS || 2000));
     if (!probe.ok) {

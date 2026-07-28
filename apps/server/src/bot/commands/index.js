@@ -209,6 +209,11 @@ const daily = {
 
       return interaction.reply({ embeds: [embed] });
     } catch (error) {
+      console.error(
+        "[bot] /daily failed:",
+        error?.response?.status,
+        error?.response?.data || error?.message || error
+      );
       return interaction.reply({ content: t(lang, "daily.error"), flags: MessageFlags.Ephemeral });
     }
   }
