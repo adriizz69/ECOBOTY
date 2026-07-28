@@ -11,16 +11,6 @@ import {
 
 const normalizeGuildId = (value) => String(value || "").replace(/\D/g, "");
 
-const normalizeEndorselyReferral = (value) => {
-  const referral = String(value || "").trim();
-  if (!referral) return "";
-  // Endorsely referral IDs are UUID strings.
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(referral)) {
-    return "";
-  }
-  return referral;
-};
-
 export const assertBillingConfigured = () => {
   if (!isStripeConfigured()) {
     const error = new Error("stripe_not_configured");
@@ -106,8 +96,7 @@ export const createGuildCheckoutSession = async ({
   intervalKey = "monthly",
   waiveRetraction = false,
   successUrl,
-  cancelUrl,
-  endorselyReferral = null
+  cancelUrl
 }) => {
   assertBillingConfigured();
 
@@ -159,17 +148,6 @@ export const createGuildCheckoutSession = async ({
   const baseUrl = String(process.env.BASE_URL || "http://localhost:4000").replace(/\/$/, "");
   await ensureStripePriceProductTaxCode(priceId);
   const zeroVatTaxRate = await ensureZeroVatTaxRate();
-  const referral = normalizeEndorselyReferral(endorselyReferral);
-  const sessionMetadata = {
-    ecoboty_plan_key: "premium",
-    ecoboty_price_key: `premium_${interval}`,
-    ecoboty_entity_type: "guild",
-    ecoboty_entity_id: guildId,
-    ecoboty_guild_name: guildName,
-    ecoboty_payer_discord_id: String(payerDiscordId || "")
-  };
-  if (referral) sessionMetadata.endorsely_referral = referral;
-
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
     customer: account.stripe_customer_id,
@@ -180,7 +158,14 @@ export const createGuildCheckoutSession = async ({
     cancel_url: cancelUrl || `${baseUrl}/guild/${guildId}?tab=billing&billing=cancel`,
     client_reference_id: guildId,
     allow_promotion_codes: true,
-    metadata: sessionMetadata,
+    metadata: {
+      ecoboty_plan_key: "premium",
+      ecoboty_price_key: `premium_${interval}`,
+      ecoboty_entity_type: "guild",
+      ecoboty_entity_id: guildId,
+      ecoboty_guild_name: guildName,
+      ecoboty_payer_discord_id: String(payerDiscordId || "")
+    },
     subscription_data: {
       description: subscriptionLabel,
       // Affiche la ligne TVA à 0 % sur Checkout + factures / renouvellements.
@@ -190,8 +175,7 @@ export const createGuildCheckoutSession = async ({
         ecoboty_price_key: `premium_${interval}`,
         ecoboty_entity_type: "guild",
         ecoboty_entity_id: guildId,
-        ecoboty_guild_name: guildName,
-        ...(referral ? { endorsely_referral: referral } : {})
+        ecoboty_guild_name: guildName
       }
     }
   });

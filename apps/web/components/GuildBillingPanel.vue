@@ -97,10 +97,6 @@ const startCheckout = async () => {
   actionLoading.value = true;
   try {
     const token = await getToken();
-    const endorselyReferral =
-      typeof window !== "undefined" && typeof window.endorsely_referral === "string"
-        ? window.endorsely_referral.trim()
-        : "";
     const res = await fetch(`${config.public.apiBase}/api/guilds/${props.guildId}/billing/checkout`, {
       method: "POST",
       headers: {
@@ -109,8 +105,7 @@ const startCheckout = async () => {
       },
       body: JSON.stringify({
         interval: selectedInterval.value,
-        waiveRetraction: true,
-        endorselyReferral: endorselyReferral || undefined
+        waiveRetraction: true
       })
     });
     const data = await res.json().catch(() => ({}));

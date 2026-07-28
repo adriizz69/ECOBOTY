@@ -653,8 +653,7 @@ apiRouter.post("/guilds/:id/billing/checkout", async (req, res) => {
       intervalKey: req.body?.interval || req.body?.intervalKey || "monthly",
       waiveRetraction: req.body?.waiveRetraction === true,
       successUrl: req.body?.successUrl,
-      cancelUrl: req.body?.cancelUrl,
-      endorselyReferral: req.body?.endorselyReferral || req.body?.endorsely_referral || null
+      cancelUrl: req.body?.cancelUrl
     });
     return res.json(result);
   } catch (error) {

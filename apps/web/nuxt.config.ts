@@ -3,7 +3,6 @@ import { fileURLToPath } from "node:url";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const isProd = process.env.NODE_ENV === "production";
-const endorselyId = String(process.env.ENDORSELY_ID || "ea1de630-1f10-474d-b82d-29331955cd3d").trim();
 
 // Never bake localhost into production SPA builds.
 const resolvedApiBase = (() => {
@@ -40,8 +39,7 @@ export default defineNuxtConfig({
       adminUserId: process.env.ADMIN_USER_ID || process.env.ADMIN_USER_IDS || "1328058083246608407",
       adsenseClient: process.env.ADSENSE_CLIENT || "",
       tawkToWidgetUrl:
-        process.env.TAWK_TO_WIDGET_URL || "https://embed.tawk.to/69a1b03b37d2cc1c36f4a8a7/1jifpgq5r",
-      endorselyId: process.env.ENDORSELY_ID || "ea1de630-1f10-474d-b82d-29331955cd3d"
+        process.env.TAWK_TO_WIDGET_URL || "https://embed.tawk.to/69a1b03b37d2cc1c36f4a8a7/1jifpgq5r"
     }
   },
   i18n: {
@@ -87,18 +85,7 @@ export default defineNuxtConfig({
         { rel: "icon", type: "image/x-icon", href: "/favicon.ico" },
         { rel: "icon", type: "image/png", sizes: "32x32", href: "/favicon.png" },
         { rel: "apple-touch-icon", sizes: "180x180", href: "/apple-touch-icon.png" }
-      ],
-      ...(endorselyId
-        ? {
-            script: [
-              {
-                async: true,
-                src: "https://assets.endorsely.com/endorsely.js",
-                "data-endorsely": endorselyId
-              }
-            ]
-          }
-        : {})
+      ]
     }
   }
 });
