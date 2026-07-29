@@ -16,7 +16,14 @@ const readCountValue = (row = {}) => {
   return Number.isFinite(numeric) ? numeric : 0;
 };
 
-const applyRuntimeShopLocks = async ({ guildId, shops = [] } = {}) => {
+const applyRuntimeShopLocks = async ({ guildId, shops = [], bypassPremiumLocks = false } = {}) => {
+  if (bypassPremiumLocks) {
+    return (Array.isArray(shops) ? shops : []).map((shop) => ({
+      ...shop,
+      premium_locked: false,
+      premium_lock_reason: null
+    }));
+  }
   const policy = await getShopPremiumPolicy(guildId);
   const shopsMax = policy.shopsMax ?? 1;
   return (Array.isArray(shops) ? shops : []).map((shop, index) => {
@@ -35,8 +42,10 @@ const assertShopRuntimeAccess = async ({
   guildId,
   guildInternalId,
   shopId = null,
-  context = "shop.runtime"
+  context = "shop.runtime",
+  bypassPremiumLocks = false
 }) => {
+  if (bypassPremiumLocks) return;
   const policy = await getShopPremiumPolicy(guildId);
   if (shopId) {
     const shops = await db("shops")
@@ -194,6 +203,7 @@ export const listShops = async (guildId, options = {}) => {
   const guild = await ensureGuild(guildId, db);
   const query = db("shops").where({ guild_id: guild.id });
   const scope = String(options.scope || "server").toLowerCase();
+  const bypassPremiumLocks = Boolean(options.bypassPremiumLocks);
   if (scope === "server") {
     query.whereNull("owner_discord_id");
   } else if (scope === "user") {
@@ -206,7 +216,11 @@ export const listShops = async (guildId, options = {}) => {
   let withLocks =
     scope === "user"
       ? rows.map((shop) => ({ ...shop, premium_locked: false, premium_lock_reason: null }))
-      : await applyRuntimeShopLocks({ guildId: String(guildId), shops: rows.filter(isServerShopRow) });
+      : await applyRuntimeShopLocks({
+          guildId: String(guildId),
+          shops: rows.filter(isServerShopRow),
+          bypassPremiumLocks
+        });
 
   if (scope === "user" && withLocks.length) {
     withLocks = await applyRuntimeUserShopLocks(String(guildId), withLocks);
@@ -293,13 +307,14 @@ const normalizeRequiredRolesMode = (value) => {
   return mode === "any" ? "any" : "all";
 };
 
-export const createShop = async (guildId, data) => {
+export const createShop = async (guildId, data, options = {}) => {
   const guild = await ensureGuild(guildId, db);
 
   await assertShopRuntimeAccess({
     guildId: String(guildId),
     guildInternalId: guild.id,
-    context: "shop.runtime.create"
+    context: "shop.runtime.create",
+    bypassPremiumLocks: Boolean(options.bypassPremiumLocks)
   });
 
   const roleIds = Array.isArray(data.required_role_ids)
@@ -321,7 +336,7 @@ export const createShop = async (guildId, data) => {
   return db("shops").where({ id }).first();
 };
 
-export const updateShop = async (guildId, shopId, data) => {
+export const updateShop = async (guildId, shopId, data, options = {}) => {
   const guild = await ensureGuild(guildId, db);
   const shop = await db("shops").where({ id: shopId, guild_id: guild.id }).first();
   if (!shop) throw new Error("shop_not_found");
@@ -330,7 +345,8 @@ export const updateShop = async (guildId, shopId, data) => {
     guildId: String(guildId),
     guildInternalId: guild.id,
     shopId: shop.id,
-    context: "shop.runtime.update"
+    context: "shop.runtime.update",
+    bypassPremiumLocks: Boolean(options.bypassPremiumLocks)
   });
 
   const payload = {};

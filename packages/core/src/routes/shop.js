@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { requireNotBannedByShop } from "../middleware/ban.js";
+import { isPlatformAdminId } from "../services/platform-admin.js";
 import {
   listShops,
   createShop,
@@ -20,6 +21,11 @@ export const shopRouter = Router();
 
 const sendShopError = (res, error, fallback) => {
   return res.status(400).json({ error: error.message || fallback });
+};
+
+const resolveShopAccessOptions = async (req) => {
+  const bypassPremiumLocks = await isPlatformAdminId(req.user?.discord_id || req.user?.id);
+  return { bypassPremiumLocks };
 };
 
 shopRouter.use("/shops/:id", requireNotBannedByShop);
@@ -94,7 +100,8 @@ shopRouter.delete("/guilds/:id/user-shops/:shopId/items/:itemId", async (req, re
 
 shopRouter.get("/guilds/:id/shops", async (req, res) => {
   try {
-    const shops = await listShops(req.params.id);
+    const access = await resolveShopAccessOptions(req);
+    const shops = await listShops(req.params.id, access);
     res.json({ shops });
   } catch (error) {
     sendShopError(res, error, "shops_failed");
@@ -103,7 +110,8 @@ shopRouter.get("/guilds/:id/shops", async (req, res) => {
 
 shopRouter.post("/guilds/:id/shops", async (req, res) => {
   try {
-    const shop = await createShop(req.params.id, req.body || {});
+    const access = await resolveShopAccessOptions(req);
+    const shop = await createShop(req.params.id, req.body || {}, access);
     res.json({ shop });
   } catch (error) {
     sendShopError(res, error, "shop_create_failed");
@@ -112,7 +120,8 @@ shopRouter.post("/guilds/:id/shops", async (req, res) => {
 
 shopRouter.put("/guilds/:id/shops/:shopId", async (req, res) => {
   try {
-    const shop = await updateShop(req.params.id, req.params.shopId, req.body || {});
+    const access = await resolveShopAccessOptions(req);
+    const shop = await updateShop(req.params.id, req.params.shopId, req.body || {}, access);
     res.json({ shop });
   } catch (error) {
     sendShopError(res, error, "shop_update_failed");

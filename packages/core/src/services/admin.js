@@ -2150,8 +2150,21 @@ export const getAdminGuildDetails = async (guildDiscordId) => {
     guild_discord_id: guildId
   });
 
-  const [shopsCount, userShopsCount, itemsCount, balancesCount, achievementsCount] = await Promise.all([
+  const [shopsCount, serverShopsCount, userShopsCount, itemsCount, balancesCount, achievementsCount] = await Promise.all([
     safeTableCount("shops", { guild_id: internalId }),
+    (async () => {
+      try {
+        if (!(await db.schema.hasTable("shops"))) return 0;
+        const row = await db("shops")
+          .where({ guild_id: internalId })
+          .whereNull("owner_discord_id")
+          .count({ count: "*" })
+          .first();
+        return Number(row?.count || 0);
+      } catch {
+        return 0;
+      }
+    })(),
     (async () => {
       try {
         if (!(await db.schema.hasTable("shops"))) return 0;
@@ -2259,6 +2272,7 @@ export const getAdminGuildDetails = async (guildDiscordId) => {
       twitchLogin: twitchSettings?.twitch_login || null,
       birthdayEnabled: birthdaySettings ? Boolean(birthdaySettings.enabled) : null,
       shopsCount,
+      serverShopsCount,
       userShopsCount,
       itemsCount,
       balancesCount,

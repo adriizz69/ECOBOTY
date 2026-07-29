@@ -3287,6 +3287,13 @@ const requestUrl = useRequestURL();
 const { t, locale, setLocale } = useI18n();
 const { getToken, login } = useAuth();
 const guildMe = ref(null);
+const configAdminIds = String(config.public.adminUserId || "")
+  .split(/[,\s]+/)
+  .map((value) => value.trim())
+  .filter(Boolean);
+const isPlatformAdminViewer = computed(() =>
+  configAdminIds.includes(String(guildMe.value?.discord_id || ""))
+);
 const managedGuildServers = ref([]);
 const currentGuildDiscordName = ref("");
 const localeOptions = [
@@ -3495,7 +3502,9 @@ const achievementsTiersMax = computed(() => {
   return raw == null ? null : Number(raw);
 });
 const shopsLimitMax = computed(() => Number(billingLimits.value.shops_max ?? 1));
-const shopsLimitCurrent = computed(() => activeShops.value.length);
+const shopsLimitCurrent = computed(() =>
+  isPlatformAdminViewer.value ? (shops.value || []).length : activeShops.value.length
+);
 const premiumShopsLimitMax = computed(() => (isGuildPremium.value ? shopsLimitMax.value : 10));
 const shopItemsLimitMax = computed(() => Number(billingLimits.value.shop_items_max ?? 6));
 const shopItemsLimitCurrent = computed(() => visibleItems.value.length);
@@ -3615,8 +3624,17 @@ const loadBillingCleanup = async () => {
   }
 };
 
-const activeShops = computed(() => (shops.value || []).filter((shop) => !shop.premium_locked));
-const lockedShops = computed(() => (shops.value || []).filter((shop) => shop.premium_locked));
+const activeShops = computed(() => {
+  const list = shops.value || [];
+  // Platform admins must see/edit the exact same shop set as the guild owner.
+  if (isPlatformAdminViewer.value) return list;
+  return list.filter((shop) => !shop.premium_locked);
+});
+const lockedShops = computed(() => {
+  const list = shops.value || [];
+  if (isPlatformAdminViewer.value) return [];
+  return list.filter((shop) => shop.premium_locked);
+});
 const lockedShopUnlockItems = computed(() => lockedShops.value.map((shop) => shop.name).filter(Boolean));
 
 const GUILD_TABS = Object.freeze([
@@ -6492,8 +6510,13 @@ const toDateTimeLocal = (value) => {
 };
 
 const loadShops = async () => {
+  const guildId = String(route.params.id || id || "").trim();
+  if (!guildId) {
+    shops.value = [];
+    return;
+  }
   const token = getToken();
-  const res = await fetch(`${config.public.apiBase}/api/guilds/${id}/shops`, {
+  const res = await fetch(`${config.public.apiBase}/api/guilds/${guildId}/shops`, {
     headers: { Authorization: `Bearer ${token}` }
   });
   if (handleUnauthorized(res)) return;
@@ -8335,6 +8358,7 @@ watch(
     rolesLoaded.value = false;
     channels.value = [];
     roles.value = [];
+    shops.value = [];
     guildBilling.value = { ...FREE_BILLING_FALLBACK };
     await loadManagedGuildServers();
     await loadGuildStatus();

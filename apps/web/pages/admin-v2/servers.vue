@@ -148,8 +148,8 @@
               <div class="rounded-lg border border-default p-3">
                 <p class="text-xs text-muted">Boutiques</p>
                 <p class="font-medium">
-                  {{ details.config?.shopsCount || 0 }}
-                  <span class="text-muted">({{ details.config?.userShopsCount || 0 }} user)</span>
+                  {{ details.config?.serverShopsCount ?? details.config?.shopsCount ?? 0 }} serveur
+                  <span class="text-muted">· {{ details.config?.userShopsCount || 0 }} user</span>
                 </p>
               </div>
               <div class="rounded-lg border border-default p-3">
