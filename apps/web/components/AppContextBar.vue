@@ -25,17 +25,17 @@
       <NuxtLink
         v-if="showServersLink"
         to="/servers"
-        class="context-btn"
+        class="context-chip"
         :title="$t('nav.servers')"
       >
         <UIcon name="i-lucide-arrow-left" class="size-4" />
-        <span>{{ $t("nav.servers") }}</span>
+        <span class="context-chip-text">{{ $t("nav.servers") }}</span>
       </NuxtLink>
 
       <NuxtLink
         v-if="isLoggedIn"
         to="/compte"
-        class="context-btn context-user"
+        class="context-chip context-user"
         :title="username || $t('account.notConnected')"
       >
         <div
@@ -44,20 +44,19 @@
         >
           <UIcon v-if="!avatarUrl" name="i-lucide-user" class="size-3.5" />
         </div>
-        <span class="context-user-name">{{ username || $t("account.notConnected") }}</span>
+        <span class="context-chip-text context-user-name">{{ username || $t("account.notConnected") }}</span>
       </NuxtLink>
       <button
         v-else
         type="button"
-        class="context-btn"
+        class="context-chip"
         @click="$emit('login')"
       >
         <UIcon name="i-lucide-log-in" class="size-4" />
-        <span>{{ $t("nav.login") }}</span>
+        <span class="context-chip-text">{{ $t("nav.login") }}</span>
       </button>
 
-      <div class="context-server-wrap">
-        <span class="context-server-label">{{ $t("server.label") }}</span>
+      <div class="context-server-chip">
         <ClientOnly>
           <UDropdownMenu
             v-if="serverOptions.length"
@@ -65,6 +64,7 @@
             :filter="serverOptions.length > 6 ? { placeholder: $t('server.searchPlaceholder') } : false"
             :content="{ align: 'end', sideOffset: 6 }"
             :ui="{ content: 'w-64' }"
+            class="context-dropdown"
           >
             <button type="button" class="context-server-trigger">
               <span class="context-server-icon">
@@ -79,42 +79,67 @@
               <UIcon name="i-lucide-server" class="size-3.5" />
             </span>
             <span class="context-server-name">{{ $t("nav.servers") }}</span>
+            <UIcon name="i-lucide-chevron-down" class="size-3.5 context-chevron" />
           </NuxtLink>
+          <template #fallback>
+            <div class="context-server-trigger is-fallback">
+              <span class="context-server-icon">
+                <UIcon name="i-lucide-server" class="size-3.5" />
+              </span>
+              <span class="context-server-name">{{ activeServerLabel }}</span>
+            </div>
+          </template>
         </ClientOnly>
       </div>
 
       <button
         v-if="showPlan"
         type="button"
-        class="context-plan"
+        class="context-chip context-plan"
         :class="{ 'is-premium': isPremium }"
         @click="$emit('plan-click')"
       >
         <UIcon :name="isPremium ? 'i-lucide-badge-check' : 'i-lucide-crown'" class="size-4" />
-        <span>{{ isPremium ? $t("billing.status.premium") : $t("billing.status.free") }}</span>
+        <span class="context-chip-text">{{ isPremium ? $t("billing.status.premium") : $t("billing.status.free") }}</span>
       </button>
 
       <ClientOnly>
         <UDropdownMenu
           :items="localeMenuItems"
           :content="{ align: 'end', sideOffset: 6 }"
-          :ui="{ content: 'w-40' }"
+          :ui="{ content: 'w-44' }"
+          class="context-dropdown"
         >
           <button
             type="button"
-            class="context-locale-btn"
+            class="context-chip context-locale"
             :title="selectedLocaleItem?.label || $t('language.label')"
             :aria-label="selectedLocaleItem?.label || $t('language.label')"
           >
             <img
               :src="selectedLocaleItem?.flag"
-              :alt="selectedLocaleItem?.label || ''"
+              :alt=""
               class="locale-flag"
               width="18"
               height="12"
             />
+            <span class="context-chip-text locale-label">{{ selectedLocaleItem?.label }}</span>
+            <UIcon name="i-lucide-chevron-down" class="size-3.5 context-chevron" />
           </button>
         </UDropdownMenu>
+        <template #fallback>
+          <div class="context-chip context-locale">
+            <img
+              :src="selectedLocaleItem?.flag"
+              :alt=""
+              class="locale-flag"
+              width="18"
+              height="12"
+            />
+            <span class="context-chip-text locale-label">{{ selectedLocaleItem?.label }}</span>
+            <UIcon name="i-lucide-chevron-down" class="size-3.5 context-chevron" />
+          </div>
+        </template>
       </ClientOnly>
 
       <slot name="trailing" />
@@ -191,7 +216,7 @@ const localeMenuItems = computed(() =>
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
   min-height: 52px;
   padding: 8px 12px;
   border-radius: 14px;
@@ -201,7 +226,6 @@ const localeMenuItems = computed(() =>
     color-mix(in srgb, var(--ui-bg, #0f172a) 88%, #1e293b);
   box-shadow: 0 8px 20px rgba(2, 6, 23, 0.18);
   flex-wrap: nowrap;
-  overflow: hidden;
 }
 
 .context-left {
@@ -266,15 +290,18 @@ const localeMenuItems = computed(() =>
 .context-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
-  flex: 0 1 auto;
+  gap: 8px;
+  flex: 1 1 auto;
   min-width: 0;
   justify-content: flex-end;
   flex-wrap: nowrap;
-  overflow: hidden;
 }
 
-.context-btn {
+.context-chip,
+.context-server-chip {
+  position: relative;
+  z-index: 0;
+  isolation: isolate;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -289,7 +316,14 @@ const localeMenuItems = computed(() =>
   font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
-  flex: none;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+}
+
+.context-chip-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .context-avatar {
@@ -304,34 +338,25 @@ const localeMenuItems = computed(() =>
 }
 
 .context-user-name {
-  max-width: 110px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  max-width: 100px;
 }
 
-.context-server-wrap {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
+.context-server-chip {
+  gap: 0;
   min-width: 0;
-  max-width: 260px;
-  height: 34px;
-  padding: 0 6px 0 10px;
-  border-radius: 10px;
-  border: 1px solid color-mix(in srgb, var(--ui-border, #334155) 75%, transparent);
-  background: color-mix(in srgb, var(--ui-bg, #0f172a) 72%, #1e293b);
+  max-width: min(280px, 34vw);
   flex: 0 1 auto;
-  overflow: hidden;
+  padding: 0 6px 0 8px;
+  cursor: default;
 }
 
-.context-server-label {
-  font-size: 0.62rem;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--ui-text-muted, #94a3b8);
-  white-space: nowrap;
-  flex: none;
+.context-dropdown {
+  display: inline-flex !important;
+  min-width: 0;
+  max-width: 100%;
+  flex: 1 1 auto;
+  position: relative;
+  z-index: 0;
 }
 
 .context-server-trigger {
@@ -339,15 +364,22 @@ const localeMenuItems = computed(() =>
   align-items: center;
   gap: 7px;
   min-width: 0;
+  width: 100%;
   max-width: 180px;
   height: 28px;
-  padding: 0;
+  padding: 0 4px 0 0;
   border: 0;
   background: transparent;
   color: inherit;
   cursor: pointer;
   text-decoration: none;
   font: inherit;
+  position: relative;
+  z-index: 0;
+}
+
+.context-server-trigger.is-fallback {
+  cursor: default;
 }
 
 .context-server-icon {
@@ -368,30 +400,20 @@ const localeMenuItems = computed(() =>
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
+  flex: 1 1 auto;
   font-size: 0.82rem;
   font-weight: 650;
+  text-align: left;
 }
 
 .context-chevron {
-  opacity: 0.55;
+  opacity: 0.65;
   flex: none;
 }
 
 .context-plan {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: 34px;
-  padding: 0 10px;
-  border-radius: 10px;
-  border: 1px solid rgba(148, 163, 184, 0.28);
-  background: rgba(148, 163, 184, 0.1);
-  color: #e2e8f0;
-  font-size: 0.78rem;
-  font-weight: 700;
-  white-space: nowrap;
-  cursor: pointer;
-  flex: none;
+  z-index: 1;
+  flex: 0 0 auto;
 }
 
 .context-plan.is-premium {
@@ -400,18 +422,10 @@ const localeMenuItems = computed(() =>
   color: #fef3c7;
 }
 
-.context-locale-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  border-radius: 8px;
-  border: 1px solid color-mix(in srgb, var(--ui-border, #334155) 60%, transparent);
-  background: color-mix(in srgb, var(--ui-bg, #0f172a) 72%, #1e293b);
-  cursor: pointer;
-  flex: none;
+.context-locale {
+  gap: 7px;
+  padding-right: 8px;
+  flex: 0 0 auto;
 }
 
 .locale-flag {
@@ -420,43 +434,69 @@ const localeMenuItems = computed(() =>
   border-radius: 2px;
   object-fit: cover;
   display: block;
+  flex: none;
 }
 
-@media (max-width: 860px) {
-  .context-user-name,
-  .context-sub,
-  .context-server-label {
+.locale-label {
+  max-width: 78px;
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+@media (max-width: 1100px) {
+  .context-sub {
     display: none;
   }
 
-  .context-server-wrap {
-    max-width: 160px;
+  .context-user-name {
+    max-width: 72px;
   }
 
-  .context-server-trigger {
-    max-width: 150px;
+  .context-server-chip {
+    max-width: min(220px, 28vw);
   }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 900px) {
+  .context-chip-text.context-user-name {
+    display: none;
+  }
+
+  .locale-label {
+    max-width: 64px;
+  }
+
+  .context-server-chip {
+    max-width: 160px;
+  }
+}
+
+@media (max-width: 720px) {
   .context-bar {
     padding: 7px 8px;
     gap: 6px;
   }
 
-  .context-btn span,
-  .context-plan span {
+  .context-actions {
+    gap: 6px;
+  }
+
+  .context-chip-text:not(.locale-label) {
     display: none;
   }
 
-  .context-btn,
-  .context-plan {
+  .context-chip,
+  .context-server-chip {
     padding: 0 8px;
   }
 
-  .context-server-wrap {
-    padding: 0 4px;
+  .context-locale {
+    padding-right: 8px;
+  }
+
+  .context-server-chip {
     max-width: 120px;
+    padding-right: 4px;
   }
 }
 </style>

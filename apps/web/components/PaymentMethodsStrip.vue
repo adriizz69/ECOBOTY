@@ -58,10 +58,10 @@ const methods = [
 }
 
 .payments-badge {
-  height: 36px;
-  min-width: 56px;
-  padding: 0 12px;
-  border-radius: 8px;
+  height: 46px;
+  min-width: 84px;
+  padding: 7px 12px;
+  border-radius: 10px;
   background: #fff;
   border: 1px solid rgba(148, 163, 184, 0.35);
   display: flex;
@@ -72,9 +72,22 @@ const methods = [
 
 .payments-badge img {
   display: block;
-  max-height: 18px;
-  max-width: 72px;
+  height: 28px;
   width: auto;
+  max-width: 112px;
   object-fit: contain;
+}
+
+@media (max-width: 640px) {
+  .payments-badge {
+    height: 42px;
+    min-width: 74px;
+    padding: 6px 10px;
+  }
+
+  .payments-badge img {
+    height: 24px;
+    max-width: 100px;
+  }
 }
 </style>
