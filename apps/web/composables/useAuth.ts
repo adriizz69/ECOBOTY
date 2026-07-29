@@ -1,12 +1,35 @@
 export const useAuth = () => {
   const config = useRuntimeConfig();
+  const JUST_AUTHED_KEY = "ecoboty_auth_just_ok";
+
+  const markJustAuthed = () => {
+    if (!process.client) return;
+    try {
+      sessionStorage.setItem(JUST_AUTHED_KEY, String(Date.now()));
+    } catch {
+      // ignore
+    }
+  };
+
+  const consumeJustAuthed = (maxAgeMs = 20000) => {
+    if (!process.client) return false;
+    try {
+      const raw = sessionStorage.getItem(JUST_AUTHED_KEY);
+      sessionStorage.removeItem(JUST_AUTHED_KEY);
+      const at = Number(raw || 0);
+      return Boolean(at) && Date.now() - at < maxAgeMs;
+    } catch {
+      return false;
+    }
+  };
 
   const login = () => {
     if (!process.client) return;
-    const current = window.location.pathname === "/callback"
-      ? window.location.origin + "/servers"
-      : window.location.href;
-    const redirect = encodeURIComponent(current);
+    const path =
+      window.location.pathname === "/callback"
+        ? "/servers"
+        : `${window.location.pathname}${window.location.search || ""}`;
+    const redirect = encodeURIComponent(path || "/servers");
     window.location.href = `${config.public.apiBase}/auth/discord/login?redirect=${redirect}`;
   };
 
@@ -47,5 +70,13 @@ export const useAuth = () => {
 
   const logoutAll = () => logout({ all: true });
 
-  return { login, getToken, setToken, logout, logoutAll };
+  return {
+    login,
+    getToken,
+    setToken,
+    logout,
+    logoutAll,
+    markJustAuthed,
+    consumeJustAuthed
+  };
 };

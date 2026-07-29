@@ -6,7 +6,7 @@
 
 <script setup>
 const route = useRoute();
-const { setToken } = useAuth();
+const { setToken, markJustAuthed } = useAuth();
 
 const readToken = () => {
   const fromQuery = route.query.token;
@@ -18,35 +18,31 @@ const readToken = () => {
   return params.get("token") || "";
 };
 
+const resolveRedirectTarget = () => {
+  const redirect = route.query.redirect;
+  if (typeof redirect !== "string" || !redirect.length) return "/servers";
+  try {
+    const url = new URL(redirect, window.location.origin);
+    if (url.origin !== window.location.origin) return "/servers";
+    if (!url.pathname || url.pathname === "/callback") return "/servers";
+    return `${url.pathname}${url.search}${url.hash}` || "/servers";
+  } catch {
+    return redirect.startsWith("/") ? redirect : "/servers";
+  }
+};
+
 onMounted(() => {
   const token = readToken();
   if (token) {
     setToken(token);
+    markJustAuthed();
   }
 
-  // Drop token from address bar (query + hash)
-  if (window.history?.replaceState) {
-    const clean = `${window.location.pathname}${window.location.search}`
-      .replace(/([?&])token=[^&]*&?/, "$1")
-      .replace(/[?&]$/, "");
-    window.history.replaceState({}, "", clean.split("#")[0] || "/callback");
-  }
+  const target = resolveRedirectTarget();
 
-  const redirect = route.query.redirect;
-  if (typeof redirect === "string" && redirect.length > 0) {
-    try {
-      const url = new URL(redirect, window.location.origin);
-      if (url.origin === window.location.origin) {
-        navigateTo(url.pathname + url.search + url.hash);
-        return;
-      }
-    } catch {
-      navigateTo(redirect);
-      return;
-    }
-  }
-
-  navigateTo("/servers");
+  // Hard navigation after token write avoids SPA races that remount /servers
+  // before localStorage is readable and retrigger Discord OAuth.
+  window.location.replace(target);
 });
 </script>
 

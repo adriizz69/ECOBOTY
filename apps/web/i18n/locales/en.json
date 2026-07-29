@@ -577,7 +577,12 @@
     "upgradePremium": "Upgrade to Premium",
     "managePremium": "Manage Premium",
     "emptyTitle": "No server found",
-    "emptyText": "Adjust your search or filter to display other servers."
+    "emptyText": "Adjust your search or filter to display other servers.",
+    "loginRequiredTitle": "Discord sign-in required",
+    "loginRequiredText": "Sign in with Discord to view and manage your servers.",
+    "loginExpiredText": "Your Discord session expired. Sign in again to continue.",
+    "loadErrorTitle": "Could not load servers",
+    "loadErrorText": "Discord did not respond correctly. Try again in a moment."
   },
   "billing": {
     "statusLabel": "Premium",

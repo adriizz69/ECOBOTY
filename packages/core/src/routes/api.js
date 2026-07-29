@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { SignJWT } from "jose";
 import { db, probeDatabaseConnection } from "../services/db.js";
 import {
   applyDaily,
@@ -471,27 +472,101 @@ const getGuildLogsPolicy = async ({ guildId, requestedLimit = 50 } = {}) => {
 };
 
 apiRouter.get("/me", (req, res) => {
+  const user = req.user || {};
   res.json({
-    user: req.user
+    user: {
+      discord_id: user.discord_id,
+      username: user.username,
+      avatar: user.avatar,
+      impersonated: user.impersonated,
+      impersonated_username: user.impersonated_username,
+      iat: user.iat,
+      exp: user.exp
+    }
   });
 });
 
+const refreshDiscordUserToken = async (refreshToken) => {
+  if (!refreshToken) return null;
+  try {
+    const tokenResponse = await fetch("https://discord.com/api/oauth2/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: process.env.DISCORD_CLIENT_ID || "",
+        client_secret: process.env.DISCORD_CLIENT_SECRET || "",
+        grant_type: "refresh_token",
+        refresh_token: String(refreshToken)
+      })
+    });
+    const tokenData = await tokenResponse.json().catch(() => null);
+    if (!tokenResponse.ok || !tokenData?.access_token) return null;
+    return tokenData;
+  } catch {
+    return null;
+  }
+};
+
+const signDiscordSessionJwt = async (claims) => {
+  const rawSecret = process.env.API_SECRET_KEY || "";
+  if (!rawSecret) return null;
+  const jwtTtl = String(process.env.API_JWT_TTL || "30d").trim() || "30d";
+  return new SignJWT({
+    discord_id: claims.discord_id,
+    username: claims.username,
+    avatar: claims.avatar,
+    access_token: claims.access_token,
+    refresh_token: claims.refresh_token || null
+  })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime(jwtTtl)
+    .sign(new TextEncoder().encode(rawSecret));
+};
+
 apiRouter.get("/servers", async (_req, res) => {
-  const accessToken = _req.user?.access_token;
+  let accessToken = _req.user?.access_token;
   if (!accessToken) {
     return res.status(401).json({ error: "missing_discord_token" });
   }
 
   try {
-    const guildResponse = await fetch("https://discord.com/api/users/@me/guilds", {
-      headers: {
-        Authorization: `Bearer ${accessToken}`
+    const fetchGuilds = async (token) => {
+      const guildResponse = await fetch("https://discord.com/api/users/@me/guilds", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const guilds = await guildResponse.json().catch(() => ({}));
+      return { guildResponse, guilds };
+    };
+
+    let { guildResponse, guilds } = await fetchGuilds(accessToken);
+    let refreshedToken = null;
+
+    if (guildResponse.status === 401 && _req.user?.refresh_token) {
+      const tokenData = await refreshDiscordUserToken(_req.user.refresh_token);
+      if (tokenData?.access_token) {
+        accessToken = tokenData.access_token;
+        refreshedToken = await signDiscordSessionJwt({
+          discord_id: _req.user.discord_id,
+          username: _req.user.username,
+          avatar: _req.user.avatar,
+          access_token: tokenData.access_token,
+          refresh_token: tokenData.refresh_token || _req.user.refresh_token
+        });
+        ({ guildResponse, guilds } = await fetchGuilds(accessToken));
       }
-    });
-    const guilds = await guildResponse.json();
+    }
 
     if (!guildResponse.ok) {
-      return res.status(401).json({ error: "discord_guilds_error", details: guilds });
+      // Only Discord unauthorized should force re-login. Rate limits / outages must not.
+      if (guildResponse.status === 401) {
+        return res.status(401).json({ error: "discord_token_expired", details: guilds });
+      }
+      return res.status(502).json({
+        error: "discord_guilds_error",
+        status: guildResponse.status,
+        details: guilds
+      });
     }
 
     const canManageGuild = (guild) => {
@@ -601,7 +676,10 @@ apiRouter.get("/servers", async (_req, res) => {
       })
     );
 
-    return res.json({ servers });
+    return res.json({
+      servers,
+      ...(refreshedToken ? { token: refreshedToken } : {})
+    });
   } catch (error) {
     return res.status(500).json({ error: "servers_fetch_failed" });
   }

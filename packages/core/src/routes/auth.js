@@ -456,7 +456,8 @@ authRouter.get("/discord/callback", async (req, res) => {
       discord_id: user.id,
       username: user.username,
       avatar: user.avatar,
-      access_token: tokenData.access_token
+      access_token: tokenData.access_token,
+      refresh_token: tokenData.refresh_token || null
     })
       .setProtectedHeader({ alg: "HS256" })
       .setIssuedAt()

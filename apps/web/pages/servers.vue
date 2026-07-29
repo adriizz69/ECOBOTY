@@ -11,22 +11,48 @@
       </div>
       <div class="hero-actions">
         <UButton
-          color="neutral"
-          variant="outline"
-          icon="i-lucide-refresh-cw"
-          :loading="refreshing || loading"
-          :disabled="impersonating"
-          @click="refreshServers"
+          v-if="needsAuth"
+          color="primary"
+          icon="i-lucide-log-in"
+          @click="login"
         >
-          {{ $t("common.refresh") }}
+          {{ $t("nav.login") }}
         </UButton>
-        <UButton color="error" variant="soft" icon="i-lucide-log-out" @click="handleLogout">
-          {{ $t("servers.logout") }}
-        </UButton>
+        <template v-else>
+          <UButton
+            color="neutral"
+            variant="outline"
+            icon="i-lucide-refresh-cw"
+            :loading="refreshing || loading"
+            :disabled="impersonating"
+            @click="refreshServers"
+          >
+            {{ $t("common.refresh") }}
+          </UButton>
+          <UButton color="error" variant="soft" icon="i-lucide-log-out" @click="handleLogout">
+            {{ $t("servers.logout") }}
+          </UButton>
+        </template>
       </div>
     </div>
 
-    <div v-if="loading" class="loading-shell">
+    <UCard v-if="needsAuth && !loading" class="warning-card">
+      <h3>{{ $t("servers.loginRequiredTitle") }}</h3>
+      <p class="muted">{{ authErrorMessage || $t("servers.loginRequiredText") }}</p>
+      <UButton color="primary" icon="i-lucide-log-in" @click="login">
+        {{ $t("nav.login") }}
+      </UButton>
+    </UCard>
+
+    <UCard v-else-if="serversError && !loading && !impersonating" class="warning-card">
+      <h3>{{ $t("servers.loadErrorTitle") }}</h3>
+      <p class="muted">{{ serversError }}</p>
+      <UButton color="neutral" variant="soft" icon="i-lucide-refresh-cw" @click="refreshServers">
+        {{ $t("common.refresh") }}
+      </UButton>
+    </UCard>
+
+    <div v-else-if="loading" class="loading-shell">
       <div class="loading-title">{{ $t("servers.loading") }}</div>
       <div class="loading-grid">
         <div v-for="n in 6" :key="n" class="loading-card"></div>
@@ -227,9 +253,12 @@ const searchQuery = ref("");
 const statusFilter = ref("all");
 
 const router = useRouter();
-const { getToken, login, logout } = useAuth();
+const { getToken, setToken, login, logout, consumeJustAuthed } = useAuth();
 const { t } = useI18n();
 const me = ref(null);
+const needsAuth = ref(false);
+const authErrorMessage = ref("");
+const serversError = ref("");
 
 const impersonating = computed(() => Boolean(me.value?.impersonated));
 const impersonatedName = computed(() =>
@@ -419,10 +448,11 @@ const loadMe = async () => {
 };
 
 const fetchServers = async () => {
+  serversError.value = "";
   try {
     const token = getToken();
     if (!token) {
-      login();
+      needsAuth.value = true;
       return;
     }
 
@@ -433,15 +463,37 @@ const fetchServers = async () => {
     });
 
     if (res.status === 401) {
+      let errorCode = "";
+      try {
+        const body = await res.json();
+        errorCode = String(body?.error || "");
+      } catch {
+        // ignore
+      }
       logout();
-      if (!impersonating.value) login();
+      needsAuth.value = true;
+      authErrorMessage.value =
+        errorCode === "discord_token_expired"
+          ? t("servers.loginExpiredText")
+          : t("servers.loginRequiredText");
+      guilds.value = [];
+      return;
+    }
+
+    if (!res.ok) {
+      serversError.value = t("servers.loadErrorText");
+      guilds.value = [];
       return;
     }
 
     const data = await res.json();
+    if (data?.token) setToken(data.token);
     guilds.value = data.servers || [];
+    needsAuth.value = false;
+    authErrorMessage.value = "";
   } catch {
     guilds.value = [];
+    serversError.value = t("servers.loadErrorText");
   } finally {
     loading.value = false;
     refreshing.value = false;
@@ -449,7 +501,7 @@ const fetchServers = async () => {
 };
 
 const refreshServers = async () => {
-  if (loading.value || refreshing.value || impersonating.value) return;
+  if (loading.value || refreshing.value || impersonating.value || needsAuth.value) return;
   refreshing.value = true;
   await fetchServers();
 };
@@ -470,9 +522,10 @@ const handleLogout = () => {
 
 const stopImpersonation = async () => {
   logout();
+  needsAuth.value = false;
   const ok = await loadMe();
   if (!ok) {
-    login();
+    needsAuth.value = true;
     return;
   }
   if (!impersonating.value) {
@@ -482,9 +535,12 @@ const stopImpersonation = async () => {
 };
 
 onMounted(async () => {
+  // Prevent OAuth reconnect loops: never auto-redirect to Discord from this page.
+  consumeJustAuthed();
   const ok = await loadMe();
   if (!ok) {
-    login();
+    needsAuth.value = true;
+    loading.value = false;
     return;
   }
   if (impersonating.value) {

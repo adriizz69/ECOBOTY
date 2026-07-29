@@ -577,7 +577,12 @@
     "upgradePremium": "Passer Premium",
     "managePremium": "Gérer Premium",
     "emptyTitle": "Aucun serveur trouvé",
-    "emptyText": "Ajuste la recherche ou le filtre pour afficher d’autres serveurs."
+    "emptyText": "Ajuste la recherche ou le filtre pour afficher d’autres serveurs.",
+    "loginRequiredTitle": "Connexion Discord requise",
+    "loginRequiredText": "Connecte-toi avec Discord pour voir et gérer tes serveurs.",
+    "loginExpiredText": "Ta session Discord a expiré. Reconnecte-toi pour continuer.",
+    "loadErrorTitle": "Impossible de charger les serveurs",
+    "loadErrorText": "Discord n’a pas répondu correctement. Réessaie dans un instant."
   },
   "billing": {
     "statusLabel": "Premium",

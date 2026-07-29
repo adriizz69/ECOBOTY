@@ -25,6 +25,14 @@
 
     <UCard v-if="loading" class="card state-card">{{ $t("common.loading") }}</UCard>
 
+    <UCard v-else-if="needsAuth" class="card state-card state-card--warning">
+      <h3>{{ $t("servers.loginRequiredTitle") }}</h3>
+      <p class="muted">{{ $t("servers.loginRequiredText") }}</p>
+      <UButton color="primary" icon="i-lucide-log-in" @click="login">
+        {{ $t("nav.login") }}
+      </UButton>
+    </UCard>
+
     <UCard v-else-if="disabled" class="card state-card state-card--warning">
       <h3>{{ $t("userHome.disabledTitle") }}</h3>
       <p class="muted">
@@ -68,6 +76,7 @@ const { getToken, login } = useAuth();
 const { t } = useI18n();
 const servers = ref([]);
 const loading = ref(true);
+const needsAuth = ref(false);
 const disabled = ref(false);
 const disabledReason = ref("");
 const botGuildsWarning = ref("");
@@ -94,7 +103,8 @@ const openServer = async (server) => {
 const fetchServers = async (isRetry = false) => {
   const token = getToken();
   if (!token) {
-    login();
+    needsAuth.value = true;
+    loading.value = false;
     return;
   }
   loading.value = true;
@@ -103,9 +113,11 @@ const fetchServers = async (isRetry = false) => {
       headers: { Authorization: `Bearer ${token}` }
     });
     if (res.status === 401) {
-      login();
+      needsAuth.value = true;
+      loading.value = false;
       return;
     }
+    needsAuth.value = false;
     const data = await res.json();
     disabled.value = Boolean(data.disabled);
     disabledReason.value = data.reason || "";
