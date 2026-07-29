@@ -118,7 +118,7 @@
           >
             <img
               :src="selectedLocaleItem?.flag"
-              :alt=""
+              alt=""
               class="locale-flag"
               width="18"
               height="12"
@@ -131,7 +131,7 @@
           <div class="context-chip context-locale">
             <img
               :src="selectedLocaleItem?.flag"
-              :alt=""
+              alt=""
               class="locale-flag"
               width="18"
               height="12"
