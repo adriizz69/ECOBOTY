@@ -396,7 +396,8 @@ export const listItems = async (shopId, options = {}) => {
         guildId: guildDiscordId,
         guildInternalId,
         shopId: shop.id,
-        context: "shop.runtime.list_items"
+        context: "shop.runtime.list_items",
+        bypassPremiumLocks: Boolean(options.bypassPremiumLocks)
       });
     }
   }

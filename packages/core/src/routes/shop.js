@@ -139,6 +139,7 @@ shopRouter.delete("/guilds/:id/shops/:shopId", async (req, res) => {
 
 shopRouter.get("/shops/:id/items", async (req, res) => {
   try {
+    const access = await resolveShopAccessOptions(req);
     const includeHidden = ["1", "true", "yes"].includes(String(req.query.includeHidden || "").toLowerCase());
     const withInventory = ["1", "true", "yes"].includes(String(req.query.withInventory || "").toLowerCase());
     const includeUnavailable = ["1", "true", "yes"].includes(
@@ -147,7 +148,10 @@ shopRouter.get("/shops/:id/items", async (req, res) => {
     const items = await listItems(req.params.id, {
       includeHidden: includeHidden || withInventory,
       withInventoryCounts: withInventory,
-      includeUnavailable
+      includeUnavailable,
+      // Admin/config API: never block item listing on role/premium locks for platform admins.
+      enforceShopAccess: !access.bypassPremiumLocks,
+      bypassPremiumLocks: access.bypassPremiumLocks
     });
     res.json({ items });
   } catch (error) {

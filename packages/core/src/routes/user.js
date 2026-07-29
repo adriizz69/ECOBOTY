@@ -30,10 +30,12 @@ import {
   getUserBillingOverview
 } from "../services/billing-checkout.js";
 import { resolveLogsPolicyWindow, getGuildEntitlements, FREE_GAME_MODE_IDS } from "../services/billing-entitlements.js";
+import { isPlatformAdminId } from "../services/platform-admin.js";
 
 export const userRouter = Router();
 
 const getActiveUser = (req) => req.user?.impersonated || req.user?.discord_id;
+const getViewerDiscordId = (req) => req.user?.discord_id || req.user?.id || null;
 const getBotToken = () => process.env.DISCORD_BOT_TOKEN;
 
 const hasUserUiDisabled = async (guildId) => {
@@ -49,19 +51,22 @@ const hasUserUiDisabled = async (guildId) => {
   return { disabled: false, guild };
 };
 
-const ensureUserGuildAccess = async ({ guildId, userId }) => {
+const ensureUserGuildAccess = async ({ guildId, userId, viewerDiscordId = null }) => {
   const state = await hasUserUiDisabled(guildId);
-  if (state.disabled) {
+  const platformAdmin = await isPlatformAdminId(viewerDiscordId || userId);
+  if (state.disabled && !platformAdmin) {
     const error = new Error("user_ui_disabled");
     error.reason = state.reason;
     throw error;
   }
-  const membership = await db("user_guilds")
-    .where({ discord_id: String(userId), guild_id: String(guildId) })
-    .first();
-  if (!membership) {
-    const error = new Error("not_member");
-    throw error;
+  if (!platformAdmin) {
+    const membership = await db("user_guilds")
+      .where({ discord_id: String(userId), guild_id: String(guildId) })
+      .first();
+    if (!membership) {
+      const error = new Error("not_member");
+      throw error;
+    }
   }
   const { map: botGuilds, error: botGuildsError } = await fetchBotGuilds();
   if (!botGuildsError && !botGuilds.has(String(guildId))) {
@@ -271,24 +276,39 @@ userRouter.get("/guilds/:id/shops", async (req, res) => {
   const guildId = req.params.id;
   if (!userId || !guildId) return res.status(401).json({ error: "missing_params" });
   try {
-    await ensureUserGuildAccess({ guildId, userId });
-    const shops = await listShops(guildId, { enabledOnly: true });
-    await trackAchievementSafe({
+    await ensureUserGuildAccess({
       guildId,
       userId,
-      eventKey: "shop_views",
-      increment: 1,
-      metadata: { source: "web" }
+      viewerDiscordId: getViewerDiscordId(req)
     });
-    const { roles } = await fetchMemberRoles({ guildId, userId });
+    const platformAdmin = await isPlatformAdminId(getViewerDiscordId(req));
+    const shops = await listShops(guildId, {
+      // Members only see enabled, unlocked shops. Platform admins see the full catalog.
+      enabledOnly: !platformAdmin,
+      bypassPremiumLocks: platformAdmin
+    });
+    if (!platformAdmin) {
+      await trackAchievementSafe({
+        guildId,
+        userId,
+        eventKey: "shop_views",
+        increment: 1,
+        metadata: { source: "web" }
+      });
+    }
+    const { roles } = platformAdmin
+      ? { roles: [] }
+      : await fetchMemberRoles({ guildId, userId });
     const normalized = shops.map((shop) => {
       const required = parseRequiredRoles(shop);
       const requiredMode = parseRequiredRolesMode(shop);
-      const allowed = isShopAllowedForRoles({
-        requiredRoles: required,
-        requiredRolesMode: requiredMode,
-        memberRoles: roles
-      });
+      const allowed = platformAdmin
+        ? true
+        : isShopAllowedForRoles({
+            requiredRoles: required,
+            requiredRolesMode: requiredMode,
+            memberRoles: roles
+          });
       return {
         ...shop,
         required_role_ids: required,
