@@ -53,7 +53,7 @@
         </ul>
       </div>
       <figure class="focus-media">
-        <img src="/docs/admin-economie.png" :alt="$t('landing.focusEconomy.alt')" loading="lazy" />
+        <img src="/landing/mock-economy.svg" :alt="$t('landing.focusEconomy.alt')" loading="lazy" />
       </figure>
     </section>
 
@@ -69,7 +69,7 @@
         </ul>
       </div>
       <figure class="focus-media">
-        <img src="/docs/user-home.png" :alt="$t('landing.focusUi.alt')" loading="lazy" />
+        <img src="/landing/mock-user.svg" :alt="$t('landing.focusUi.alt')" loading="lazy" />
       </figure>
     </section>
 
@@ -85,7 +85,7 @@
         </ul>
       </div>
       <figure class="focus-media">
-        <img src="/docs/admin-twitch.png" :alt="$t('landing.focusTwitch.alt')" loading="lazy" />
+        <img src="/landing/mock-twitch.svg" :alt="$t('landing.focusTwitch.alt')" loading="lazy" />
       </figure>
     </section>
 
@@ -404,6 +404,10 @@ onMounted(async () => {
   overflow: hidden;
   border: 1px solid rgba(45, 212, 160, 0.22);
   box-shadow: var(--shadow);
+  background:
+    radial-gradient(500px 240px at 10% 0%, rgba(45, 212, 160, 0.12), transparent 55%),
+    radial-gradient(420px 220px at 90% 100%, rgba(56, 189, 248, 0.1), transparent 50%),
+    #070b10;
 }
 
 .focus-media img {
@@ -411,6 +415,7 @@ onMounted(async () => {
   display: block;
   aspect-ratio: 16 / 10;
   object-fit: cover;
+  object-position: top center;
 }
 
 .maker {
