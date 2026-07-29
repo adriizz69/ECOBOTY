@@ -1,16 +1,13 @@
-const parseAdminIds = () => {
-  const raw = process.env.ADMIN_USER_IDS || process.env.ADMIN_USER_ID || "1328058083246608407";
-  return raw
-    .split(",")
-    .map((id) => String(id || "").trim())
-    .filter(Boolean);
-};
+import { isPlatformAdminId } from "../services/platform-admin.js";
 
-export const requireAdmin = (req, res, next) => {
-  const adminIds = parseAdminIds();
-  const userId = req.user?.discord_id;
-  if (!userId || !adminIds.includes(String(userId))) {
-    return res.status(403).json({ error: "forbidden" });
+export const requireAdmin = async (req, res, next) => {
+  try {
+    const userId = req.user?.discord_id;
+    if (!userId || !(await isPlatformAdminId(userId))) {
+      return res.status(403).json({ error: "forbidden" });
+    }
+    return next();
+  } catch (error) {
+    return res.status(500).json({ error: "admin_check_failed" });
   }
-  return next();
 };

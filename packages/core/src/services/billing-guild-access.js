@@ -1,5 +1,6 @@
 import { db } from "./db.js";
 import { getPublicPricingCatalog } from "./billing-catalog.js";
+import { isPlatformAdminId } from "./platform-admin.js";
 import { isStripeConfigured } from "./stripe-client.js";
 
 const ADMIN = 0x8n;
@@ -62,27 +63,6 @@ export const fetchManagedGuildIdsFromDb = async (discordId) => {
   }
 };
 
-const isPlatformAdmin = async (discordId) => {
-  const userId = String(discordId || "").trim();
-  if (!userId) return false;
-  const envAdmins = String(
-    process.env.ADMIN_USER_IDS || process.env.ADMIN_USER_ID || process.env.ADMIN_DISCORD_IDS || ""
-  )
-    .split(/[,\s]+/)
-    .map((v) => v.trim())
-    .filter(Boolean);
-  if (envAdmins.includes(userId)) return true;
-  try {
-    if (await db.schema.hasTable("admin_users")) {
-      const row = await db("admin_users").where({ discord_id: userId }).first();
-      if (row) return true;
-    }
-  } catch {
-    // ignore
-  }
-  return false;
-};
-
 export const assertUserCanManageGuild = async ({
   accessToken,
   guildDiscordId,
@@ -96,7 +76,7 @@ export const assertUserCanManageGuild = async ({
     throw error;
   }
 
-  if (discordId && (await isPlatformAdmin(discordId))) {
+  if (discordId && (await isPlatformAdminId(discordId))) {
     return true;
   }
 

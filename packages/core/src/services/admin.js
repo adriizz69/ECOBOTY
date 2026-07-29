@@ -1,5 +1,6 @@
 import { db } from "./db.js";
 import { ensureGuild } from "./economy.js";
+import { isPlatformAdminId as isPlatformAdminUser } from "./platform-admin.js";
 
 const getBotToken = () => process.env.DISCORD_BOT_TOKEN;
 const BOT_HEALTH_SERVICE = "discord_bot";
@@ -1839,27 +1840,6 @@ const decodeUserGuildAccess = (owner, permissionsValue, botOwnerDiscordId, userI
     roleLabel,
     permissionLabels
   };
-};
-
-const isPlatformAdminUser = async (discordId) => {
-  const userId = String(discordId || "").trim();
-  if (!userId) return false;
-  const envAdmins = String(
-    process.env.ADMIN_USER_IDS || process.env.ADMIN_USER_ID || process.env.ADMIN_DISCORD_IDS || ""
-  )
-    .split(/[,\s]+/)
-    .map((v) => v.trim())
-    .filter(Boolean);
-  if (envAdmins.includes(userId)) return true;
-  try {
-    if (await db.schema.hasTable("admin_users")) {
-      const row = await db("admin_users").where({ discord_id: userId }).first();
-      if (row) return true;
-    }
-  } catch {
-    // ignore
-  }
-  return false;
 };
 
 const ACTIVE_BILLING_STATUSES = new Set(["active", "trialing"]);

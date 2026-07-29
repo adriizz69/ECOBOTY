@@ -707,8 +707,13 @@ apiRouter.post("/guilds/:id/billing/sync", async (req, res) => {
       guildDiscordId: req.params.id,
       discordId: req.user?.discord_id || req.user?.id
     });
+    // Never invent a payer from the current viewer (platform admins are not the subscriber).
+    // Sync only uses payerDiscordId as a fallback when the guild has no billing account yet.
+    const account = await db("billing_accounts")
+      .where({ guild_discord_id: String(req.params.id || "").replace(/\D/g, "") })
+      .first();
     const result = await syncGuildBillingFromStripe(req.params.id, {
-      payerDiscordId: req.user?.discord_id || req.user?.id
+      payerDiscordId: account?.payer_discord_id || null
     });
     const summary = await getGuildBillingSummary(req.params.id);
     return res.json({ ...result, billing: summary });
