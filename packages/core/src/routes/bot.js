@@ -759,7 +759,11 @@ botRouter.get("/user-shops", async (req, res) => {
 
 botRouter.get("/shops/:id/items", async (req, res) => {
   try {
-    const items = await listItems(req.params.id);
+    const items = await listItems(req.params.id, {
+      // Bot purchase UI needs the configured catalog as stored (names untouched).
+      enforceShopAccess: false,
+      bypassPremiumLocks: true
+    });
     return res.json({ items });
   } catch (error) {
     return res.status(400).json({ error: error.message || "items_failed" });

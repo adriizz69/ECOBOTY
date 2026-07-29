@@ -200,7 +200,10 @@ export const saveUserShopsSettings = async (guildId, data = {}) => {
 const isServerShopRow = (shop) => !shop?.owner_discord_id;
 
 export const listShops = async (guildId, options = {}) => {
-  const guild = await ensureGuild(guildId, db);
+  // Never auto-create a guild while listing shops: a wrong ID would spawn an empty guild
+  // and make the admin dashboard look like a different (near-empty) server.
+  const guild = await db("guilds").where({ discord_guild_id: String(guildId) }).first();
+  if (!guild) return [];
   const query = db("shops").where({ guild_id: guild.id });
   const scope = String(options.scope || "server").toLowerCase();
   const bypassPremiumLocks = Boolean(options.bypassPremiumLocks);

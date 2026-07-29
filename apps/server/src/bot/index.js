@@ -24,7 +24,11 @@ import {
 import { commands } from "./commands/index.js";
 import { buildShopContainerMessage } from "./shop-ui.js";
 import { updateInteractionMessageV2 } from "./discord-rest.js";
-import { scheduleShopTimeout, scheduleInteractionTimeout } from "./shop-timeout.js";
+import {
+  scheduleInteractionTimeout,
+  hasActiveShopSession,
+  touchShopTimeout
+} from "./shop-timeout.js";
 import { resolveDisplayNames } from "./user-resolve.js";
 import { getBotSettings, getBotLanguage, localeFromLang, t } from "./i18n.js";
 import { composeGuildDmContent } from "@ecoboty/core";
@@ -875,6 +879,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (interaction.customId === "shop_select") {
       try {
         await interaction.deferUpdate();
+        if (!hasActiveShopSession(interaction)) {
+          return replyEphemeral(interaction, tr("shopTimeout.navigationDone"));
+        }
         const apiBase = process.env.API_BASE || "http://localhost:4000";
         const apiKey = process.env.API_SECRET_KEY || "";
         const shopId = interaction.values[0];
@@ -941,7 +948,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           interactionToken: interaction.token,
           payload: { components }
         });
-        scheduleShopTimeout({ interaction, components, lang });
+        touchShopTimeout({ interaction, components, lang, updateMessageToken: true });
         return;
       } catch (error) {
         console.error("Erreur shop select", error);
@@ -1117,7 +1124,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           return interaction.update({ content: message, embeds: [], components: [] });
         }
 
-        const itemName = data?.item?.name || tr("shopUi.itemFallback");
+        const itemName = data?.item?.name || (data?.item?.id ? `#${data.item.id}` : "Article");
         const sellerId = data?.sellerId;
         if (sellerId && String(sellerId) !== String(interaction.user.id)) {
           try {
@@ -1264,6 +1271,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const page = Number(b || 1);
       try {
         await interaction.deferUpdate();
+        if (!hasActiveShopSession(interaction)) {
+          return replyEphemeral(interaction, tr("shopTimeout.navigationDone"));
+        }
         const apiBase = process.env.API_BASE || "http://localhost:4000";
         const apiKey = process.env.API_SECRET_KEY || "";
 
@@ -1329,7 +1339,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           interactionToken: interaction.token,
           payload: { components }
         });
-        scheduleShopTimeout({ interaction, components, lang });
+        touchShopTimeout({ interaction, components, lang, updateMessageToken: true });
         return;
       } catch (error) {
         console.error("Erreur shop pagination", error);
@@ -1340,6 +1350,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (action === "buy") {
       const itemId = a;
       try {
+        if (!hasActiveShopSession(interaction)) {
+          return interaction.reply({
+            content: tr("shopTimeout.navigationDone"),
+            flags: MessageFlags.Ephemeral
+          });
+        }
         const apiBase = process.env.API_BASE || "http://localhost:4000";
         const apiKey = process.env.API_SECRET_KEY || "";
 
@@ -1383,7 +1399,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const settingsData = await settingsRes.json();
         const currencyEmoji = settingsData?.emoji || "💰";
         const itemName = data?.item?.name || `#${itemId}`;
-        const shopName = data?.shop?.name || tr("shopUi.shopFallback");
+        const shopName = data?.shop?.name || (data?.shop?.id ? `#${data.shop.id}` : "Boutique");
         if (data?.item?.send_dm) {
           try {
             const owner = await interaction.guild.fetchOwner();
@@ -1464,6 +1480,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
         if (roleAssigned === false) {
           embed.addFields({ name: tr("buy.fieldRole"), value: tr("buy.roleFailed"), inline: true });
         }
+        // Keep shopping: buy must not end the session — only inactivity timeout does.
+        touchShopTimeout({ interaction, lang });
         return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
       } catch (error) {
         console.error("Erreur achat", error);
@@ -1768,7 +1786,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           return interaction.reply({ content: tr("sale.saleImpossible", { reason }), flags: MessageFlags.Ephemeral });
         }
 
-        const itemName = data?.item?.name || tr("shopUi.itemFallback");
+        const itemName = data?.item?.name || (data?.item?.id ? `#${data.item.id}` : "Article");
         const embed = new EmbedBuilder()
           .setTitle(tr("sale.soldTitle"))
           .setDescription(

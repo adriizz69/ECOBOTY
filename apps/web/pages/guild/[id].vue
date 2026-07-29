@@ -1995,10 +1995,25 @@
           <div v-for="shop in activeShops" :key="shop.id" class="shop-card">
             <div class="shop-main">
               <div>
-                <div class="item-title">{{ shop.name }}</div>
+                <div class="item-title">
+                  {{ shop.name }}
+                  <UBadge
+                    v-if="shop.premium_locked"
+                    color="warning"
+                    variant="subtle"
+                    size="sm"
+                    class="shop-lock-badge"
+                  >
+                    Premium
+                  </UBadge>
+                </div>
                 <div class="item-sub">
                   {{ $t("adminGuild.shops.discountLabel") }} {{ shop.discount_percent }}%
+                  <span v-if="shopRequiredRolesLabel(shop)" class="shop-roles-hint">
+                    · {{ shopRequiredRolesLabel(shop) }}
+                  </span>
                 </div>
+                <div class="item-sub shop-id-hint">ID {{ shop.id }}</div>
               </div>
               <label class="switch" :aria-label="$t('adminGuild.shops.enableAria')">
                 <input
@@ -2016,35 +2031,6 @@
             </div>
           </div>
         </div>
-
-        <BillingPremiumGate
-          v-if="lockedShops.length"
-          locked
-          feature-key="premium_restore_content"
-          :benefits="lockedShopUnlockItems.length ? lockedShopUnlockItems : undefined"
-          class="locked-shops-gate"
-        >
-          <div class="shops-grid">
-            <div v-for="shop in lockedShops" :key="`locked-${shop.id}`" class="shop-card">
-              <div class="shop-main">
-                <div>
-                  <div class="item-title">{{ shop.name }}</div>
-                  <div class="item-sub">
-                    {{ $t("adminGuild.shops.discountLabel") }} {{ shop.discount_percent }}%
-                  </div>
-                </div>
-                <label class="switch" :aria-label="$t('adminGuild.shops.enableAria')">
-                  <input type="checkbox" :checked="shop.enabled" disabled />
-                  <span class="slider"></span>
-                </label>
-              </div>
-              <div class="shop-actions">
-                <UButton color="neutral" variant="outline" disabled>{{ $t("common.settings") }}</UButton>
-                <UButton color="primary" disabled>{{ $t("adminGuild.shops.items") }}</UButton>
-              </div>
-            </div>
-          </div>
-        </BillingPremiumGate>
       </UCard>
 
       <div v-show="activeTab === 'inventories'">
@@ -3502,9 +3488,7 @@ const achievementsTiersMax = computed(() => {
   return raw == null ? null : Number(raw);
 });
 const shopsLimitMax = computed(() => Number(billingLimits.value.shops_max ?? 1));
-const shopsLimitCurrent = computed(() =>
-  isPlatformAdminViewer.value ? (shops.value || []).length : activeShops.value.length
-);
+const shopsLimitCurrent = computed(() => (shops.value || []).length);
 const premiumShopsLimitMax = computed(() => (isGuildPremium.value ? shopsLimitMax.value : 10));
 const shopItemsLimitMax = computed(() => Number(billingLimits.value.shop_items_max ?? 6));
 const shopItemsLimitCurrent = computed(() => visibleItems.value.length);
@@ -3624,18 +3608,27 @@ const loadBillingCleanup = async () => {
   }
 };
 
-const activeShops = computed(() => {
-  const list = shops.value || [];
-  // Platform admins must see/edit the exact same shop set as the guild owner.
-  if (isPlatformAdminViewer.value) return list;
-  return list.filter((shop) => !shop.premium_locked);
-});
-const lockedShops = computed(() => {
-  const list = shops.value || [];
-  if (isPlatformAdminViewer.value) return [];
-  return list.filter((shop) => shop.premium_locked);
-});
-const lockedShopUnlockItems = computed(() => lockedShops.value.map((shop) => shop.name).filter(Boolean));
+const activeShops = computed(() => shops.value || []);
+// Admin config UI always lists every server shop. Member purchase locks stay server-side.
+const lockedShops = computed(() => []);
+const lockedShopUnlockItems = computed(() => []);
+
+const shopRequiredRolesLabel = (shop) => {
+  const raw = shop?.required_role_ids || shop?.required_role_id || null;
+  let ids = [];
+  if (Array.isArray(raw)) ids = raw.map(String).filter(Boolean);
+  else if (typeof raw === "string" && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw);
+      ids = Array.isArray(parsed) ? parsed.map(String).filter(Boolean) : [raw];
+    } catch {
+      ids = [raw];
+    }
+  }
+  if (!ids.length) return "";
+  const mode = String(shop?.required_roles_mode || "all").toLowerCase() === "any" ? "any" : "all";
+  return `Rôles requis (${mode}): ${ids.length}`;
+};
 
 const GUILD_TABS = Object.freeze([
   "economy",

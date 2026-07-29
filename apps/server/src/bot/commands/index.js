@@ -226,7 +226,7 @@ const shop = {
       "en-US": "shop",
       "es-ES": "tienda"
     })
-    .setDescription("Afficher la liste des shops")
+    .setDescription("Afficher la liste des boutiques")
     .setDescriptionLocalizations({
       "en-US": "Show the list of shops",
       "es-ES": "Mostrar la lista de tiendas"
@@ -300,7 +300,7 @@ const shop = {
           interactionToken: interaction.token,
           payload: { components }
         });
-        scheduleShopTimeout({ interaction, components, lang });
+        scheduleShopTimeout({ interaction, components, lang, replacePrevious: true });
         return;
       }
 
@@ -372,7 +372,7 @@ const shop = {
         payload: { components }
       });
 
-      scheduleShopTimeout({ interaction, components, lang });
+      scheduleShopTimeout({ interaction, components, lang, replacePrevious: true });
       return;
     } catch (error) {
       console.error("Erreur commande /shop", error);

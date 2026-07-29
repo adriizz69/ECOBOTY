@@ -269,7 +269,8 @@ const dictionaries = {
       rolesRequired: "Rôles requis"
     },
     shopTimeout: {
-      navigationDone: "Navigation terminée ! Pour parcourir ou acheter des articles, relancez la boutique avec /shop"
+      navigationDone:
+        "Navigation terminée ! Pour parcourir ou acheter des articles, relancez la boutique avec `/boutique`."
     }
   },
   en: {
@@ -542,7 +543,7 @@ const dictionaries = {
       rolesRequired: "Roles required"
     },
     shopTimeout: {
-      navigationDone: "Navigation finished! To browse or buy items, run /shop again."
+      navigationDone: "Navigation finished! To browse or buy items, run `/shop` again."
     }
   },
   es: {
@@ -815,7 +816,7 @@ const dictionaries = {
       rolesRequired: "Roles requeridos"
     },
     shopTimeout: {
-      navigationDone: "¡Navegación finalizada! Para ver o comprar artículos, ejecuta /shop."
+      navigationDone: "¡Navegación finalizada! Para ver o comprar artículos, ejecuta `/tienda`."
     }
   }
 };

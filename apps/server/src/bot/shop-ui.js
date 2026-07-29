@@ -2,8 +2,7 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  EmbedBuilder,
-  StringSelectMenuBuilder
+  EmbedBuilder
 } from "discord.js";
 import { t as i18nT } from "./i18n.js";
 
@@ -15,10 +14,15 @@ const computePrice = (item, shop) => {
   return Math.max(0, Math.floor(itemPrice - (itemPrice * discount) / 100));
 };
 
+/** Truncate for Discord limits only — never translate or rewrite configured names. */
 const short = (value, max) => {
-  if (!value) return "";
-  return value.length > max ? `${value.slice(0, max - 1)}…` : value;
+  const text = value == null ? "" : String(value);
+  if (!text) return "";
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 };
+
+/** Exact shop/item label as stored by the guild admin (no i18n). */
+const configuredName = (value, max) => short(value, max);
 
 const safeDescription = (value, max) => short(value || "", max);
 
@@ -60,7 +64,8 @@ export const buildShopMessage = ({ shop, items, balance = null, page = 1, lang =
     const qtyLine =
       stock === null ? "" : `${i18nT(lang, "shopUi.qtyRemaining", { count: stock })}\n`;
     const desc = item.description ? `${safeDescription(item.description, 800)}` : "";
-    const title = short(item.name, 120) || i18nT(lang, "shopUi.itemFallback");
+    // Item name = exact configured value from DB (never translated).
+    const title = configuredName(item.name, 120) || `#${item.id}`;
 
     const embed = new EmbedBuilder()
       .setTitle(title)
@@ -116,10 +121,12 @@ export const buildShopContainerMessage = ({
     });
   }
 
-  if (shop?.name) {
+  // Shop name = exact configured value from DB (never translated).
+  const shopTitle = configuredName(shop?.name, 120);
+  if (shopTitle) {
     containerComponents.push({
       type: 10,
-      content: `# **${short(shop.name, 120)}**`
+      content: `# **${shopTitle}**`
     });
   }
 
@@ -138,7 +145,7 @@ export const buildShopContainerMessage = ({
     const qtyLine =
       stock === null ? "" : `${i18nT(lang, "shopUi.qtyRemaining", { count: stock })}\n`;
     const desc = item.description ? `${safeDescription(item.description, 800)}` : "";
-    const title = short(item.name, 120) || i18nT(lang, "shopUi.itemFallback");
+    const title = configuredName(item.name, 120) || `#${item.id}`;
     const canBuy = balance === null ? true : balance >= price;
     const priceLabel = formatPrice(price);
     const buttonEmoji = parseEmoji(currencyEmoji);
@@ -208,7 +215,7 @@ export const buildShopContainerMessage = ({
           placeholder: i18nT(lang, "shopUi.selectShopPlaceholder"),
           options: shops.slice(0, 25).map((s) => {
             const allowed = allowedSet.size ? allowedSet.has(String(s.id)) : !s.locked;
-            const labelBase = short(s.name, 75) || i18nT(lang, "shopUi.shopFallback");
+            const labelBase = configuredName(s.name, 75) || `#${s.id}`;
             return {
               label: allowed ? labelBase : `${labelBase} 🔒`,
               value: String(s.id),
@@ -231,16 +238,29 @@ export const disableComponentsV2 = (components = []) => {
   const clone = JSON.parse(JSON.stringify(components));
 
   const disableItem = (item) => {
+    if (!item || typeof item !== "object") return;
+
+    // Buttons / selects (classic + inside containers)
     if (item.type === 2 || item.type === 3) {
       item.disabled = true;
     }
-    if (item.type === 9 && item.accessory && item.accessory.type === 2) {
-      item.accessory.disabled = true;
+
+    // Section accessory buy button (Components V2)
+    if (item.type === 9 && item.accessory) {
+      if (item.accessory.type === 2 || item.accessory.type === 3) {
+        item.accessory.disabled = true;
+      }
     }
+
+    // Action rows, containers, sections, etc.
     if (Array.isArray(item.components)) {
       item.components.forEach(disableItem);
     }
+    if (Array.isArray(item.items)) {
+      item.items.forEach(disableItem);
+    }
   };
+
   clone.forEach(disableItem);
   return clone;
 };

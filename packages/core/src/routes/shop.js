@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { requireNotBannedByShop } from "../middleware/ban.js";
+import { assertUserCanManageGuild } from "../services/billing-guild-access.js";
 import { isPlatformAdminId } from "../services/platform-admin.js";
 import {
   listShops,
@@ -20,18 +21,23 @@ import {
 export const shopRouter = Router();
 
 const sendShopError = (res, error, fallback) => {
-  return res.status(400).json({ error: error.message || fallback });
+  const status = Number(error?.status || 400);
+  return res.status(status).json({ error: error.message || fallback });
 };
 
-const resolveShopAccessOptions = async (req) => {
-  const bypassPremiumLocks = await isPlatformAdminId(req.user?.discord_id || req.user?.id);
-  return { bypassPremiumLocks };
+const requireGuildManageAccess = async (req, guildDiscordId) => {
+  await assertUserCanManageGuild({
+    accessToken: req.user?.access_token,
+    guildDiscordId,
+    discordId: req.user?.discord_id || req.user?.id
+  });
 };
 
 shopRouter.use("/shops/:id", requireNotBannedByShop);
 
 shopRouter.get("/guilds/:id/user-shops/settings", async (req, res) => {
   try {
+    await requireGuildManageAccess(req, req.params.id);
     const settings = await getUserShopsSettings(req.params.id);
     return res.json({ settings });
   } catch (error) {
@@ -41,6 +47,7 @@ shopRouter.get("/guilds/:id/user-shops/settings", async (req, res) => {
 
 shopRouter.put("/guilds/:id/user-shops/settings", async (req, res) => {
   try {
+    await requireGuildManageAccess(req, req.params.id);
     const body = req.body || {};
     const settings = await saveUserShopsSettings(req.params.id, {
       enabled: body.enabled,
@@ -54,6 +61,7 @@ shopRouter.put("/guilds/:id/user-shops/settings", async (req, res) => {
 
 shopRouter.get("/guilds/:id/user-shops", async (req, res) => {
   try {
+    await requireGuildManageAccess(req, req.params.id);
     const shops = await listUserShops(req.params.id, { enabledOnly: false });
     const withItems = await Promise.all(
       (shops || []).map(async (shop) => {
@@ -73,6 +81,7 @@ shopRouter.get("/guilds/:id/user-shops", async (req, res) => {
 
 shopRouter.delete("/guilds/:id/user-shops/:shopId", async (req, res) => {
   try {
+    await requireGuildManageAccess(req, req.params.id);
     await deleteUserShop({
       guildId: req.params.id,
       shopId: req.params.shopId,
@@ -86,6 +95,7 @@ shopRouter.delete("/guilds/:id/user-shops/:shopId", async (req, res) => {
 
 shopRouter.delete("/guilds/:id/user-shops/:shopId/items/:itemId", async (req, res) => {
   try {
+    await requireGuildManageAccess(req, req.params.id);
     await deleteUserShopItem({
       guildId: req.params.id,
       shopId: req.params.shopId,
@@ -100,8 +110,9 @@ shopRouter.delete("/guilds/:id/user-shops/:shopId/items/:itemId", async (req, re
 
 shopRouter.get("/guilds/:id/shops", async (req, res) => {
   try {
-    const access = await resolveShopAccessOptions(req);
-    const shops = await listShops(req.params.id, access);
+    await requireGuildManageAccess(req, req.params.id);
+    // Managers always get the full server-shop catalog (no premium hide).
+    const shops = await listShops(req.params.id, { bypassPremiumLocks: true });
     res.json({ shops });
   } catch (error) {
     sendShopError(res, error, "shops_failed");
@@ -110,8 +121,12 @@ shopRouter.get("/guilds/:id/shops", async (req, res) => {
 
 shopRouter.post("/guilds/:id/shops", async (req, res) => {
   try {
-    const access = await resolveShopAccessOptions(req);
-    const shop = await createShop(req.params.id, req.body || {}, access);
+    await requireGuildManageAccess(req, req.params.id);
+    const platformAdmin = await isPlatformAdminId(req.user?.discord_id || req.user?.id);
+    const shop = await createShop(req.params.id, req.body || {}, {
+      // Only platform admins may create beyond the guild plan limit.
+      bypassPremiumLocks: platformAdmin
+    });
     res.json({ shop });
   } catch (error) {
     sendShopError(res, error, "shop_create_failed");
@@ -120,8 +135,10 @@ shopRouter.post("/guilds/:id/shops", async (req, res) => {
 
 shopRouter.put("/guilds/:id/shops/:shopId", async (req, res) => {
   try {
-    const access = await resolveShopAccessOptions(req);
-    const shop = await updateShop(req.params.id, req.params.shopId, req.body || {}, access);
+    await requireGuildManageAccess(req, req.params.id);
+    const shop = await updateShop(req.params.id, req.params.shopId, req.body || {}, {
+      bypassPremiumLocks: true
+    });
     res.json({ shop });
   } catch (error) {
     sendShopError(res, error, "shop_update_failed");
@@ -130,6 +147,7 @@ shopRouter.put("/guilds/:id/shops/:shopId", async (req, res) => {
 
 shopRouter.delete("/guilds/:id/shops/:shopId", async (req, res) => {
   try {
+    await requireGuildManageAccess(req, req.params.id);
     await deleteShop(req.params.id, req.params.shopId);
     res.json({ ok: true });
   } catch (error) {
@@ -139,7 +157,6 @@ shopRouter.delete("/guilds/:id/shops/:shopId", async (req, res) => {
 
 shopRouter.get("/shops/:id/items", async (req, res) => {
   try {
-    const access = await resolveShopAccessOptions(req);
     const includeHidden = ["1", "true", "yes"].includes(String(req.query.includeHidden || "").toLowerCase());
     const withInventory = ["1", "true", "yes"].includes(String(req.query.withInventory || "").toLowerCase());
     const includeUnavailable = ["1", "true", "yes"].includes(
@@ -149,9 +166,8 @@ shopRouter.get("/shops/:id/items", async (req, res) => {
       includeHidden: includeHidden || withInventory,
       withInventoryCounts: withInventory,
       includeUnavailable,
-      // Admin/config API: never block item listing on role/premium locks for platform admins.
-      enforceShopAccess: !access.bypassPremiumLocks,
-      bypassPremiumLocks: access.bypassPremiumLocks
+      enforceShopAccess: false,
+      bypassPremiumLocks: true
     });
     res.json({ items });
   } catch (error) {
