@@ -307,7 +307,7 @@
             {{ $t("adminGuild.economy.logsChannel") }}
             <EbSelect
               v-model="form.logChannelId"
-              :items="toSelectItems(channels, { emptyLabel: $t('common.disabled') })"
+              :items="toSelectItems(channels, { emptyLabel: $t('common.disabled'), channelPrefix: true })"
             />
           </label>
         </div>
@@ -375,7 +375,7 @@
             {{ $t("adminGuild.bot.logsChannel") }}
             <EbSelect
               v-model="botLogChannelId"
-              :items="toSelectItems(channels, { emptyLabel: $t('common.disabled') })"
+              :items="toSelectItems(channels, { emptyLabel: $t('common.disabled'), channelPrefix: true })"
             />
           </label>
         </div>
@@ -463,7 +463,7 @@
               {{ $t("adminGuild.leaderboard.channel") }}
               <EbSelect
                 v-model="leaderboardPost.channel_id"
-                :items="toSelectItems(channels, { emptyLabel: $t('adminGuild.leaderboard.selectChannel') })"
+                :items="toSelectItems(channels, { emptyLabel: $t('adminGuild.leaderboard.selectChannel'), channelPrefix: true })"
               />
             </label>
             <label>
@@ -897,7 +897,7 @@
             {{ $t("adminGuild.communityMessage.channel") }}
             <EbSelect
               v-model="communityMessageChannelId"
-              :items="toSelectItems(channels, { emptyLabel: $t('adminGuild.communityMessage.selectChannel') })"
+              :items="toSelectItems(channels, { emptyLabel: $t('adminGuild.communityMessage.selectChannel'), channelPrefix: true })"
             />
           </label>
           <div class="switch-field">
@@ -2196,7 +2196,7 @@
           <div class="inline">
             <EbSelect
               v-model="newChannelBooster.channel_id"
-              :items="toSelectItems(channels, { emptyLabel: $t('adminGuild.automation.selectChannel') })"
+              :items="toSelectItems(channels, { emptyLabel: $t('adminGuild.automation.selectChannel'), channelPrefix: true })"
               style="min-width: 200px; flex: 1 1 200px;"
             />
             <label class="inline-label">
@@ -2285,7 +2285,7 @@
           <div class="inline" style="margin-top: 10px;">
             <EbSelect
               v-model="selectedBlockedChannel"
-              :items="toSelectItems(channels, { emptyLabel: $t('adminGuild.automation.addChannel') })"
+              :items="toSelectItems(channels, { emptyLabel: $t('adminGuild.automation.addChannel'), channelPrefix: true })"
               style="min-width: 200px; flex: 1 1 200px;"
             />
             <UButton color="neutral" variant="outline" @click="addBlockedChannel">{{ $t("common.add") }}</UButton>
@@ -4748,13 +4748,27 @@ const channelName = (channelId) => {
   return match?.name || id;
 };
 
-const toSelectItems = (rows = [], { valueKey = "id", labelKey = "name", emptyLabel, emptyValue = "" } = {}) => {
+const toSelectItems = (rows = [], { valueKey = "id", labelKey = "name", emptyLabel, emptyValue = "", channelPrefix = false, selectedValue } = {}) => {
   const items = [];
   if (emptyLabel != null) items.push({ label: emptyLabel, value: emptyValue });
+  const seen = new Set();
   for (const row of rows) {
+    const rawLabel = String(row?.[labelKey] ?? "").trim();
+    const value = String(row?.[valueKey] ?? "");
+    if (!value) continue;
+    seen.add(value);
+    const label = rawLabel
+      ? channelPrefix
+        ? `#${rawLabel}`
+        : rawLabel
+      : value;
+    items.push({ label, value });
+  }
+  const selected = selectedValue == null ? "" : String(selectedValue);
+  if (selected && !seen.has(selected) && selected !== String(emptyValue)) {
     items.push({
-      label: String(row?.[labelKey] ?? ""),
-      value: String(row?.[valueKey] ?? "")
+      label: channelPrefix ? `#${selected}` : selected,
+      value: selected
     });
   }
   return items;
@@ -5663,12 +5677,15 @@ const loadGuildSummary = async () => {
 const ensureBotPresent = async () => {
   const token = getToken();
   if (!token) return;
-  const res = await fetch(`${config.public.apiBase}/api/servers`, {
-    headers: { Authorization: `Bearer ${token}` }
-  });
-  if (!res.ok) return;
-  const data = await res.json();
-  const servers = data.servers || [];
+  let servers = managedGuildServers.value;
+  if (!servers.length) {
+    const res = await fetch(`${config.public.apiBase}/api/servers`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    servers = Array.isArray(data.servers) ? data.servers : [];
+  }
   const current = servers.find((g) => String(g.id) === String(id));
   if (current?.name) rememberGuildName(id, current.name);
   if (current && current.botPresent === false) {
@@ -6600,27 +6617,60 @@ const deleteAdminUserShopItem = async (shop, item) => {
 
 const loadRoles = async () => {
   const token = getToken();
-  const res = await fetch(`${config.public.apiBase}/api/guilds/${id}/roles`, {
-    headers: { Authorization: `Bearer ${token}` }
-  });
-  const data = await res.json();
-  roles.value = data.roles || [];
-  botRolePosition.value = data.botRolePosition ?? null;
-  rolesLoaded.value = true;
+  if (!token) {
+    rolesLoaded.value = false;
+    return false;
+  }
+  try {
+    const res = await fetch(`${config.public.apiBase}/api/guilds/${id}/roles`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!res.ok) {
+      roles.value = [];
+      rolesLoaded.value = false;
+      return false;
+    }
+    const data = await res.json();
+    roles.value = Array.isArray(data.roles) ? data.roles : [];
+    botRolePosition.value = data.botRolePosition ?? null;
+    rolesLoaded.value = true;
+    return true;
+  } catch {
+    roles.value = [];
+    rolesLoaded.value = false;
+    return false;
+  }
 };
 
 const refreshRoles = async () => {
+  rolesLoaded.value = false;
   await loadRoles();
 };
 
 const loadChannels = async () => {
   const token = getToken();
-  const res = await fetch(`${config.public.apiBase}/api/guilds/${id}/channels`, {
-    headers: { Authorization: `Bearer ${token}` }
-  });
-  const data = await res.json();
-  channels.value = data.channels || [];
-  channelsLoaded.value = true;
+  if (!token) {
+    channelsLoaded.value = false;
+    return false;
+  }
+  try {
+    const res = await fetch(`${config.public.apiBase}/api/guilds/${id}/channels`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!res.ok) {
+      channels.value = [];
+      channelsLoaded.value = false;
+      return false;
+    }
+    const data = await res.json();
+    channels.value = Array.isArray(data.channels) ? data.channels : [];
+    channelsLoaded.value = true;
+    return true;
+  } catch {
+    channels.value = [];
+    channelsLoaded.value = false;
+    return false;
+  }
 };
 
 const loadAutomation = async () => {
@@ -8025,12 +8075,12 @@ const loadSettingsOnce = async () => {
 };
 
 const loadChannelsOnce = async () => {
-  if (channelsLoaded.value) return;
+  if (channelsLoaded.value && channels.value.length) return;
   await loadChannels();
 };
 
 const loadRolesOnce = async () => {
-  if (rolesLoaded.value) return;
+  if (rolesLoaded.value && roles.value.length) return;
   await loadRoles();
 };
 
@@ -8186,8 +8236,8 @@ onMounted(async () => {
   }
   await ensureBotPresent();
   await loadBotSettingsOnce();
-  // Resolve Discord guild name via bot API (works even if /api/servers is incomplete).
-  await loadGuildSummary();
+  // Load channels/roles early so selects never stay stuck on raw IDs.
+  await Promise.all([loadChannelsOnce(), loadRolesOnce(), loadGuildSummary()]);
   await loadTabData(activeTab.value);
   suppressDirty.value = false;
   if (String(route.query?.twitch_connected || "") === "1") {
@@ -8281,6 +8331,10 @@ watch(
     if (!guildId || guildId === previousId) return;
 
     currentGuildDiscordName.value = readStoredGuildName(guildId);
+    channelsLoaded.value = false;
+    rolesLoaded.value = false;
+    channels.value = [];
+    roles.value = [];
     guildBilling.value = { ...FREE_BILLING_FALLBACK };
     await loadManagedGuildServers();
     await loadGuildStatus();
@@ -8290,7 +8344,7 @@ watch(
 
     if (guildBan.value.banned) return;
     await ensureBotPresent();
-    await loadGuildSummary();
+    await Promise.all([loadChannelsOnce(), loadRolesOnce(), loadGuildSummary()]);
     await loadTabData(activeTab.value, { force: true });
   }
 );

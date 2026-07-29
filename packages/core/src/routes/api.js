@@ -1938,27 +1938,14 @@ apiRouter.get("/guilds/:id/summary", async (req, res) => {
       return res.status(400).json({ error: "guild_summary_failed", details: guildData });
     }
 
-    let botsCount = null;
-    try {
-      const membersRes = await fetch(
-        `https://discord.com/api/guilds/${req.params.id}/members?limit=1000`,
-        { headers: { Authorization: `Bot ${botToken}` } }
-      );
-      if (membersRes.ok) {
-        const members = await membersRes.json();
-        botsCount = Array.isArray(members) ? members.filter((m) => m.user?.bot).length : null;
-      }
-    } catch {
-      botsCount = null;
-    }
-
+    // Avoid GET /members (rate-limit heavy). Approximate counts from with_counts are enough for overview.
     return res.json({
       summary: {
         name: guildData.name || null,
         icon: guildData.icon || null,
         members: guildData.approximate_member_count ?? guildData.member_count ?? null,
         online: guildData.approximate_presence_count ?? null,
-        bots: botsCount
+        bots: null
       }
     });
   } catch (error) {
