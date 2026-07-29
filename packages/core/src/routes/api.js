@@ -1954,6 +1954,8 @@ apiRouter.get("/guilds/:id/summary", async (req, res) => {
 
     return res.json({
       summary: {
+        name: guildData.name || null,
+        icon: guildData.icon || null,
         members: guildData.approximate_member_count ?? guildData.member_count ?? null,
         online: guildData.approximate_presence_count ?? null,
         bots: botsCount

@@ -3288,6 +3288,7 @@ const { t, locale, setLocale } = useI18n();
 const { getToken, login } = useAuth();
 const guildMe = ref(null);
 const managedGuildServers = ref([]);
+const currentGuildDiscordName = ref("");
 const localeOptions = [
   { value: "fr", label: "Français", flag: "/flags/fr.svg" },
   { value: "en", label: "English", flag: "/flags/gb.svg" },
@@ -3308,8 +3309,39 @@ const guildMeAvatarUrl = computed(() => {
   return `https://cdn.discordapp.com/avatars/${guildMe.value.discord_id}/${guildMe.value.avatar}.png`;
 });
 
+const readStoredGuildName = (guildId) => {
+  if (!process.client) return "";
+  const target = String(guildId || "").trim();
+  if (!target) return "";
+  try {
+    const raw = localStorage.getItem("selectedGuild");
+    const parsed = raw ? JSON.parse(raw) : null;
+    if (String(parsed?.id || parsed?.guild_id || "") !== target) return "";
+    return String(parsed?.name || "").trim();
+  } catch {
+    return "";
+  }
+};
+
+const rememberGuildName = (guildId, guildName) => {
+  const target = String(guildId || "").trim();
+  const name = String(guildName || "").trim();
+  if (!target || !name || name === target) return;
+  currentGuildDiscordName.value = name;
+  if (!process.client) return;
+  try {
+    localStorage.setItem(
+      "selectedGuild",
+      JSON.stringify({ id: target, name })
+    );
+  } catch {
+    // ignore
+  }
+};
+
 const loadManagedGuildServers = async () => {
   const token = getToken();
+  const currentId = String(route.params.id || id || "").trim();
   if (!token) {
     managedGuildServers.value = [];
     return;
@@ -3323,27 +3355,39 @@ const loadManagedGuildServers = async () => {
       return;
     }
     const data = await res.json();
-    managedGuildServers.value = (Array.isArray(data.servers) ? data.servers : [])
-      .filter((server) => server?.botPresent && !server?.banned);
+    const allServers = Array.isArray(data.servers) ? data.servers : [];
+    const current = allServers.find((server) => String(server.id) === currentId);
+    if (current?.name) rememberGuildName(currentId, current.name);
+
+    // Keep switcher usable even if bot presence check is temporarily unavailable.
+    managedGuildServers.value = allServers.filter((server) => {
+      if (server?.banned) return false;
+      if (String(server.id) === currentId) return true;
+      return server?.botPresent !== false;
+    });
   } catch {
     managedGuildServers.value = [];
   }
 };
 
 const guildServerOptions = computed(() => {
+  const currentId = String(route.params.id || "").trim();
   const rows = managedGuildServers.value.map((server) => {
     const isPremium = Boolean(server.billing?.isPremium);
     const planLabel = isPremium ? t("billing.status.premium") : t("billing.status.free");
+    const serverName =
+      String(server.name || "").trim() ||
+      (String(server.id) === currentId ? resolveCurrentGuildName(currentId) : "") ||
+      String(server.id);
     return {
       value: String(server.id),
-      label: `${String(server.name || server.id)} · ${planLabel}`,
-      shortLabel: String(server.name || server.id),
+      label: `${serverName} · ${planLabel}`,
+      shortLabel: serverName,
       isPremium
     };
   });
-  const currentId = String(route.params.id || "");
   if (currentId && !rows.some((row) => row.value === currentId)) {
-    const fallbackName = String(guildDisplayName.value || currentId);
+    const fallbackName = resolveCurrentGuildName(currentId);
     rows.unshift({
       value: currentId,
       label: `${fallbackName} · ${isGuildPremium.value ? t("billing.status.premium") : t("billing.status.free")}`,
@@ -3353,6 +3397,19 @@ const guildServerOptions = computed(() => {
   }
   return rows;
 });
+
+const resolveCurrentGuildName = (guildId = route.params.id) => {
+  const currentId = String(guildId || "").trim();
+  if (!currentId) return "Serveur";
+  const fromState = String(currentGuildDiscordName.value || "").trim();
+  if (fromState && fromState !== currentId) return fromState;
+  const fromList = managedGuildServers.value.find((server) => String(server.id) === currentId);
+  const listName = String(fromList?.name || "").trim();
+  if (listName && listName !== currentId) return listName;
+  const fromStore = readStoredGuildName(currentId);
+  if (fromStore && fromStore !== currentId) return fromStore;
+  return fromState || listName || fromStore || currentId;
+};
 
 const selectedGuildServerId = computed({
   get: () => String(route.params.id || ""),
@@ -3614,13 +3671,7 @@ const adminTabLabel = computed(() => {
   return map[activeTab.value] || "Administration serveur";
 });
 const currencyDisplayName = computed(() => String(form.name || "").trim());
-const guildDisplayName = computed(() => {
-  const currentId = String(route.params.id || id || "").trim();
-  const match = managedGuildServers.value.find((server) => String(server.id) === currentId);
-  const fromDiscord = String(match?.name || "").trim();
-  if (fromDiscord) return fromDiscord;
-  return currentId || "Serveur";
-});
+const guildDisplayName = computed(() => resolveCurrentGuildName(route.params.id || id));
 useHead(() => ({
   title: `${adminTabLabel.value} - ${guildDisplayName.value}`
 }));
@@ -5604,6 +5655,9 @@ const loadGuildSummary = async () => {
   overviewStats.members = data.summary?.members ?? null;
   overviewStats.online = data.summary?.online ?? null;
   overviewStats.bots = data.summary?.bots ?? null;
+  if (data.summary?.name) {
+    rememberGuildName(id, data.summary.name);
+  }
 };
 
 const ensureBotPresent = async () => {
@@ -5616,6 +5670,7 @@ const ensureBotPresent = async () => {
   const data = await res.json();
   const servers = data.servers || [];
   const current = servers.find((g) => String(g.id) === String(id));
+  if (current?.name) rememberGuildName(id, current.name);
   if (current && current.botPresent === false) {
     window.location.href = inviteUrl.value;
   }
@@ -8116,6 +8171,7 @@ onMounted(async () => {
     botTimezone.value = browserTimezone.value;
   }
   suppressDirty.value = true;
+  currentGuildDiscordName.value = readStoredGuildName(route.params.id || id);
   await loadGuildMe();
   await loadManagedGuildServers();
   activeTab.value = normalizeGuildTab(route.query?.tab, "economy");
@@ -8130,6 +8186,8 @@ onMounted(async () => {
   }
   await ensureBotPresent();
   await loadBotSettingsOnce();
+  // Resolve Discord guild name via bot API (works even if /api/servers is incomplete).
+  await loadGuildSummary();
   await loadTabData(activeTab.value);
   suppressDirty.value = false;
   if (String(route.query?.twitch_connected || "") === "1") {
@@ -8222,6 +8280,7 @@ watch(
     const previousId = String(prevId || "");
     if (!guildId || guildId === previousId) return;
 
+    currentGuildDiscordName.value = readStoredGuildName(guildId);
     guildBilling.value = { ...FREE_BILLING_FALLBACK };
     await loadManagedGuildServers();
     await loadGuildStatus();
@@ -8231,6 +8290,7 @@ watch(
 
     if (guildBan.value.banned) return;
     await ensureBotPresent();
+    await loadGuildSummary();
     await loadTabData(activeTab.value, { force: true });
   }
 );
