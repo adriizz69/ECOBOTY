@@ -736,6 +736,9 @@
       "manage": "Gestionar suscripción",
       "upgradeLead": "Desbloquea multi-tiendas, Twitch completo, juegos avanzados, logs extendidos y más.",
       "waiver": "Solicito la ejecución inmediata del servicio y renuncio a mi derecho de desistimiento.",
+      "promoCode": "Código promo (opcional)",
+      "promoCodePlaceholder": "VERANO2026",
+      "promoCodeHint": "El código debe coincidir con el periodo elegido (mensual, 3 meses o anual).",
       "checkout": "Pasar a Premium",
       "checkoutStripe": "Suscribirse vía Stripe",
       "checkoutSuccess": "Suscripción Premium activada."
@@ -745,6 +748,9 @@
       "checkout": "Checkout fallido",
       "portal": "Portal de cliente no disponible",
       "waiverRequired": "Confirma la renuncia al derecho de desistimiento.",
+      "promoNotFound": "Código promo no encontrado o inactivo.",
+      "promoWrongInterval": "Este código promo no es válido para este periodo de facturación.",
+      "promoIntervalMissing": "Este código promo no tiene periodo asociado. Recréalo en el admin.",
       "cleanup": "No se pudo aplicar la limpieza Free"
     }
   },

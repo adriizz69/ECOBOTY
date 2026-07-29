@@ -16,6 +16,7 @@ const actionLoading = ref(false);
 const billing = ref(null);
 const selectedInterval = ref("yearly");
 const waiveRetraction = ref(false);
+const promoCodeInput = ref("");
 
 const intervalOptions = computed(() => [
   { value: "monthly", label: t("billing.intervals.monthly"), discount: null },
@@ -105,11 +106,20 @@ const startCheckout = async () => {
       },
       body: JSON.stringify({
         interval: selectedInterval.value,
-        waiveRetraction: true
+        waiveRetraction: true,
+        promotionCode: String(promoCodeInput.value || "").trim() || null
       })
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || "billing_checkout_failed");
+    if (!res.ok) {
+      const errKey = String(data.error || "");
+      const known = {
+        promo_code_not_found: "billing.errors.promoNotFound",
+        promo_code_wrong_interval: "billing.errors.promoWrongInterval",
+        promo_code_interval_missing: "billing.errors.promoIntervalMissing"
+      };
+      throw new Error(known[errKey] ? t(known[errKey]) : data.error || "billing_checkout_failed");
+    }
     if (data.url) window.location.href = data.url;
   } catch (error) {
     toast.add({
@@ -251,6 +261,18 @@ onMounted(async () => {
               <span>{{ item }}</span>
             </li>
           </ul>
+
+          <label class="promo-field">
+            <span>{{ $t("billing.panel.promoCode") }}</span>
+            <input
+              v-model.trim="promoCodeInput"
+              type="text"
+              autocomplete="off"
+              spellcheck="false"
+              :placeholder="$t('billing.panel.promoCodePlaceholder')"
+            />
+            <span class="muted small">{{ $t("billing.panel.promoCodeHint") }}</span>
+          </label>
 
           <label class="waiver">
             <input v-model="waiveRetraction" type="checkbox" />
@@ -583,6 +605,31 @@ onMounted(async () => {
   color: var(--ui-primary);
   flex: none;
   margin-top: 1px;
+}
+
+.promo-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.88rem;
+  color: var(--ui-text-muted);
+}
+
+.promo-field span:first-child {
+  font-weight: 600;
+  color: var(--ui-text);
+}
+
+.promo-field input {
+  width: 100%;
+  border: 1px solid color-mix(in srgb, var(--ui-border) 80%, transparent);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--ui-bg) 92%, var(--ui-primary) 8%);
+  color: var(--ui-text);
+  font: inherit;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .waiver {

@@ -13,6 +13,21 @@
 
     <div v-if="statusMessage" class="muted status-line">{{ statusMessage }}</div>
 
+    <div v-if="syncJob?.running || syncJob?.status === 'done' || syncJob?.status === 'error'" class="sync-progress-card">
+      <div class="sync-progress-head">
+        <strong>
+          <template v-if="syncJob.running">Synchronisation en cours</template>
+          <template v-else-if="syncJob.status === 'error'">Synchronisation echouee</template>
+          <template v-else>Synchronisation terminee</template>
+        </strong>
+        <span class="muted small">{{ syncProgressLabel }}</span>
+      </div>
+      <div class="sync-progress-meter" :class="{ error: syncJob.status === 'error', done: syncJob.status === 'done' }">
+        <div class="sync-progress-fill" :style="{ width: `${syncProgressPercent}%` }"></div>
+      </div>
+      <p class="muted small sync-progress-detail">{{ syncProgressDetail }}</p>
+    </div>
+
     <div class="sub-card">
       <h4>Module global</h4>
       <div class="grid">
@@ -137,10 +152,12 @@
                   v-if="canSyncFromDiscord(item)"
                   color="neutral"
                   variant="outline"
-                  :loading="syncingId === Number(item.id || 0)"
+                  :loading="isSyncingAchievement(item)"
+                  :disabled="isSyncBusy"
+                  :title="isSyncBusy ? 'Une synchronisation est deja en cours' : 'Synchroniser'"
                   @click="syncAchievementAction(item)"
                 >
-                  Synchroniser
+                  {{ isSyncingAchievement(item) ? 'Sync…' : 'Synchroniser' }}
                 </UButton>
                 <UButton color="neutral" variant="outline" @click="openEdit(item)">Editer</UButton>
                 <UButton color="error" variant="solid" :loading="deletingId === Number(item.id || 0)" @click="deleteAchievementAction(item)">
@@ -154,7 +171,7 @@
     </div>
 
     <BillingPremiumGate
-      v-if="lockedAchievementSections.length"
+      v-if="!isPremium && lockedAchievementSections.length"
       locked
       feature-key="premium_restore_content"
       :benefits="lockedAchievementUnlockItems.length ? lockedAchievementUnlockItems : undefined"
@@ -667,7 +684,8 @@ const savingSettings = ref(false);
 const savingAchievement = ref(false);
 const deletingId = ref(0);
 const togglingId = ref(0);
-const syncingId = ref(0);
+const syncJob = ref(null);
+const syncPollTimer = ref(null);
 const statusMessage = ref("");
 
 const channels = ref([]);
@@ -1076,6 +1094,80 @@ const canSyncFromDiscord = (item) => {
     eventKey === "birthday_added" ||
     eventKey === "twitch_authenticated"
   );
+};
+
+const isSyncBusy = computed(() => Boolean(syncJob.value?.running));
+const isSyncingAchievement = (item) =>
+  Boolean(syncJob.value?.running && Number(syncJob.value?.achievementId || 0) === Number(item?.id || 0));
+
+const syncProgressPercent = computed(() => Math.max(0, Math.min(100, Number(syncJob.value?.percent || 0))));
+
+const syncProgressLabel = computed(() => {
+  const job = syncJob.value;
+  if (!job) return "";
+  if (job.status === "error") return job.error || "Erreur";
+  if (job.achievementTitle) return job.achievementTitle;
+  return `Succes #${job.achievementId || "?"}`;
+});
+
+const syncProgressDetail = computed(() => {
+  const job = syncJob.value;
+  if (!job) return "";
+  if (job.status === "error") return String(job.error || "Synchronisation impossible.");
+  if (job.phase === "loading_members") {
+    return `Chargement des membres Discord… ${Number(job.scannedMembers || 0)} scannes.`;
+  }
+  if (job.running || job.phase === "syncing") {
+    return `${Number(job.processedMembers || 0)} / ${Number(job.eligibleMembers || 0)} eligibles traites · ${Number(job.unlockedMembers || 0)} debloques.`;
+  }
+  if (job.status === "done") {
+    return `Termine: ${Number(job.eligibleMembers || 0)} eligibles / ${Number(job.scannedMembers || 0)} scannes · ${Number(job.unlockedMembers || 0)} debloques.`;
+  }
+  return "";
+});
+
+const stopSyncPolling = () => {
+  if (syncPollTimer.value) {
+    clearInterval(syncPollTimer.value);
+    syncPollTimer.value = null;
+  }
+};
+
+const applySyncJobPayload = (payload) => {
+  if (!payload || typeof payload !== "object") {
+    syncJob.value = null;
+    return;
+  }
+  if (!payload.running && !payload.status) {
+    syncJob.value = null;
+    return;
+  }
+  syncJob.value = payload;
+};
+
+const pollSyncStatusOnce = async () => {
+  const res = await fetchJson(
+    `${config.public.apiBase}/api/guilds/${props.guildId}/achievements/sync-status`
+  );
+  if (!res?.ok) return null;
+  applySyncJobPayload(res.data);
+  return res.data;
+};
+
+const startSyncPolling = () => {
+  stopSyncPolling();
+  syncPollTimer.value = setInterval(async () => {
+    const data = await pollSyncStatusOnce();
+    if (!data?.running) {
+      stopSyncPolling();
+      if (data?.status === "done") {
+        statusMessage.value = `Synchronisation terminee: ${Number(data.eligibleMembers || 0)}/${Number(data.scannedMembers || 0)} eligibles, ${Number(data.unlockedMembers || 0)} debloques.`;
+        await loadConfig();
+      } else if (data?.status === "error") {
+        statusMessage.value = `Echec de synchronisation: ${data.error || "erreur inconnue"}.`;
+      }
+    }
+  }, 1000);
 };
 
 const roleName = (roleId) => {
@@ -1536,6 +1628,10 @@ const toggleEnabled = async (item) => {
 
 const syncAchievementAction = async (item) => {
   if (!canSyncFromDiscord(item)) return;
+  if (isSyncBusy.value) {
+    statusMessage.value = "Une synchronisation est deja en cours. Attends la fin avant d'en relancer une.";
+    return;
+  }
   const syncScopeLabelMap = {
     role_received: "membres ayant deja le role cible",
     server_boost: "boosters deja actifs",
@@ -1544,27 +1640,35 @@ const syncAchievementAction = async (item) => {
   };
   const eventLabelText = syncScopeLabelMap[String(item?.eventKey || "").trim()] || "membres eligibles";
   const confirmed = window.confirm(
-    `Synchroniser ce succes avec les ${eventLabelText} ?\\n\\n` +
-      "Le bot ne retire/ajoute rien avant synchronisation: il valide juste les membres deja eligibles."
+    `Synchroniser ce succes avec les ${eventLabelText} ?\n\n` +
+      "Le bot ne retire/ajoute rien avant synchronisation: il valide juste les membres deja eligibles.\n" +
+      "Pendant la sync, tu ne pourras pas en relancer une autre sur ce serveur."
   );
   if (!confirmed) return;
-  syncingId.value = Number(item.id || 0);
+
   const res = await fetchJson(
     `${config.public.apiBase}/api/guilds/${props.guildId}/achievements/${item.id}/sync`,
     {
       method: "POST"
     }
   );
-  syncingId.value = 0;
   if (!res?.ok) {
+    if (res?.status === 409 || res?.data?.error === "achievement_sync_in_progress") {
+      applySyncJobPayload(res.data?.sync || res.data);
+      startSyncPolling();
+      statusMessage.value = "Une synchronisation est deja en cours.";
+      return;
+    }
+    if (res?.data?.error === "achievement_sync_busy") {
+      statusMessage.value = "Le serveur est occupe par d'autres synchronisations. Reessaie dans un instant.";
+      return;
+    }
     statusMessage.value = "Echec de synchronisation du succes.";
     return;
   }
-  const scanned = Number(res.data?.scannedMembers || 0);
-  const eligible = Number(res.data?.eligibleMembers || 0);
-  const unlocked = Number(res.data?.unlockedMembers || 0);
-  statusMessage.value = `Synchronisation terminee: ${eligible}/${scanned} eligibles, ${unlocked} debloques.`;
-  await loadConfig();
+  applySyncJobPayload(res.data);
+  statusMessage.value = "Synchronisation lancee…";
+  startSyncPolling();
 };
 
 const deleteAchievementAction = async (item) => {
@@ -1600,6 +1704,13 @@ watch(
     loadAll();
   },
   { immediate: true }
+);
+
+watch(
+  () => props.isPremium,
+  (next, prev) => {
+    if (next !== prev) loadAll();
+  }
 );
 
 watch(

@@ -2138,7 +2138,7 @@ export const getUserAchievementsPage = async ({
   };
 };
 
-const loadDiscordGuildMembers = async (guildId) => {
+const loadDiscordGuildMembers = async (guildId, { onPage } = {}) => {
   const headers = getDiscordHeaders();
   if (!headers) throw new Error("missing_bot_token");
 
@@ -2156,6 +2156,9 @@ const loadDiscordGuildMembers = async (guildId) => {
     const rows = await response.json().catch(() => []);
     if (!Array.isArray(rows) || !rows.length) break;
     all.push(...rows);
+    if (typeof onPage === "function") {
+      onPage({ scannedMembers: all.length, page: page + 1 });
+    }
     if (rows.length < 1000) break;
     after = String(rows[rows.length - 1]?.user?.id || "").trim();
     if (!after) break;
@@ -2178,7 +2181,66 @@ const runWithConcurrency = async (items, limit, worker) => {
   await Promise.all(runners);
 };
 
-export const syncAchievementFromDiscord = async ({ guildId, achievementId }) => {
+const ACHIEVEMENT_SYNC_JOBS = new Map();
+const ACHIEVEMENT_SYNC_GLOBAL = { active: 0, max: 2 };
+const ACHIEVEMENT_SYNC_KEEP_MS = 2 * 60 * 1000;
+
+const serializeAchievementSyncJob = (job) => {
+  if (!job) return { running: false };
+  const eligible = Math.max(0, Number(job.eligibleMembers || 0));
+  const processed = Math.max(0, Number(job.processedMembers || 0));
+  const percent =
+    job.status === "done"
+      ? 100
+      : job.phase === "loading_members"
+        ? Math.min(20, Math.max(1, Number(job.percent || 1)))
+        : eligible > 0
+          ? Math.min(99, Math.round((processed / eligible) * 100))
+          : job.status === "running"
+            ? 5
+            : 0;
+  return {
+    running: job.status === "running" || job.status === "queued",
+    jobId: job.id,
+    guildId: job.guildId,
+    achievementId: job.achievementId,
+    achievementTitle: job.achievementTitle || null,
+    status: job.status,
+    phase: job.phase,
+    percent,
+    scannedMembers: Number(job.scannedMembers || 0),
+    eligibleMembers: eligible,
+    processedMembers: processed,
+    syncedMembers: Number(job.syncedMembers || 0),
+    unlockedMembers: Number(job.unlockedMembers || 0),
+    failedMembers: Number(job.failedMembers || 0),
+    startedAt: job.startedAt || null,
+    finishedAt: job.finishedAt || null,
+    error: job.error || null
+  };
+};
+
+export const getAchievementSyncStatus = (guildId) => {
+  const key = String(guildId || "").trim();
+  if (!key) return { running: false };
+  return serializeAchievementSyncJob(ACHIEVEMENT_SYNC_JOBS.get(key) || null);
+};
+
+const scheduleAchievementSyncJobCleanup = (guildId, jobId) => {
+  setTimeout(() => {
+    const key = String(guildId || "").trim();
+    const current = ACHIEVEMENT_SYNC_JOBS.get(key);
+    if (current?.id === jobId && current.status !== "running" && current.status !== "queued") {
+      ACHIEVEMENT_SYNC_JOBS.delete(key);
+    }
+  }, ACHIEVEMENT_SYNC_KEEP_MS);
+};
+
+export const syncAchievementFromDiscord = async ({ guildId, achievementId, onProgress = null } = {}) => {
+  const report = (patch = {}) => {
+    if (typeof onProgress === "function") onProgress(patch);
+  };
+
   const guildInternalId = await getGuildInternalId(guildId, db);
   const definitions = await loadDefinitionsRaw(guildInternalId, db);
   const targetId = toInt(achievementId, 0, { min: 0 });
@@ -2194,6 +2256,12 @@ export const syncAchievementFromDiscord = async ({ guildId, achievementId }) => 
     throw new Error("achievement_role_required");
   }
 
+  report({
+    phase: "loading_members",
+    achievementTitle: definition.title || null,
+    percent: 1
+  });
+
   let scannedMembers = 0;
   let eligibleUserIds = [];
   if (eventKey === "birthday_added") {
@@ -2206,7 +2274,15 @@ export const syncAchievementFromDiscord = async ({ guildId, achievementId }) => 
     scannedMembers = eligible.length;
     eligibleUserIds = Array.from(new Set(eligible));
   } else {
-    const members = await loadDiscordGuildMembers(String(guildId));
+    const members = await loadDiscordGuildMembers(String(guildId), {
+      onPage: ({ scannedMembers: count }) => {
+        report({
+          phase: "loading_members",
+          scannedMembers: count,
+          percent: Math.min(20, 1 + Math.floor(count / 500))
+        });
+      }
+    });
     const eligible = [];
     const memberUserIds = [];
     for (const member of members) {
@@ -2256,8 +2332,17 @@ export const syncAchievementFromDiscord = async ({ guildId, achievementId }) => 
   let synced = 0;
   let unlocked = 0;
   let failed = 0;
+  let processed = 0;
 
-  await runWithConcurrency(eligibleUserIds, 4, async (userId) => {
+  report({
+    phase: "syncing",
+    scannedMembers,
+    eligibleMembers: eligibleUserIds.length,
+    processedMembers: 0,
+    percent: eligibleUserIds.length ? 21 : 100
+  });
+
+  await runWithConcurrency(eligibleUserIds, 2, async (userId) => {
     try {
       const result = await recordAchievementEvent({
         guildId: String(guildId),
@@ -2274,12 +2359,24 @@ export const syncAchievementFromDiscord = async ({ guildId, achievementId }) => 
       unlocked += toInt(result?.unlocked, 0, { min: 0 });
     } catch {
       failed += 1;
+    } finally {
+      processed += 1;
+      report({
+        phase: "syncing",
+        scannedMembers,
+        eligibleMembers: eligibleUserIds.length,
+        processedMembers: processed,
+        syncedMembers: synced,
+        unlockedMembers: unlocked,
+        failedMembers: failed
+      });
     }
   });
 
   return {
     ok: true,
     achievementId: Number(definition.id),
+    achievementTitle: definition.title || null,
     eventKey,
     scannedMembers,
     eligibleMembers: eligibleUserIds.length,
@@ -2287,4 +2384,94 @@ export const syncAchievementFromDiscord = async ({ guildId, achievementId }) => 
     unlockedMembers: unlocked,
     failedMembers: failed
   };
+};
+
+export const startAchievementSyncFromDiscord = async ({ guildId, achievementId }) => {
+  const key = String(guildId || "").trim();
+  const targetId = toInt(achievementId, 0, { min: 0 });
+  if (!key || !targetId) {
+    const error = new Error("missing_params");
+    error.status = 400;
+    throw error;
+  }
+
+  const existing = ACHIEVEMENT_SYNC_JOBS.get(key);
+  if (existing && (existing.status === "running" || existing.status === "queued")) {
+    const error = new Error("achievement_sync_in_progress");
+    error.status = 409;
+    error.expose = true;
+    error.payload = serializeAchievementSyncJob(existing);
+    throw error;
+  }
+
+  if (ACHIEVEMENT_SYNC_GLOBAL.active >= ACHIEVEMENT_SYNC_GLOBAL.max) {
+    const error = new Error("achievement_sync_busy");
+    error.status = 503;
+    error.expose = true;
+    throw error;
+  }
+
+  const job = {
+    id: `achsync_${key}_${targetId}_${Date.now()}`,
+    guildId: key,
+    achievementId: targetId,
+    achievementTitle: null,
+    status: "running",
+    phase: "loading_members",
+    percent: 1,
+    scannedMembers: 0,
+    eligibleMembers: 0,
+    processedMembers: 0,
+    syncedMembers: 0,
+    unlockedMembers: 0,
+    failedMembers: 0,
+    startedAt: new Date().toISOString(),
+    finishedAt: null,
+    error: null
+  };
+
+  ACHIEVEMENT_SYNC_JOBS.set(key, job);
+  ACHIEVEMENT_SYNC_GLOBAL.active += 1;
+
+  const applyProgress = (patch = {}) => {
+    const current = ACHIEVEMENT_SYNC_JOBS.get(key);
+    if (!current || current.id !== job.id) return;
+    Object.assign(current, patch);
+  };
+
+  void (async () => {
+    try {
+      const result = await syncAchievementFromDiscord({
+        guildId: key,
+        achievementId: targetId,
+        onProgress: applyProgress
+      });
+      applyProgress({
+        status: "done",
+        phase: "done",
+        percent: 100,
+        achievementTitle: result.achievementTitle,
+        scannedMembers: result.scannedMembers,
+        eligibleMembers: result.eligibleMembers,
+        processedMembers: result.eligibleMembers,
+        syncedMembers: result.syncedMembers,
+        unlockedMembers: result.unlockedMembers,
+        failedMembers: result.failedMembers,
+        finishedAt: new Date().toISOString(),
+        error: null
+      });
+    } catch (error) {
+      applyProgress({
+        status: "error",
+        phase: "error",
+        finishedAt: new Date().toISOString(),
+        error: String(error?.message || "achievement_sync_failed")
+      });
+    } finally {
+      ACHIEVEMENT_SYNC_GLOBAL.active = Math.max(0, ACHIEVEMENT_SYNC_GLOBAL.active - 1);
+      scheduleAchievementSyncJobCleanup(key, job.id);
+    }
+  })();
+
+  return serializeAchievementSyncJob(job);
 };

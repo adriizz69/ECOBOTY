@@ -736,6 +736,9 @@
       "manage": "Manage subscription",
       "upgradeLead": "Unlock multi-shops, full Twitch, advanced games, extended logs and more.",
       "waiver": "I request immediate service delivery and waive my right of withdrawal.",
+      "promoCode": "Promo code (optional)",
+      "promoCodePlaceholder": "SUMMER2026",
+      "promoCodeHint": "The code must match the selected billing period (monthly, 3 months, or yearly).",
       "checkout": "Upgrade to Premium",
       "checkoutStripe": "Subscribe via Stripe",
       "checkoutSuccess": "Premium subscription activated."
@@ -745,6 +748,9 @@
       "checkout": "Checkout failed",
       "portal": "Customer portal unavailable",
       "waiverRequired": "Please confirm the withdrawal waiver.",
+      "promoNotFound": "Promo code not found or inactive.",
+      "promoWrongInterval": "This promo code is not valid for this billing period.",
+      "promoIntervalMissing": "This promo code has no billing period. Recreate it in admin.",
       "cleanup": "Could not apply Free cleanup"
     }
   },

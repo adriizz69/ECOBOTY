@@ -2136,8 +2136,8 @@
           :key="achievementsPanelKey"
           :guild-id="String(route.params.id || '')"
           :is-premium="isGuildPremium"
-          :unique-max="Number(billingLimits.achievements_max ?? 5)"
-          :tiers-max="Number(billingLimits.achievement_tiers_max ?? 1)"
+          :unique-max="achievementsUniqueMax"
+          :tiers-max="achievementsTiersMax"
           :tiers-enabled="hasBillingFeature('achievements_tiers')"
           @premium-upsell="openPremiumUpsell"
         />
@@ -3494,6 +3494,16 @@ const PREMIUM_NAV_TABS = Object.freeze([
 ]);
 const showNavPremiumCrown = (tab) => !isGuildPremium.value && PREMIUM_NAV_TABS.includes(tab);
 const billingLimits = computed(() => guildBilling.value?.limits || FREE_BILLING_FALLBACK.limits);
+const achievementsUniqueMax = computed(() =>
+  isGuildPremium.value
+    ? Number(billingLimits.value.achievements_max ?? 100)
+    : Number(billingLimits.value.achievements_max ?? 5)
+);
+const achievementsTiersMax = computed(() => {
+  if (isGuildPremium.value) return null;
+  const raw = billingLimits.value.achievement_tiers_max;
+  return raw == null ? null : Number(raw);
+});
 const shopsLimitMax = computed(() => Number(billingLimits.value.shops_max ?? 1));
 const shopsLimitCurrent = computed(() => activeShops.value.length);
 const premiumShopsLimitMax = computed(() => (isGuildPremium.value ? shopsLimitMax.value : 10));
@@ -3548,6 +3558,13 @@ const openPremiumUpsell = (featureKey = "") => {
 const cleanupPending = ref(null);
 const lockedPremiumContent = ref(null);
 const achievementsPanelKey = ref(0);
+
+watch(isGuildPremium, (next, prev) => {
+  if (next && !prev) {
+    achievementsPanelKey.value += 1;
+    void loadBillingCleanup();
+  }
+});
 
 const loadGuildBilling = async () => {
   const guildId = String(route.params.id || "");

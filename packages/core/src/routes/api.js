@@ -56,7 +56,8 @@ import {
   updateAchievement,
   deleteAchievement,
   applyAchievementTemplate,
-  syncAchievementFromDiscord,
+  startAchievementSyncFromDiscord,
+  getAchievementSyncStatus,
   recordAchievementEvent
 } from "../services/achievements.js";
 import {
@@ -652,6 +653,7 @@ apiRouter.post("/guilds/:id/billing/checkout", async (req, res) => {
       payerEmail: req.user?.email || null,
       intervalKey: req.body?.interval || req.body?.intervalKey || "monthly",
       waiveRetraction: req.body?.waiveRetraction === true,
+      promotionCode: req.body?.promotionCode || req.body?.promoCode || null,
       successUrl: req.body?.successUrl,
       cancelUrl: req.body?.cancelUrl
     });
@@ -948,15 +950,27 @@ apiRouter.post("/guilds/:id/achievements/templates/:templateKey", async (req, re
   }
 });
 
+apiRouter.get("/guilds/:id/achievements/sync-status", async (req, res) => {
+  try {
+    return res.json(getAchievementSyncStatus(req.params.id));
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "achievement_sync_status_failed" });
+  }
+});
+
 apiRouter.post("/guilds/:id/achievements/:achievementId/sync", async (req, res) => {
   try {
-    const result = await syncAchievementFromDiscord({
+    const result = await startAchievementSyncFromDiscord({
       guildId: req.params.id,
       achievementId: req.params.achievementId
     });
-    return res.json(result);
+    return res.status(202).json(result);
   } catch (error) {
-    return res.status(400).json({ error: error.message || "achievement_sync_failed" });
+    const status = Number(error?.status || 400);
+    return res.status(status).json({
+      error: error.message || "achievement_sync_failed",
+      ...(error?.payload ? { sync: error.payload } : {})
+    });
   }
 });
 

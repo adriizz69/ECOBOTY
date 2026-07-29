@@ -1,5 +1,5 @@
 import { db } from "./db.js";
-import { getPlanByKey } from "./billing-catalog.js";
+import { getPlanByKey, BILLING_INTERVALS } from "./billing-catalog.js";
 import { getStripeClient, isStripeConfigured } from "./stripe-client.js";
 import {
   downgradeGuildPremium,
@@ -8,6 +8,8 @@ import {
 } from "./billing-webhook.js";
 
 const ACTIVE_STATUSES = new Set(["active", "trialing"]);
+/** Prix liste mensuel Premium (fiche tarifs) — base du brut MRR. */
+const LIST_MONTHLY_CENTS = 499;
 
 const assertStripeReady = () => {
   if (!isStripeConfigured()) {
@@ -243,6 +245,14 @@ export const createAdminPromoCode = async ({
     throw error;
   }
 
+  const normalizedInterval = String(intervalKey || "monthly").toLowerCase();
+  if (!BILLING_INTERVALS.includes(normalizedInterval)) {
+    const error = new Error("invalid_promo_interval");
+    error.status = 400;
+    error.expose = true;
+    throw error;
+  }
+
   const numericValue = Number(value);
   if (!Number.isFinite(numericValue) || numericValue <= 0) {
     const error = new Error("invalid_promo_value");
@@ -257,12 +267,13 @@ export const createAdminPromoCode = async ({
     duration: "once",
     metadata: {
       ecoboty_plan_key: "premium",
-      ecoboty_interval: String(intervalKey || "monthly")
+      ecoboty_interval: normalizedInterval
     }
   };
 
   if (discountType === "amount") {
-    couponParams.amount_off = Math.round(numericValue);
+    // UI saisit des euros ; Stripe amount_off est en centimes.
+    couponParams.amount_off = Math.round(numericValue * 100);
     couponParams.currency = "eur";
   } else {
     couponParams.percent_off = Math.min(100, Math.round(numericValue));
@@ -283,7 +294,7 @@ export const createAdminPromoCode = async ({
     code: normalizedCode,
     metadata: {
       ecoboty_plan_key: "premium",
-      ecoboty_interval: String(intervalKey || "monthly"),
+      ecoboty_interval: normalizedInterval,
       ecoboty_label: String(label || normalizedCode)
     },
     max_redemptions: maxRedemptions ? Math.max(1, Math.trunc(Number(maxRedemptions))) : undefined,
@@ -340,9 +351,26 @@ const getInvoiceSubtotalCents = (invoice) => {
 const getDiscountSummary = (subscription, invoice, currency = "eur") => {
   const discountAmounts = Array.isArray(invoice?.total_discount_amounts) ? invoice.total_discount_amounts : [];
   const discountCycleCents = discountAmounts.reduce((sum, row) => sum + Number(row?.amount || 0), 0);
-  const subscriptionDiscount = subscription?.discount || null;
-  const coupon = subscriptionDiscount?.coupon || null;
-  const promotionCode = subscriptionDiscount?.promotion_code || null;
+
+  const discountObjects = [];
+  if (Array.isArray(subscription?.discounts)) {
+    for (const entry of subscription.discounts) {
+      if (entry && typeof entry === "object") discountObjects.push(entry);
+    }
+  }
+  if (subscription?.discount && typeof subscription.discount === "object") {
+    discountObjects.push(subscription.discount);
+  }
+
+  let coupon = null;
+  let promotionCode = null;
+  for (const discount of discountObjects) {
+    const nextCoupon = discount?.coupon;
+    if (nextCoupon && typeof nextCoupon === "object") coupon = nextCoupon;
+    const nextPromo = discount?.promotion_code;
+    if (nextPromo) promotionCode = nextPromo;
+  }
+
   const percentOff = coupon?.percent_off != null ? Number(coupon.percent_off) : null;
   const amountOff = coupon?.amount_off != null ? Number(coupon.amount_off) : null;
   const code =
@@ -354,13 +382,31 @@ const getDiscountSummary = (subscription, invoice, currency = "eur") => {
   let valueLabel = "—";
   if (percentOff != null) valueLabel = `${percentOff}%`;
   else if (amountOff != null) valueLabel = formatMoney(amountOff, coupon?.currency || currency);
+
   return {
     discountCycleCents,
     promoCode: code,
     promoLabel: coupon?.name || code || null,
-    promoValueLabel: discountCycleCents > 0 ? valueLabel : "—",
-    hasDiscount: discountCycleCents > 0
+    promoValueLabel: discountCycleCents > 0 || percentOff != null || amountOff != null ? valueLabel : "—",
+    hasDiscount: discountCycleCents > 0 || percentOff != null || amountOff != null,
+    coupon,
+    percentOff,
+    amountOff,
+    couponDuration: coupon?.duration || null
   };
+};
+
+const computeCouponCycleCents = ({ coupon, catalogCycleCents }) => {
+  if (!coupon) return 0;
+  const percentOff = coupon.percent_off != null ? Number(coupon.percent_off) : null;
+  if (percentOff != null && Number.isFinite(percentOff)) {
+    return Math.round((Number(catalogCycleCents || 0) * percentOff) / 100);
+  }
+  const amountOff = coupon.amount_off != null ? Number(coupon.amount_off) : null;
+  if (amountOff != null && Number.isFinite(amountOff)) {
+    return Math.min(Number(catalogCycleCents || 0), Math.max(0, amountOff));
+  }
+  return 0;
 };
 
 const resolveChargeBalanceTransaction = async (stripe, charge) => {
@@ -382,6 +428,7 @@ const resolveSubscriptionMetrics = async (stripeSubscriptionId, fallbackInterval
     expand: [
       "discount.coupon",
       "discount.promotion_code",
+      "discounts",
       "items.data.price",
       "latest_invoice.charge",
       "latest_invoice.payment_intent"
@@ -418,15 +465,38 @@ const resolveSubscriptionMetrics = async (stripeSubscriptionId, fallbackInterval
   }
 
   const balanceTransaction = await resolveChargeBalanceTransaction(stripe, charge);
-  const currency = String(latestInvoice?.currency || charge?.currency || "eur").toLowerCase();
+  const currency = String(
+    subscription?.items?.data?.[0]?.price?.currency || latestInvoice?.currency || charge?.currency || "eur"
+  ).toLowerCase();
+
+  const price = subscription?.items?.data?.[0]?.price || null;
+  const recurring = price?.recurring || null;
   const intervalMonths = getIntervalMonths({
     intervalKey: fallbackIntervalKey,
-    recurring: subscription?.items?.data?.[0]?.price?.recurring || null
+    recurring
   });
-  const grossCycleCents = getInvoiceSubtotalCents(latestInvoice);
-  const netCycleBeforeFeesCents = getInvoiceNetBeforeTaxCents(latestInvoice);
+
+  // Prix catalogue du cycle (mensuel 4,99 / 3 mois 13,47 / annuel 47,90), hors coupon.
+  const catalogCycleCents = Number(price?.unit_amount ?? getInvoiceSubtotalCents(latestInvoice) ?? 0);
+  const catalogMrrCents = annualizeToMonthlyCents(catalogCycleCents, intervalMonths);
+  const listMrrCents = LIST_MONTHLY_CENTS;
+  const planDiscountMrrCents = Math.max(0, listMrrCents - catalogMrrCents);
+
   const discount = getDiscountSummary(subscription, latestInvoice, currency);
+  // Remise promo : active sur l'abo, sinon dernière facture (coupon duration once).
+  let couponCycleCents = computeCouponCycleCents({
+    coupon: discount.coupon,
+    catalogCycleCents
+  });
+  if (!couponCycleCents && discount.discountCycleCents > 0) {
+    couponCycleCents = discount.discountCycleCents;
+  }
+  const couponDiscountMrrCents = annualizeToMonthlyCents(couponCycleCents, intervalMonths);
+  const totalDiscountMrrCents = planDiscountMrrCents + couponDiscountMrrCents;
+  const netMrrCents = Math.max(0, catalogMrrCents - couponDiscountMrrCents);
+
   const stripeFeeCycleCents = Number(balanceTransaction?.fee || 0);
+  const stripeFeeMrrCents = annualizeToMonthlyCents(stripeFeeCycleCents, intervalMonths);
 
   return {
     subscription,
@@ -434,21 +504,24 @@ const resolveSubscriptionMetrics = async (stripeSubscriptionId, fallbackInterval
     charge,
     currency,
     intervalMonths,
-    grossCycleCents,
-    netCycleBeforeFeesCents,
-    discountCycleCents: discount.discountCycleCents,
+    catalogCycleCents,
+    grossCycleCents: catalogCycleCents,
+    netCycleBeforeFeesCents: Math.max(0, catalogCycleCents - couponCycleCents),
+    discountCycleCents: couponCycleCents,
     stripeFeeCycleCents,
-    grossMrrCents: annualizeToMonthlyCents(grossCycleCents, intervalMonths),
-    discountMrrCents: annualizeToMonthlyCents(discount.discountCycleCents, intervalMonths),
-    netMrrCents: annualizeToMonthlyCents(netCycleBeforeFeesCents, intervalMonths),
-    stripeFeeMrrCents: annualizeToMonthlyCents(stripeFeeCycleCents, intervalMonths),
-    netAfterFeesMrrCents:
-      annualizeToMonthlyCents(netCycleBeforeFeesCents, intervalMonths) -
-      annualizeToMonthlyCents(stripeFeeCycleCents, intervalMonths),
+    // Brut = prix liste mensualisé (4,99 €), pas le prix déjà remisé 3 mois / 1 an.
+    grossMrrCents: listMrrCents,
+    planDiscountMrrCents,
+    couponDiscountMrrCents,
+    discountMrrCents: totalDiscountMrrCents,
+    catalogMrrCents,
+    netMrrCents,
+    stripeFeeMrrCents,
+    netAfterFeesMrrCents: Math.max(0, netMrrCents - stripeFeeMrrCents),
     promoCode: discount.promoCode,
     promoLabel: discount.promoLabel,
     promoValueLabel: discount.promoValueLabel,
-    hasDiscount: discount.hasDiscount
+    hasDiscount: totalDiscountMrrCents > 0
   };
 };
 

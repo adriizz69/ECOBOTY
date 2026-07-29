@@ -43,13 +43,17 @@
         <!-- Vue d'ensemble -->
         <template v-if="activeTab === 'overview'">
           <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <UPageCard title="MRR estimé net" variant="subtle">
+            <UPageCard title="MRR estimé net" description="Prix catalogue mensualisé − codes promo actifs" variant="subtle">
               <p class="text-3xl font-semibold">{{ dashboard?.mrrLabel || "—" }}</p>
             </UPageCard>
-            <UPageCard title="Brut mensualisé" variant="subtle">
+            <UPageCard title="Brut mensualisé" description="Prix liste 4,99 € × abonnements actifs" variant="subtle">
               <p class="text-3xl font-semibold">{{ dashboard?.grossMrrLabel || "—" }}</p>
             </UPageCard>
-            <UPageCard title="Remises mensualisées" variant="subtle">
+            <UPageCard
+              title="Remises mensualisées"
+              description="Remises catalogue (−10% / −20%) + codes promo"
+              variant="subtle"
+            >
               <p class="text-3xl font-semibold text-warning">-{{ dashboard?.discountMrrLabel || "—" }}</p>
             </UPageCard>
             <UPageCard title="Frais Stripe mensualisés" variant="subtle">
@@ -139,7 +143,11 @@
 
         <!-- Codes promo -->
         <template v-else-if="activeTab === 'promo'">
-          <UPageCard title="Codes promo" description="Coupons Stripe pour l’abonnement Premium EcoBoty." variant="subtle">
+          <UPageCard
+            title="Codes promo"
+            description="Chaque code est limité à une périodicité (mensuel, 3 mois ou annuel). Saisi côté EcoBoty au checkout — pas dans le champ Stripe libre."
+            variant="subtle"
+          >
             <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
               <UFormField label="Code">
                 <UInput v-model="promoForm.code" placeholder="ETE2026" />

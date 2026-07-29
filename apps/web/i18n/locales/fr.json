@@ -743,6 +743,9 @@
       "manage": "Gérer l’abonnement",
       "upgradeLead": "Débloque multi-boutiques, Twitch complet, jeux avancés, logs étendus et plus.",
       "waiver": "Je demande l’exécution immédiate du service et renonce à mon droit de rétractation.",
+      "promoCode": "Code promo (optionnel)",
+      "promoCodePlaceholder": "ETE2026",
+      "promoCodeHint": "Le code doit correspondre à la période choisie (mensuel, 3 mois ou annuel).",
       "checkout": "Passer Premium",
       "checkoutStripe": "Souscrire via Stripe",
       "checkoutSuccess": "Abonnement Premium activé."
@@ -752,6 +755,9 @@
       "checkout": "Checkout impossible",
       "portal": "Portail client indisponible",
       "waiverRequired": "Confirme la renonciation au droit de rétractation.",
+      "promoNotFound": "Code promo introuvable ou inactif.",
+      "promoWrongInterval": "Ce code promo n’est pas valable pour cette période de facturation.",
+      "promoIntervalMissing": "Ce code promo n’a pas de période associée. Recrée-le dans l’admin.",
       "cleanup": "Impossible d’appliquer le nettoyage Free"
     }
   },

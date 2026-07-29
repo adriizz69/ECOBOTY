@@ -89,12 +89,67 @@ export const getOrCreateBillingAccount = async ({
   return db("billing_accounts").where({ id }).first();
 };
 
+const normalizePromoCodeInput = (value) =>
+  String(value || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9_-]/g, "");
+
+/**
+ * Resolve an active Stripe promotion code and enforce ecoboty_interval metadata
+ * so a monthly promo cannot be redeemed on quarterly/yearly (and vice versa).
+ */
+export const resolvePromotionCodeForInterval = async (promoCodeInput, intervalKey) => {
+  const code = normalizePromoCodeInput(promoCodeInput);
+  if (!code) return null;
+
+  const interval = String(intervalKey || "monthly").toLowerCase();
+  const stripe = getStripeClient();
+  const listed = await stripe.promotionCodes.list({
+    code,
+    active: true,
+    limit: 1,
+    expand: ["data.coupon"]
+  });
+  const promotionCode = listed?.data?.[0] || null;
+  if (!promotionCode?.id) {
+    const error = new Error("promo_code_not_found");
+    error.status = 400;
+    error.expose = true;
+    throw error;
+  }
+
+  const allowedInterval = String(
+    promotionCode.metadata?.ecoboty_interval || promotionCode.coupon?.metadata?.ecoboty_interval || ""
+  )
+    .trim()
+    .toLowerCase();
+
+  if (!allowedInterval || !BILLING_INTERVALS.includes(allowedInterval)) {
+    const error = new Error("promo_code_interval_missing");
+    error.status = 400;
+    error.expose = true;
+    throw error;
+  }
+
+  if (allowedInterval !== interval) {
+    const error = new Error("promo_code_wrong_interval");
+    error.status = 400;
+    error.expose = true;
+    error.payload = { allowedInterval, interval };
+    throw error;
+  }
+
+  return promotionCode;
+};
+
 export const createGuildCheckoutSession = async ({
   guildDiscordId,
   payerDiscordId,
   payerEmail = null,
   intervalKey = "monthly",
   waiveRetraction = false,
+  promotionCode = null,
   successUrl,
   cancelUrl
 }) => {
@@ -148,7 +203,9 @@ export const createGuildCheckoutSession = async ({
   const baseUrl = String(process.env.BASE_URL || "http://localhost:4000").replace(/\/$/, "");
   await ensureStripePriceProductTaxCode(priceId);
   const zeroVatTaxRate = await ensureZeroVatTaxRate();
-  const session = await stripe.checkout.sessions.create({
+  const resolvedPromo = await resolvePromotionCodeForInterval(promotionCode, interval);
+
+  const sessionParams = {
     mode: "subscription",
     customer: account.stripe_customer_id,
     line_items: [{ price: priceId, quantity: 1 }],
@@ -157,14 +214,17 @@ export const createGuildCheckoutSession = async ({
     success_url: successUrl || `${baseUrl}/guild/${guildId}?tab=billing&billing=success`,
     cancel_url: cancelUrl || `${baseUrl}/guild/${guildId}?tab=billing&billing=cancel`,
     client_reference_id: guildId,
-    allow_promotion_codes: true,
+    // Codes promo saisis côté EcoBoty uniquement (contrôle de périodicité).
+    allow_promotion_codes: false,
     metadata: {
       ecoboty_plan_key: "premium",
       ecoboty_price_key: `premium_${interval}`,
       ecoboty_entity_type: "guild",
       ecoboty_entity_id: guildId,
       ecoboty_guild_name: guildName,
-      ecoboty_payer_discord_id: String(payerDiscordId || "")
+      ecoboty_payer_discord_id: String(payerDiscordId || ""),
+      ecoboty_interval: interval,
+      ...(resolvedPromo?.code ? { ecoboty_promo_code: resolvedPromo.code } : {})
     },
     subscription_data: {
       description: subscriptionLabel,
@@ -175,10 +235,17 @@ export const createGuildCheckoutSession = async ({
         ecoboty_price_key: `premium_${interval}`,
         ecoboty_entity_type: "guild",
         ecoboty_entity_id: guildId,
-        ecoboty_guild_name: guildName
+        ecoboty_guild_name: guildName,
+        ecoboty_interval: interval
       }
     }
-  });
+  };
+
+  if (resolvedPromo?.id) {
+    sessionParams.discounts = [{ promotion_code: resolvedPromo.id }];
+  }
+
+  const session = await stripe.checkout.sessions.create(sessionParams);
 
   return {
     url: session.url,

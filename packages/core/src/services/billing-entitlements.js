@@ -140,12 +140,28 @@ export const getGamesPremiumPolicy = async (guildId) => {
 
 export const getAchievementsPremiumPolicy = async (guildId) => {
   const entitlements = await getGuildEntitlements(guildId);
+
+  if (entitlements.isPremium) {
+    const rawUnique = entitlements.limits.achievements_max;
+    const numericUnique = Number(rawUnique);
+    return {
+      moduleEnabled: true,
+      tiersEnabled: true,
+      badgeCustomizationEnabled: true,
+      // Premium: at least 100 uniques (fiche tarifs), even if plan row is stale in DB.
+      uniqueMax: Number.isFinite(numericUnique) && numericUnique >= 100 ? numericUnique : 100,
+      tiersMax: null
+    };
+  }
+
+  const rawTiersMax = entitlements.limits.achievement_tiers_max;
   return {
     moduleEnabled: true,
     tiersEnabled: Boolean(entitlements.features.achievements_tiers),
     badgeCustomizationEnabled: Boolean(entitlements.features.achievements_tiers),
     uniqueMax: entitlements.limits.achievements_max ?? 5,
-    tiersMax: entitlements.limits.achievement_tiers_max ?? 1
+    // null = unlimited. Only default to 1 when the key is missing (Free).
+    tiersMax: rawTiersMax === undefined ? 1 : rawTiersMax
   };
 };
 

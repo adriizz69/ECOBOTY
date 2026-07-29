@@ -90,13 +90,14 @@ export const buildDowngradeExtrasSnapshot = async (guildDiscordId) => {
   const shopsMax = shopPolicy.shopsMax ?? 1;
   const itemsMax = shopPolicy.shopItemsMax ?? 6;
   const uniqueMax = achievementPolicy.uniqueMax ?? 5;
-  const tiersMax = achievementPolicy.tiersMax ?? 1;
+  const tiersMax = achievementPolicy.tiersMax;
+  const hasTierCap = tiersMax !== null && tiersMax !== undefined;
 
   const overShops = serverShops.length > shopsMax;
   const visibleItems = shopItems.filter((item) => !item.hidden);
   const overItems = visibleItems.length > itemsMax;
   const overUnique = uniqueAchievements.length > uniqueMax;
-  const overTiers = tierAchievements.length > tiersMax;
+  const overTiers = hasTierCap && tierAchievements.length > Number(tiersMax);
   const hasUserShops = userShops.length > 0 && !shopPolicy.userShopsEnabled;
   const hasBoosters = roleBoosters.length > 0 || channelBoosters.length > 0;
   const hasAdvancedGames = !gamesPolicy.advancedModesEnabled && enabledAdvancedGames.length > 0;
@@ -126,7 +127,7 @@ export const buildDowngradeExtrasSnapshot = async (guildDiscordId) => {
       tierAchievements: overTiers
         ? tierAchievements.map((item, index) => ({
             ...item,
-            overLimit: index >= tiersMax
+            overLimit: index >= Number(tiersMax)
           }))
         : [],
       userShops: hasUserShops

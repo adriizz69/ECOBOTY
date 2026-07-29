@@ -10,7 +10,7 @@ export const applyRuntimeAchievementLocks = async (guildDiscordId, achievements 
 
   const policy = await getAchievementsPremiumPolicy(guildId);
   const uniqueMax = policy.uniqueMax ?? 5;
-  const tiersMax = policy.tiersMax ?? 1;
+  const tiersMax = policy.tiersMax;
 
   const uniqueOrdered = list
     .filter((item) => String(item.type || "") !== "tier")
@@ -21,10 +21,14 @@ export const applyRuntimeAchievementLocks = async (guildDiscordId, achievements 
 
   const lockedIds = new Set();
   uniqueOrdered.forEach((item, index) => {
-    if (uniqueMax !== null && index >= uniqueMax) lockedIds.add(Number(item.id));
+    if (uniqueMax !== null && uniqueMax !== undefined && index >= Number(uniqueMax)) {
+      lockedIds.add(Number(item.id));
+    }
   });
   tierOrdered.forEach((item, index) => {
-    if (tiersMax !== null && index >= tiersMax) lockedIds.add(Number(item.id));
+    if (tiersMax !== null && tiersMax !== undefined && index >= Number(tiersMax)) {
+      lockedIds.add(Number(item.id));
+    }
   });
 
   return list.map((item) => {
