@@ -27,6 +27,14 @@ import { updateInteractionMessageV2 } from "./discord-rest.js";
 import { scheduleShopTimeout, scheduleInteractionTimeout } from "./shop-timeout.js";
 import { resolveDisplayNames } from "./user-resolve.js";
 import { getBotSettings, getBotLanguage, localeFromLang, t } from "./i18n.js";
+import { composeGuildDmContent } from "@ecoboty/core";
+
+const buildGuildDm = (guild, lang, leadKey, body = "") =>
+  composeGuildDmContent({
+    leadTemplate: t(lang, leadKey),
+    guildName: guild?.name || "Serveur",
+    body
+  });
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, "../../../../.env") });
@@ -1115,11 +1123,16 @@ client.on(Events.InteractionCreate, async (interaction) => {
           try {
             const sellerUser = await interaction.client.users.fetch(String(sellerId));
             await sellerUser.send(
-              tr("sale.saleConfirmedDm", {
-                item: itemName,
-                buyer: interaction.user.id,
-                price: data.price
-              })
+              buildGuildDm(
+                interaction.guild,
+                lang,
+                "dm.saleLead",
+                tr("sale.saleConfirmedDm", {
+                  item: itemName,
+                  buyer: interaction.user.id,
+                  price: data.price
+                })
+              )
             );
           } catch (notifyError) {
             console.error("DM vente (seller) échouée", notifyError);
@@ -1375,12 +1388,17 @@ client.on(Events.InteractionCreate, async (interaction) => {
           try {
             const owner = await interaction.guild.fetchOwner();
             await owner.send(
-              tr("buy.ownerDm", {
-                shop: shopName,
-                buyer: interaction.user.id,
-                item: itemName,
-                price: purchase.price
-              })
+              buildGuildDm(
+                interaction.guild,
+                lang,
+                "dm.purchaseLead",
+                tr("buy.ownerDm", {
+                  shop: shopName,
+                  buyer: interaction.user.id,
+                  item: itemName,
+                  price: purchase.price
+                })
+              )
             );
           } catch (notifyError) {
             console.error("Notification achat (owner) échouée", notifyError);
@@ -1496,12 +1514,17 @@ client.on(Events.InteractionCreate, async (interaction) => {
           try {
             const owner = await interaction.guild.fetchOwner();
             await owner.send(
-              tr("lootbox.ownerDm", {
-                lootbox: lootboxInfo.name || tr("inventory.lootboxFallback"),
-                user: interaction.user.id,
-                reward: rewardName,
-                type: rewardType
-              })
+              buildGuildDm(
+                interaction.guild,
+                lang,
+                "dm.lootboxLead",
+                tr("lootbox.ownerDm", {
+                  lootbox: lootboxInfo.name || tr("inventory.lootboxFallback"),
+                  user: interaction.user.id,
+                  reward: rewardName,
+                  type: rewardType
+                })
+              )
             );
           } catch (notifyError) {
             console.error("Notification lootbox (owner) échouée", notifyError);

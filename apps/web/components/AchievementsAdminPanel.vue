@@ -54,9 +54,16 @@
           :key="tpl.key"
           class="template-card"
           type="button"
+          :class="{
+            'is-disabled': isTemplateBlocked(tpl) || Boolean(applyingTemplateKey),
+            'is-loading': applyingTemplateKey === tpl.key
+          }"
           :style="templateCardStyle(tpl)"
-          @click="applyTemplateAction(tpl.key)"
+          :disabled="isTemplateBlocked(tpl) || Boolean(applyingTemplateKey)"
+          :title="templateBlockedTitle(tpl)"
+          @click="applyTemplateAction(tpl)"
         >
+          <div v-if="isTemplateBlocked(tpl)" class="template-premium-badge">Premium</div>
           <div class="template-top">
             <div v-if="isTierTemplate(tpl)" class="template-badges">
               <span class="template-badge bronze">🏅</span>
@@ -686,6 +693,7 @@ const deletingId = ref(0);
 const togglingId = ref(0);
 const syncJob = ref(null);
 const syncPollTimer = ref(null);
+const applyingTemplateKey = ref("");
 const statusMessage = ref("");
 
 const channels = ref([]);
@@ -788,9 +796,14 @@ const channelSelectItems = computed(() => [
 ]);
 
 const typeSelectItems = computed(() => {
-  const items = [{ label: "Unique", value: "unique" }];
+  const creating = !editingId.value;
+  const uniqueLabel =
+    creating && isUniqueLimitReached.value ? "Unique (limite Free — Premium)" : "Unique";
+  const tierLabel =
+    creating && isTierLimitReached.value ? "Palier (limite Free — Premium)" : "Palier";
+  const items = [{ label: uniqueLabel, value: "unique" }];
   if (props.tiersEnabled) {
-    items.push({ label: "Palier", value: "tier" });
+    items.push({ label: tierLabel, value: "tier" });
   }
   return items;
 });
@@ -1312,6 +1325,49 @@ const lockedAchievementSections = computed(() => buildAchievementSections(locked
 
 const isTierTemplate = (tpl) => String(tpl?.payload?.type || "").trim() === "tier";
 
+const uniqueAchievementCount = computed(
+  () => (achievements.value || []).filter((item) => String(item?.type || "") !== "tier").length
+);
+const tierAchievementCount = computed(
+  () => (achievements.value || []).filter((item) => String(item?.type || "") === "tier").length
+);
+
+const isUniqueLimitReached = computed(() => {
+  const max = props.uniqueMax == null ? null : Number(props.uniqueMax);
+  return max != null && Number.isFinite(max) && uniqueAchievementCount.value >= max;
+});
+
+const isTierLimitReached = computed(() => {
+  if (!props.tiersEnabled) return true;
+  const max = props.tiersMax == null ? null : Number(props.tiersMax);
+  return max != null && Number.isFinite(max) && tierAchievementCount.value >= max;
+});
+
+const isTypeLimitReached = (type) =>
+  String(type || "") === "tier" ? isTierLimitReached.value : isUniqueLimitReached.value;
+
+const isTemplateBlocked = (tpl) => isTypeLimitReached(isTierTemplate(tpl) ? "tier" : "unique");
+
+const templateBlockedTitle = (tpl) => {
+  if (!isTemplateBlocked(tpl)) return "";
+  return isTierTemplate(tpl)
+    ? "Limite Free atteinte pour les succes a paliers — passe Premium"
+    : "Limite Free atteinte pour les succes uniques — passe Premium";
+};
+
+const promptPremiumForLimit = (type = "unique") => {
+  statusMessage.value =
+    String(type || "") === "tier"
+      ? "Limite Free atteinte pour les succes a paliers. Passe Premium pour en creer plus."
+      : "Limite Free atteinte pour les succes uniques. Passe Premium pour en creer plus.";
+  emit("premium-upsell", String(type || "") === "tier" ? "achievements_tiers" : "achievements_base");
+};
+
+const isPremiumLimitError = (data) => {
+  const error = String(data?.error || data?.reason || "");
+  return error === "premium_limit_reached" || error === "premium_feature_disabled";
+};
+
 const templateKindLabel = (tpl) => (isTierTemplate(tpl) ? "Succes a paliers" : "Succes unique");
 
 const templateTitle = (tpl) => {
@@ -1522,22 +1578,17 @@ const saveSettingsAction = async () => {
 };
 
 const openCreate = () => {
-  const uniqueCount = achievements.value.filter((item) => String(item.type || "") !== "tier").length;
-  const tierCount = achievements.value.filter((item) => String(item.type || "") === "tier").length;
-  const uniqueMax = props.uniqueMax == null ? null : Number(props.uniqueMax);
-  const tiersMax = props.tiersMax == null ? null : Number(props.tiersMax);
-  const uniqueFull = uniqueMax != null && Number.isFinite(uniqueMax) && uniqueCount >= uniqueMax;
-  const tiersFull =
-    !props.tiersEnabled || (tiersMax != null && Number.isFinite(tiersMax) && tierCount >= tiersMax);
-  if (uniqueFull && tiersFull) {
-    emit("premium-upsell");
+  if (isUniqueLimitReached.value && isTierLimitReached.value) {
+    promptPremiumForLimit("unique");
     return;
   }
   showCloseConfirm.value = false;
   editingId.value = 0;
   resetForm();
-  if (uniqueFull && props.tiersEnabled && !tiersFull) {
+  if (isUniqueLimitReached.value && props.tiersEnabled && !isTierLimitReached.value) {
     form.type = "tier";
+  } else if (isTierLimitReached.value && !isUniqueLimitReached.value) {
+    form.type = "unique";
   }
   resetTierPanels(form.tiers);
   setEditorSnapshot(buildPayload());
@@ -1588,6 +1639,10 @@ const saveAchievementAction = async () => {
     statusMessage.value = "Selectionne le role cible pour l'evenement role recu.";
     return;
   }
+  if (!editingId.value && isTypeLimitReached(payload.type)) {
+    promptPremiumForLimit(payload.type);
+    return;
+  }
   savingAchievement.value = true;
   statusMessage.value = "";
   const url = editingId.value
@@ -1601,6 +1656,10 @@ const saveAchievementAction = async () => {
   });
   savingAchievement.value = false;
   if (!res?.ok) {
+    if (isPremiumLimitError(res?.data)) {
+      promptPremiumForLimit(payload.type);
+      return;
+    }
     statusMessage.value = "Echec de sauvegarde du succes.";
     return;
   }
@@ -1687,14 +1746,40 @@ const deleteAchievementAction = async (item) => {
   await loadConfig();
 };
 
-const applyTemplateAction = async (templateKey) => {
+const applyTemplateAction = async (tplOrKey) => {
+  const tpl =
+    typeof tplOrKey === "object" && tplOrKey
+      ? tplOrKey
+      : (templates.value || []).find((row) => row.key === tplOrKey);
+  const templateKey = String(tpl?.key || tplOrKey || "").trim();
+  if (!templateKey) return;
+  if (applyingTemplateKey.value) return;
+
+  const type = isTierTemplate(tpl) ? "tier" : "unique";
+  if (isTypeLimitReached(type)) {
+    promptPremiumForLimit(type);
+    return;
+  }
+
+  applyingTemplateKey.value = templateKey;
+  statusMessage.value = "";
   const res = await fetchJson(
     `${config.public.apiBase}/api/guilds/${props.guildId}/achievements/templates/${templateKey}`,
     {
       method: "POST"
     }
   );
-  statusMessage.value = res?.ok ? "Template ajoute." : "Echec d'ajout du template.";
+  applyingTemplateKey.value = "";
+  if (!res?.ok) {
+    if (isPremiumLimitError(res?.data)) {
+      promptPremiumForLimit(type);
+      await loadConfig();
+      return;
+    }
+    statusMessage.value = "Echec d'ajout du template.";
+    return;
+  }
+  statusMessage.value = "Template ajoute.";
   await loadConfig();
 };
 
@@ -1715,7 +1800,12 @@ watch(
 
 watch(
   () => form.type,
-  (value) => {
+  (value, previous) => {
+    if (!editingId.value && isTypeLimitReached(value)) {
+      promptPremiumForLimit(value);
+      form.type = previous === "tier" || previous === "unique" ? previous : isUniqueLimitReached.value ? "tier" : "unique";
+      return;
+    }
     const allowed = availableEvents.value.map((event) => event.key);
     if (!allowed.includes(form.eventKey)) {
       form.eventKey = allowed[0] || "";
@@ -2247,12 +2337,43 @@ textarea:focus {
   gap: 10px;
   cursor: pointer;
   min-height: 190px;
-  transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+  position: relative;
+  transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
 }
 .template-card:hover {
   border-color: rgba(96, 165, 250, 0.62);
   transform: translateY(-2px);
   box-shadow: 0 16px 30px rgba(2, 6, 23, 0.45);
+}
+.template-card.is-disabled,
+.template-card:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+.template-card.is-disabled:hover,
+.template-card:disabled:hover {
+  border-color: rgba(148, 163, 184, 0.28);
+  transform: none;
+  box-shadow: none;
+}
+.template-card.is-loading {
+  opacity: 0.7;
+  cursor: wait;
+}
+.template-premium-badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 1;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #fef3c7;
+  background: linear-gradient(135deg, #b45309, #ca8a04);
 }
 .template-top {
   display: flex;

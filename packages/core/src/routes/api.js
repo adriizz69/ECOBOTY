@@ -928,7 +928,11 @@ apiRouter.post("/guilds/:id/achievements", async (req, res) => {
     const achievement = await createAchievement(req.params.id, req.body || {});
     return res.json({ achievement });
   } catch (error) {
-    return res.status(400).json({ error: error.message || "achievement_create_failed" });
+    const status = Number(error?.status || 400);
+    return res.status(status).json({
+      error: error.message || "achievement_create_failed",
+      ...(error?.payload || {})
+    });
   }
 });
 
@@ -937,7 +941,11 @@ apiRouter.put("/guilds/:id/achievements/:achievementId", async (req, res) => {
     const achievement = await updateAchievement(req.params.id, req.params.achievementId, req.body || {});
     return res.json({ achievement });
   } catch (error) {
-    return res.status(400).json({ error: error.message || "achievement_update_failed" });
+    const status = Number(error?.status || 400);
+    return res.status(status).json({
+      error: error.message || "achievement_update_failed",
+      ...(error?.payload || {})
+    });
   }
 });
 
@@ -946,7 +954,11 @@ apiRouter.post("/guilds/:id/achievements/templates/:templateKey", async (req, re
     const achievement = await applyAchievementTemplate(req.params.id, req.params.templateKey);
     return res.json({ achievement });
   } catch (error) {
-    return res.status(400).json({ error: error.message || "achievement_template_failed" });
+    const status = Number(error?.status || 400);
+    return res.status(status).json({
+      error: error.message || "achievement_template_failed",
+      ...(error?.payload || {})
+    });
   }
 });
 

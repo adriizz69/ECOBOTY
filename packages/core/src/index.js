@@ -7,3 +7,8 @@ export { getGuildEntitlements, isGuildFeatureEnabled } from "./services/billing-
 export { startBillingCleanupScheduler } from "./services/billing-cleanup.js";
 export { setBotGuildIdsProvider } from "./services/admin.js";
 export { handleInfoMessageDeleted } from "./services/infoMessage.js";
+export {
+  resolveGuildDisplayName,
+  formatGuildDmLead,
+  composeGuildDmContent
+} from "./services/discord-dm.js";

@@ -24,6 +24,11 @@ const dictionaries = {
       botDisabledReason: "Le bot est désactivé sur ce serveur. Raison : {reason}",
       noData: "Aucune donnée."
     },
+    dm: {
+      saleLead: "Tu as une vente sur le serveur {guild}",
+      purchaseLead: "Achat effectué sur le serveur {guild}",
+      lootboxLead: "Lootbox ouverte sur le serveur {guild}"
+    },
     commands: {
       addMoneyNotImplemented: "Add money: fonctionnalité à implémenter.",
       giveMoneyAdminOnly: "Seuls les administrateurs peuvent utiliser cette commande.",
@@ -291,6 +296,11 @@ const dictionaries = {
       botDisabled: "The bot is disabled on this server.",
       botDisabledReason: "The bot is disabled on this server. Reason: {reason}",
       noData: "No data."
+    },
+    dm: {
+      saleLead: "You have a sale on {guild}",
+      purchaseLead: "Purchase on {guild}",
+      lootboxLead: "Lootbox opened on {guild}"
     },
     commands: {
       addMoneyNotImplemented: "Add money: feature not implemented.",
@@ -560,6 +570,11 @@ const dictionaries = {
       botDisabledReason: "El bot está desactivado en este servidor. Motivo: {reason}",
       noData: "Sin datos."
    },
+    dm: {
+      saleLead: "Tienes una venta en el servidor {guild}",
+      purchaseLead: "Compra en el servidor {guild}",
+      lootboxLead: "Lootbox abierta en el servidor {guild}"
+    },
     commands: {
       addMoneyNotImplemented: "Add money: funcionalidad no implementada.",
       giveMoneyAdminOnly: "Solo los administradores pueden usar este comando.",

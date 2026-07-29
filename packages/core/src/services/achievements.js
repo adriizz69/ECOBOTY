@@ -20,11 +20,20 @@ import {
   applyRuntimeAchievementLocks,
   getRuntimeLockedAchievementIds
 } from "./billing-runtime-locks.js";
+import {
+  composeGuildDmContent,
+  resolveGuildDisplayName
+} from "./discord-dm.js";
 
 const assertAchievementLimits = async (guildId, { type, excludeId = null } = {}, trx = db) => {
   const policy = await getAchievementsPremiumPolicy(guildId);
   const guildInternalId = await getGuildInternalId(guildId, trx);
-  const rows = await trx(TABLES.definitions).where({ guild_id: guildInternalId });
+  // Serialize concurrent creates (rapid template clicks) so Free limits cannot be bypassed.
+  let query = trx(TABLES.definitions).where({ guild_id: guildInternalId });
+  if (typeof query.forUpdate === "function") {
+    query = query.forUpdate();
+  }
+  const rows = await query;
   const filtered = rows.filter((row) => Number(row.id) !== Number(excludeId || 0));
   const uniqueCount = filtered.filter((row) => String(row.type || "") !== "tier").length;
   const tierCount = filtered.filter((row) => String(row.type || "") === "tier").length;
@@ -282,21 +291,27 @@ const CARD_TEXT_I18N = {
     tier: "Palier",
     completion: "Palier final",
     roleWord: "role(s)",
-    noReward: "Aucune recompense"
+    noReward: "Aucune recompense",
+    dmUnlockLead: "Tu as reçu un succès sur le serveur {guild}",
+    dmProgressLead: "Progression de succès sur le serveur {guild}"
   },
   en: {
     unlocked: "ACHIEVEMENT UNLOCKED!",
     tier: "Tier",
     completion: "Completion",
     roleWord: "role(s)",
-    noReward: "No reward"
+    noReward: "No reward",
+    dmUnlockLead: "You received an achievement on {guild}",
+    dmProgressLead: "Achievement progress on {guild}"
   },
   es: {
     unlocked: "¡LOGRO DESBLOQUEADO!",
     tier: "Nivel",
     completion: "Nivel final",
     roleWord: "rol(es)",
-    noReward: "Sin recompensa"
+    noReward: "Sin recompensa",
+    dmUnlockLead: "Has recibido un logro en el servidor {guild}",
+    dmProgressLead: "Progreso de logro en el servidor {guild}"
   }
 };
 
@@ -1608,10 +1623,16 @@ const renderCardFile = async (payload) => {
   };
 };
 
-const sendProgressDm = async ({ userId, title, percent }) => {
+const sendProgressDm = async ({ guildId, userId, title, percent, localeTexts }) => {
+  const guildName = (await resolveGuildDisplayName(guildId)) || "Serveur";
   const dmChannelId = await createDmChannel(userId);
   if (!dmChannelId) return false;
-  const content = `🎯 Progression succes: **${title}** (${percent}%)`;
+  const leadTemplate = localeTexts?.dmProgressLead || CARD_TEXT_I18N.fr.dmProgressLead;
+  const content = composeGuildDmContent({
+    leadTemplate,
+    guildName,
+    body: `🎯 **${title}** (${percent}%)`
+  });
   const result = await sendDiscordMessage({ channelId: dmChannelId, content });
   return Boolean(result.ok);
 };
@@ -1629,8 +1650,10 @@ const sendUnlockNotifications = async ({
   announceChannelId,
   notifyDm,
   currencyIconDataUri = "",
-  hasCurrencyReward = false
+  hasCurrencyReward = false,
+  localeTexts = null
 }) => {
+  const guildName = (await resolveGuildDisplayName(guildId)) || "Serveur";
   let file = null;
   try {
     const badgeIconVisual = await resolveBadgeIconVisual(badge?.icon);
@@ -1656,9 +1679,11 @@ const sendUnlockNotifications = async ({
   if (notifyDm) {
     const dmChannelId = await createDmChannel(userId);
     if (dmChannelId) {
+      const leadTemplate = localeTexts?.dmUnlockLead || CARD_TEXT_I18N.fr.dmUnlockLead;
+      const dmContent = composeGuildDmContent({ leadTemplate, guildName });
       const dmResult = await sendDiscordMessage({
         channelId: dmChannelId,
-        content: "",
+        content: dmContent,
         file
       });
       dmOk = Boolean(dmResult.ok);
@@ -1945,9 +1970,11 @@ export const recordAchievementEvent = async ({
   for (const action of progressActions) {
     try {
       await sendProgressDm({
+        guildId,
         userId: userKey,
         title: action.title,
-        percent: action.percent
+        percent: action.percent,
+        localeTexts: cardLocale
       });
     } catch {
       // ignore DM failures
@@ -1983,7 +2010,8 @@ export const recordAchievementEvent = async ({
       announceChannelId: settings.announceChannelId,
       notifyDm: action.tier?.notify?.unlockEnabled ?? action.definition.notify.unlockEnabled,
       currencyIconDataUri: hasCurrencyReward ? currencyVisual.imageDataUri : "",
-      hasCurrencyReward
+      hasCurrencyReward,
+      localeTexts: cardLocale
     });
     await setProgressFlags(action.progressId, {
       unlock_notified: notifications.dmOk,
