@@ -105,87 +105,41 @@
             <div class="account-name">{{ me?.username || $t("account.notConnected") }}</div>
           </div>
         </div>
-        <div v-if="isLoggedIn && managedServers.length" class="server-switcher">
-          <div class="server-label">{{ $t("server.label") }}</div>
-          <ClientOnly>
-            <USelectMenu
-              v-model="selectedServerId"
-              :items="serverSelectOptions"
-              label-key="label"
-              value-key="value"
-              :search-input="{ placeholder: $t('server.searchPlaceholder') }"
-              class="w-full"
-            />
-          </ClientOnly>
-        </div>
-        <div v-else-if="selectedGuild" class="server">
-          <div class="server-label">{{ $t("server.label") }}</div>
-          <div class="server-name">
-            {{ selectedGuild?.name || selectedGuild?.id || $t("server.none") }}
-          </div>
-        </div>
-        <div class="locale-row">
-          <div class="locale">
-            <div class="sr-only">{{ $t("language.label") }}</div>
-            <ClientOnly>
-              <USelectMenu
-                v-model="selectedLocale"
-                :items="localeOptions"
-                label-key="label"
-                value-key="value"
-                :searchable="false"
-                :popper="{ placement: 'top-start' }"
-                size="sm"
-                class="locale-select-menu"
-              >
-                <template #default>
-                  <div class="locale-selected">
-                    <img :src="selectedLocaleItem?.flag" :alt="selectedLocaleItem?.label" class="locale-flag" />
-                    <span>{{ selectedLocaleItem?.label }}</span>
-                  </div>
-                </template>
-                <template #item-leading="{ item }">
-                  <img :src="item.flag" :alt="item.label" class="locale-flag" />
-                </template>
-                <template #item="{ item }">
-                  <div class="locale-option">
-                    <span>{{ item.label }}</span>
-                  </div>
-                </template>
-              </USelectMenu>
-            </ClientOnly>
-          </div>
-          <div v-if="!disableLightMode" class="theme-toggle">
-            <div class="sr-only">{{ $t("theme.label") }}</div>
-            <ClientOnly>
-              <UColorModeSelect size="sm" />
-            </ClientOnly>
-          </div>
-        </div>
+        <NuxtLink v-if="isLoggedIn" to="/servers" class="side-link servers-shortcut">
+          <UIcon name="i-lucide-server" class="nav-icon" />
+          <span class="nav-label">{{ $t("nav.servers") }}</span>
+        </NuxtLink>
       </div>
       </div>
     </aside>
     <div class="content">
       <header class="topbar">
-        <button
-          type="button"
-          class="nav-toggle"
-          aria-label="Open menu"
-          :aria-expanded="mobileNavOpen"
-          @click="mobileNavOpen = !mobileNavOpen"
+        <AppContextBar
+          :show-menu-toggle="true"
+          :menu-open="mobileNavOpen"
+          :menu-label="$t('nav.home')"
+          brand-title="EcoBoty"
+          :brand-subtitle="$t('topbar.title')"
+          brand-to="/"
+          :is-logged-in="isLoggedIn"
+          :username="me?.username || ''"
+          :avatar-url="avatarUrl"
+          :server-options="serverSelectOptions"
+          :selected-server-id="selectedServerId"
+          :is-premium="activeServerIsPremium"
+          :show-plan="Boolean(selectedServerId)"
+          :selected-locale="selectedLocale"
+          :locale-options="localeOptions"
+          @toggle-menu="mobileNavOpen = !mobileNavOpen"
+          @login="handleLogin"
+          @plan-click="goToActiveServerBilling"
+          @update:selected-server-id="selectedServerId = $event"
+          @update:selected-locale="selectedLocale = $event"
         >
-          <UIcon name="i-lucide-menu" class="size-5" />
-        </button>
-        <div class="topbar-brand">
-          <img src="/logo.png" alt="EcoBoty" class="topbar-logo" />
-          <div>
-            <div class="topbar-title">EcoBoty</div>
-            <div class="topbar-sub">{{ $t("topbar.title") }}</div>
-          </div>
-        </div>
-        <div class="topbar-actions">
-          <UBadge color="success" variant="soft">{{ $t("topbar.online") }}</UBadge>
-        </div>
+          <template #trailing>
+            <UBadge color="success" variant="soft">{{ $t("topbar.online") }}</UBadge>
+          </template>
+        </AppContextBar>
       </header>
       <main class="main">
         <NuxtLayout>
@@ -250,7 +204,7 @@ watch(
 );
 const config = useRuntimeConfig();
 const { setToken, getToken, logout, logoutAll, login } = useAuth();
-const { locale, locales, setLocale } = useI18n();
+const { locale, locales, setLocale, t } = useI18n();
 const isLoggedIn = ref(false);
 const me = ref(null);
 const selectedGuild = ref(null);
@@ -692,11 +646,32 @@ const loadManagedServers = async () => {
 };
 
 const serverSelectOptions = computed(() =>
-  managedServers.value.map((server) => ({
-    value: String(server.id),
-    label: String(server.name || server.id)
-  }))
+  managedServers.value.map((server) => {
+    const isPremium = Boolean(server.billing?.isPremium);
+    const planLabel = isPremium ? t("billing.status.premium") : t("billing.status.free");
+    return {
+      value: String(server.id),
+      label: `${String(server.name || server.id)} · ${planLabel}`,
+      shortLabel: String(server.name || server.id),
+      isPremium
+    };
+  })
 );
+
+const activeServerIsPremium = computed(() => {
+  const id = String(selectedGuild.value?.id || "");
+  const server = managedServers.value.find((row) => String(row.id) === id);
+  return Boolean(server?.billing?.isPremium);
+});
+
+const goToActiveServerBilling = () => {
+  const guildId = String(selectedGuild.value?.id || "").trim();
+  if (!guildId) {
+    navigateTo("/servers");
+    return;
+  }
+  navigateTo(`/guild/${guildId}?tab=billing`);
+};
 
 const syncGuildFromRoute = () => {
   const match = route.path.match(/^\/(?:user\/)?guild\/([^/]+)/);
@@ -1131,50 +1106,23 @@ watch(
   gap: 20px;
 }
 .topbar {
-  background:
-    linear-gradient(120deg, rgba(45, 212, 160, 0.12), rgba(56, 189, 248, 0.08)),
-    var(--surface);
-  border: 1px solid rgba(45, 212, 160, 0.22);
-  border-radius: 20px;
-  padding: 14px 20px;
-  display: flex;
-  justify-content: flex-start;
-  align-items: center;
-  gap: 12px;
-  box-shadow: var(--shadow);
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  display: block;
+}
+.topbar :deep(.context-bar) {
+  width: 100%;
 }
 .topbar-actions {
   margin-left: auto;
 }
 :global(body.theme-light) .topbar {
-  background: var(--surface);
-  border-color: var(--border);
-  box-shadow: var(--shadow);
-}
-.topbar-brand {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.topbar-logo {
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  object-fit: cover;
-  box-shadow: 0 8px 16px rgba(45, 212, 160, 0.22);
-}
-.topbar-title {
-  font-family: var(--font-display);
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  font-size: 1.05rem;
-}
-.topbar-sub {
-  font-size: 0.78rem;
-  color: var(--text-muted);
-}
-.topbar-actions :global(.u-badge) {
-  font-weight: 700;
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
 }
 .main {
   max-width: 100%;

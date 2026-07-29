@@ -1,6 +1,30 @@
 <template>
   <ClientOnly>
     <section class="page">
+      <AppContextBar
+        v-if="!guildBan?.banned"
+        class="guild-context-bar"
+        brand-title="EcoBoty"
+        :brand-subtitle="guildDisplayName"
+        brand-to="/servers"
+        :show-menu-toggle="true"
+        :menu-open="mobileMenuOpen"
+        :menu-label="$t('adminGuild.sidebar.menu')"
+        :is-logged-in="Boolean(guildMe?.username || guildMe?.discord_id)"
+        :username="guildMe?.username || ''"
+        :avatar-url="guildMeAvatarUrl"
+        :server-options="guildServerOptions"
+        :selected-server-id="selectedGuildServerId"
+        :is-premium="isGuildPremium"
+        :selected-locale="selectedLocale"
+        :locale-options="localeOptions"
+        @toggle-menu="mobileMenuOpen = !mobileMenuOpen"
+        @login="login"
+        @plan-click="selectTab('billing')"
+        @update:selected-server-id="selectedGuildServerId = $event"
+        @update:selected-locale="selectedLocale = $event"
+      />
+
       <aside v-if="!guildBan?.banned" class="section-nav" :class="{ open: mobileMenuOpen }">
       <div class="section-head">
         <div class="section-brand">
@@ -145,85 +169,6 @@
             <span>{{ $t("landing.legalDocs") }}</span>
           </NuxtLink>
       </div>
-      </div>
-      <div class="section-account">
-        <NuxtLink to="/compte" class="account-chip account-chip-link">
-          <div
-            class="account-avatar"
-            :style="guildMeAvatarUrl ? { backgroundImage: `url(${guildMeAvatarUrl})` } : {}"
-          >
-            <UIcon v-if="!guildMeAvatarUrl" name="i-lucide-user" class="size-4" />
-          </div>
-          <div class="account-meta">
-            <div class="account-name">{{ guildMe?.username || $t("common.loading") }}</div>
-            <div class="account-sub">Discord</div>
-          </div>
-        </NuxtLink>
-
-        <div class="guild-server-switcher">
-          <span class="guild-server-label">{{ $t("adminGuild.sidebar.activeServer") }}</span>
-          <ClientOnly>
-            <USelectMenu
-              v-if="guildServerOptions.length > 0"
-              v-model="selectedGuildServerId"
-              :items="guildServerOptions"
-              label-key="label"
-              value-key="value"
-              :search-input="{ placeholder: $t('server.searchPlaceholder') }"
-              size="sm"
-              class="guild-server-select"
-            />
-            <UButton v-else color="neutral" variant="soft" size="sm" block to="/servers">
-              {{ $t("nav.servers") }}
-            </UButton>
-          </ClientOnly>
-        </div>
-
-        <button
-          class="premium-focus"
-          :class="{ 'is-premium': guildBilling?.isPremium }"
-          type="button"
-          @click="selectTab('billing')"
-        >
-          <div class="premium-focus-copy">
-            <div class="premium-focus-label">{{ $t("billing.statusLabel") }}</div>
-            <div class="premium-focus-title">
-              {{ guildBilling?.isPremium ? $t("billing.status.premium") : $t("billing.status.free") }}
-            </div>
-          </div>
-          <UIcon
-            v-if="isGuildPremium"
-            name="i-lucide-badge-check"
-            class="premium-focus-icon is-ok"
-          />
-          <UIcon
-            v-else
-            name="i-lucide-crown"
-            class="premium-focus-icon is-crown"
-          />
-        </button>
-        <ClientOnly>
-          <USelectMenu
-            v-model="selectedLocale"
-            :items="localeOptions"
-            label-key="label"
-            value-key="value"
-            :searchable="false"
-            :popper="{ placement: 'top-start' }"
-            size="sm"
-            class="guild-locale-select"
-          >
-            <template #default>
-              <div class="locale-selected">
-                <img :src="selectedLocaleItem?.flag" :alt="selectedLocaleItem?.label" class="locale-flag" />
-                <span>{{ selectedLocaleItem?.label }}</span>
-              </div>
-            </template>
-            <template #item-leading="{ item }">
-              <img :src="item.flag" :alt="item.label" class="locale-flag" />
-            </template>
-          </USelectMenu>
-        </ClientOnly>
       </div>
     </aside>
 
@@ -3416,7 +3361,9 @@ const guildServerOptions = computed(() =>
     const planLabel = isPremium ? t("billing.status.premium") : t("billing.status.free");
     return {
       value: String(server.id),
-      label: `${String(server.name || server.id)} · ${planLabel}`
+      label: `${String(server.name || server.id)} · ${planLabel}`,
+      shortLabel: String(server.name || server.id),
+      isPremium
     };
   })
 );
@@ -8322,16 +8269,23 @@ onBeforeUnmount(() => {
   box-sizing: border-box;
 }
 
+.guild-context-bar {
+  grid-column: 1 / -1;
+  position: sticky;
+  top: 12px;
+  z-index: 40;
+}
+
 /* ——— Sidebar ——— */
 .section-nav {
   position: sticky;
-  top: 88px;
+  top: 96px;
   background: linear-gradient(180deg, rgba(45, 212, 160, 0.06), transparent 28%), var(--surface);
   border: 1px solid var(--border);
   border-radius: 22px;
   box-shadow: var(--shadow);
   padding: 16px 12px;
-  max-height: calc(100vh - 110px);
+  max-height: calc(100vh - 120px);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -10121,6 +10075,11 @@ label {
     grid-template-columns: 1fr;
   }
 
+  .guild-context-bar {
+    position: sticky;
+    top: 8px;
+  }
+
   .section-nav {
     position: relative;
     top: 0;
@@ -10240,15 +10199,22 @@ label {
   box-sizing: border-box;
 }
 
+.guild-context-bar {
+  grid-column: 1 / -1;
+  position: sticky;
+  top: 12px;
+  z-index: 40;
+}
+
 .section-nav {
   position: sticky;
-  top: 20px;
+  top: 96px;
   background: linear-gradient(180deg, rgba(45, 212, 160, 0.08), transparent 32%), var(--surface);
   border: 1px solid var(--border);
   border-radius: 24px;
   box-shadow: var(--shadow);
   padding: 18px 14px;
-  max-height: calc(100vh - 40px);
+  max-height: calc(100vh - 120px);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -10518,7 +10484,7 @@ label {
   }
 
   .section-nav.open .section-account {
-    display: grid;
+    display: none;
   }
 
   .inv-layout,
