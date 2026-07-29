@@ -14,24 +14,46 @@
       aria-label="Close menu"
       @click="mobileNavOpen = false"
     />
+    <header class="topbar">
+      <AppContextBar
+        :show-menu-toggle="true"
+        :menu-open="mobileNavOpen"
+        :menu-label="$t('nav.home')"
+        :show-servers-link="isLoggedIn"
+        brand-title="EcoBoty"
+        :brand-subtitle="$t('topbar.title')"
+        brand-to="/"
+        :is-logged-in="isLoggedIn"
+        :username="me?.username || ''"
+        :avatar-url="avatarUrl"
+        :server-options="serverSelectOptions"
+        :selected-server-id="selectedServerId"
+        :is-premium="activeServerIsPremium"
+        :show-plan="Boolean(selectedServerId)"
+        :selected-locale="selectedLocale"
+        :locale-options="localeOptions"
+        @toggle-menu="mobileNavOpen = !mobileNavOpen"
+        @login="handleLogin"
+        @plan-click="goToActiveServerBilling"
+        @update:selected-server-id="selectedServerId = $event"
+        @update:selected-locale="selectedLocale = $event"
+      >
+        <template #trailing>
+          <UBadge color="success" variant="soft">{{ $t("topbar.online") }}</UBadge>
+        </template>
+      </AppContextBar>
+    </header>
     <aside class="sidebar" :class="{ open: mobileNavOpen }">
-        <div class="brand">
-          <div class="logo">
-            <img src="/logo.png" alt="ECOBOTY" />
-          </div>
-          <div>
-            <div class="title">ECOBOTY</div>
-            <div class="subtitle">{{ $t("brand.subtitle") }}</div>
-          </div>
-          <button
-            type="button"
-            class="nav-close"
-            aria-label="Close menu"
-            @click="mobileNavOpen = false"
-          >
-            <UIcon name="i-lucide-x" class="size-5" />
-          </button>
-        </div>
+      <div class="sidebar-mobile-head">
+        <button
+          type="button"
+          class="nav-close"
+          aria-label="Close menu"
+          @click="mobileNavOpen = false"
+        >
+          <UIcon name="i-lucide-x" class="size-5" />
+        </button>
+      </div>
       <div class="sidebar-body">
         <div class="sidebar-nav-scroll">
           <nav class="side-nav" @click="onNavClick">
@@ -113,35 +135,6 @@
       </div>
     </aside>
     <div class="content">
-      <header class="topbar">
-        <AppContextBar
-          :show-menu-toggle="true"
-          :menu-open="mobileNavOpen"
-          :menu-label="$t('nav.home')"
-          :show-servers-link="isLoggedIn"
-          brand-title="EcoBoty"
-          :brand-subtitle="$t('topbar.title')"
-          brand-to="/"
-          :is-logged-in="isLoggedIn"
-          :username="me?.username || ''"
-          :avatar-url="avatarUrl"
-          :server-options="serverSelectOptions"
-          :selected-server-id="selectedServerId"
-          :is-premium="activeServerIsPremium"
-          :show-plan="Boolean(selectedServerId)"
-          :selected-locale="selectedLocale"
-          :locale-options="localeOptions"
-          @toggle-menu="mobileNavOpen = !mobileNavOpen"
-          @login="handleLogin"
-          @plan-click="goToActiveServerBilling"
-          @update:selected-server-id="selectedServerId = $event"
-          @update:selected-locale="selectedLocale = $event"
-        >
-          <template #trailing>
-            <UBadge color="success" variant="soft">{{ $t("topbar.online") }}</UBadge>
-          </template>
-        </AppContextBar>
-      </header>
       <main class="main">
         <NuxtLayout>
           <NuxtPage />
@@ -855,6 +848,7 @@ watch(
   min-height: 100vh;
   display: grid;
   grid-template-columns: var(--sidebar-w, 280px) 1fr;
+  grid-template-rows: auto 1fr;
   gap: 22px;
   padding: 22px;
   background: transparent;
@@ -911,6 +905,8 @@ watch(
   gap: 8px;
 }
 .sidebar {
+  grid-column: 1;
+  grid-row: 2;
   background: color-mix(in srgb, var(--surface) 92%, transparent);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
@@ -919,10 +915,15 @@ watch(
   flex-direction: column;
   gap: 16px;
   position: sticky;
-  top: var(--shell-pad, 18px);
-  height: calc(100vh - (var(--shell-pad, 18px) * 2));
+  top: 90px;
+  height: calc(100vh - 112px);
   overflow: hidden;
   backdrop-filter: blur(12px);
+}
+.sidebar-mobile-head {
+  display: none;
+  justify-content: flex-end;
+  margin: -4px 0 4px;
 }
 .sidebar-body {
   flex: 1;
@@ -954,13 +955,7 @@ watch(
   box-shadow: var(--shadow);
 }
 .brand {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 6px 8px 16px;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 6px;
-  position: relative;
+  display: none;
 }
 .nav-toggle,
 .nav-close {
@@ -979,38 +974,11 @@ watch(
 .nav-backdrop {
   display: none;
 }
-.logo {
-  width: 52px;
-  height: 52px;
-  border-radius: 16px;
-  display: grid;
-  place-items: center;
-  background: linear-gradient(135deg, var(--accent), #38bdf8);
-  overflow: hidden;
-  box-shadow: 0 10px 24px rgba(45, 212, 160, 0.28);
-}
-.logo img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-.title {
-  font-family: var(--font-display);
-  font-weight: 800;
-  font-size: 1.15rem;
-  letter-spacing: -0.03em;
-}
-.subtitle {
-  font-size: 12px;
-  color: var(--text-muted);
-  margin-top: 2px;
-}
 .side-nav {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding-top: 8px;
+  padding-top: 0;
 }
 .admin-link {
   margin-bottom: 12px;
@@ -1102,11 +1070,19 @@ watch(
 .side-nav .side-link:nth-child(5) .nav-icon { background: rgba(248, 113, 113, 0.12); color: #f87171; }
 .side-nav .side-link:nth-child(6) .nav-icon { background: rgba(52, 211, 153, 0.14); color: #34d399; }
 .content {
+  grid-column: 2;
+  grid-row: 2;
   display: flex;
   flex-direction: column;
   gap: 20px;
+  min-width: 0;
 }
 .topbar {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  position: sticky;
+  top: 12px;
+  z-index: 40;
   padding: 0;
   background: transparent;
   border: 0;
@@ -1435,17 +1411,35 @@ watch(
 @media (max-width: 1024px) {
   .app {
     grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
     padding: 12px;
     gap: 12px;
+  }
+
+  .topbar {
+    grid-column: 1;
+    grid-row: 1;
+    position: sticky;
+    top: 8px;
+    z-index: 40;
+  }
+
+  .content {
+    grid-column: 1;
+    grid-row: 2;
+    min-width: 0;
   }
 
   .nav-toggle {
     display: inline-flex;
   }
 
+  .sidebar-mobile-head {
+    display: flex;
+  }
+
   .nav-close {
     display: inline-flex;
-    margin-left: auto;
   }
 
   .nav-backdrop {
@@ -1462,6 +1456,8 @@ watch(
   }
 
   .sidebar {
+    grid-column: auto;
+    grid-row: auto;
     position: fixed;
     top: 0;
     left: 0;
@@ -1477,17 +1473,6 @@ watch(
 
   .sidebar.open {
     transform: translateX(0);
-  }
-
-  .topbar {
-    position: sticky;
-    top: 0;
-    z-index: 30;
-    gap: 12px;
-  }
-
-  .content {
-    min-width: 0;
   }
 
   .main {

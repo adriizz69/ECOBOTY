@@ -63,26 +63,36 @@
             v-if="serverOptions.length"
             :model-value="selectedServerId"
             :items="serverOptions"
-            label-key="label"
+            label-key="shortLabel"
             value-key="value"
+            :filter-fields="['shortLabel', 'label']"
             :search-input="{ placeholder: $t('server.searchPlaceholder') }"
             size="sm"
+            color="neutral"
+            variant="ghost"
             class="context-server-select"
+            :ui="{
+              base: 'context-server-base',
+              trailingIcon: 'size-3.5 opacity-60',
+              content: 'min-w-56'
+            }"
             @update:model-value="$emit('update:selectedServerId', $event)"
           >
-            <template #default="{ modelValue, open }">
-              <button type="button" class="context-server-trigger" :class="{ open }">
-                <span class="context-server-icon">
-                  <UIcon name="i-lucide-server" class="size-4" />
-                </span>
-                <span class="context-server-name">{{ activeServerLabel }}</span>
-                <UIcon name="i-lucide-chevron-down" class="size-4 muted-ico" />
-              </button>
+            <template #leading>
+              <span class="context-server-icon">
+                <UIcon name="i-lucide-server" class="size-3.5" />
+              </span>
+            </template>
+            <template #default>
+              <span class="context-server-name">{{ activeServerLabel }}</span>
+            </template>
+            <template #item-label="{ item }">
+              <span>{{ item.label || item.shortLabel }}</span>
             </template>
           </USelectMenu>
-          <NuxtLink v-else to="/servers" class="context-server-trigger">
+          <NuxtLink v-else to="/servers" class="context-server-fallback">
             <span class="context-server-icon">
-              <UIcon name="i-lucide-server" class="size-4" />
+              <UIcon name="i-lucide-server" class="size-3.5" />
             </span>
             <span class="context-server-name">{{ $t("nav.servers") }}</span>
           </NuxtLink>
@@ -106,21 +116,29 @@
           :items="localeOptions"
           label-key="label"
           value-key="value"
-          :searchable="false"
+          :search-input="false"
+          :trailing="false"
           size="xs"
+          color="neutral"
+          variant="ghost"
           class="context-locale"
-          :ui="{ content: 'min-w-36' }"
+          :ui="{
+            base: 'context-locale-base',
+            trailing: 'hidden',
+            content: 'min-w-40'
+          }"
+          :title="selectedLocaleItem?.label || $t('language.label')"
           @update:model-value="$emit('update:selectedLocale', $event)"
         >
+          <template #leading>
+            <img
+              :src="selectedLocaleItem?.flag"
+              :alt="selectedLocaleItem?.label"
+              class="locale-flag"
+            />
+          </template>
           <template #default>
-            <button
-              type="button"
-              class="context-locale-btn"
-              :title="selectedLocaleItem?.label || $t('language.label')"
-              :aria-label="selectedLocaleItem?.label || $t('language.label')"
-            >
-              <img :src="selectedLocaleItem?.flag" :alt="selectedLocaleItem?.label" class="locale-flag" />
-            </button>
+            <span class="sr-only">{{ selectedLocaleItem?.label }}</span>
           </template>
           <template #item-leading="{ item }">
             <img :src="item.flag" :alt="item.label" class="locale-flag" />
@@ -196,7 +214,7 @@ const activeServerLabel = computed(() => {
     color-mix(in srgb, var(--ui-bg, #0f172a) 88%, #1e293b);
   box-shadow: 0 8px 20px rgba(2, 6, 23, 0.18);
   flex-wrap: nowrap;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .context-left {
@@ -283,6 +301,7 @@ const activeServerLabel = computed(() => {
   font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
+  flex: none;
 }
 
 .context-avatar {
@@ -307,11 +326,15 @@ const activeServerLabel = computed(() => {
   align-items: center;
   gap: 8px;
   min-width: 0;
+  max-width: 280px;
   height: 34px;
-  padding: 0 6px 0 10px;
+  padding: 0 4px 0 10px;
   border-radius: 10px;
   border: 1px solid color-mix(in srgb, var(--ui-border, #334155) 75%, transparent);
   background: color-mix(in srgb, var(--ui-bg, #0f172a) 72%, #1e293b);
+  flex: 0 1 auto;
+  position: relative;
+  z-index: 1;
 }
 
 .context-server-label {
@@ -321,41 +344,31 @@ const activeServerLabel = computed(() => {
   text-transform: uppercase;
   color: var(--ui-text-muted, #94a3b8);
   white-space: nowrap;
+  flex: none;
 }
 
 .context-server-select {
   min-width: 0;
+  flex: 1 1 auto;
+  max-width: 180px;
 }
 
+.context-server-select :deep(.context-server-base),
 .context-server-select :deep(button) {
-  padding: 0;
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-  min-height: auto;
-  height: auto;
-}
-
-.context-server-trigger {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
+  width: 100%;
+  min-width: 0;
   height: 28px;
+  min-height: 28px;
   padding: 0 6px 0 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  font-size: 0.82rem;
-  font-weight: 650;
-  cursor: pointer;
-  text-decoration: none;
-  max-width: 220px;
+  border: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  justify-content: flex-start;
 }
 
 .context-server-icon {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   border-radius: 7px;
   display: inline-flex;
   align-items: center;
@@ -366,15 +379,24 @@ const activeServerLabel = computed(() => {
 }
 
 .context-server-name {
+  display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
+  font-size: 0.82rem;
+  font-weight: 650;
 }
 
-.muted-ico {
-  opacity: 0.65;
-  flex: none;
+.context-server-fallback {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+  font-size: 0.82rem;
+  font-weight: 650;
 }
 
 .context-plan {
@@ -391,6 +413,7 @@ const activeServerLabel = computed(() => {
   font-weight: 700;
   white-space: nowrap;
   cursor: pointer;
+  flex: none;
 }
 
 .context-plan.is-premium {
@@ -400,36 +423,25 @@ const activeServerLabel = computed(() => {
 }
 
 .context-locale {
-  min-width: 0;
+  width: 28px;
+  min-width: 28px;
+  max-width: 28px;
   flex: none;
 }
 
+.context-locale :deep(.context-locale-base),
 .context-locale :deep(button) {
-  padding: 0;
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-  min-height: auto;
-  height: auto;
-}
-
-.context-locale-btn {
-  display: inline-flex;
-  align-items: center;
+  width: 28px !important;
+  min-width: 28px !important;
+  max-width: 28px !important;
+  height: 28px !important;
+  min-height: 28px !important;
+  padding: 0 !important;
+  border: 1px solid color-mix(in srgb, var(--ui-border, #334155) 60%, transparent) !important;
+  border-radius: 8px !important;
+  background: transparent !important;
+  box-shadow: none !important;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border-radius: 8px;
-  border: 1px solid color-mix(in srgb, var(--ui-border, #334155) 60%, transparent);
-  background: transparent;
-  cursor: pointer;
-  opacity: 0.85;
-}
-
-.context-locale-btn:hover {
-  opacity: 1;
-  background: color-mix(in srgb, var(--ui-bg, #0f172a) 50%, #1e293b);
 }
 
 .locale-flag {
@@ -437,6 +449,19 @@ const activeServerLabel = computed(() => {
   height: 14px;
   border-radius: 2px;
   object-fit: cover;
+  flex: none;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 @media (max-width: 860px) {
@@ -446,8 +471,12 @@ const activeServerLabel = computed(() => {
     display: none;
   }
 
-  .context-server-trigger {
-    max-width: 140px;
+  .context-server-wrap {
+    max-width: 160px;
+  }
+
+  .context-server-select {
+    max-width: 150px;
   }
 }
 
@@ -469,10 +498,7 @@ const activeServerLabel = computed(() => {
 
   .context-server-wrap {
     padding: 0 4px;
-  }
-
-  .context-server-name {
-    max-width: 90px;
+    max-width: 120px;
   }
 }
 </style>

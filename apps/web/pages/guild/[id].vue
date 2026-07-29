@@ -5,7 +5,7 @@
         v-if="!guildBan?.banned"
         class="guild-context-bar"
         brand-title="EcoBoty"
-        :brand-subtitle="guildDisplayName"
+        :brand-subtitle="currencyDisplayName"
         brand-to="/servers"
         :show-menu-toggle="true"
         :menu-open="mobileMenuOpen"
@@ -3343,10 +3343,11 @@ const guildServerOptions = computed(() => {
   });
   const currentId = String(route.params.id || "");
   if (currentId && !rows.some((row) => row.value === currentId)) {
+    const fallbackName = String(guildDisplayName.value || currentId);
     rows.unshift({
       value: currentId,
-      label: String(guildDisplayName.value || currentId),
-      shortLabel: String(guildDisplayName.value || currentId),
+      label: `${fallbackName} · ${isGuildPremium.value ? t("billing.status.premium") : t("billing.status.free")}`,
+      shortLabel: fallbackName,
       isPremium: Boolean(isGuildPremium.value)
     });
   }
@@ -3612,9 +3613,13 @@ const adminTabLabel = computed(() => {
   };
   return map[activeTab.value] || "Administration serveur";
 });
+const currencyDisplayName = computed(() => String(form.name || "").trim());
 const guildDisplayName = computed(() => {
-  const value = String(form.name || id || "").trim();
-  return value || "Serveur";
+  const currentId = String(route.params.id || id || "").trim();
+  const match = managedGuildServers.value.find((server) => String(server.id) === currentId);
+  const fromDiscord = String(match?.name || "").trim();
+  if (fromDiscord) return fromDiscord;
+  return currentId || "Serveur";
 });
 useHead(() => ({
   title: `${adminTabLabel.value} - ${guildDisplayName.value}`
