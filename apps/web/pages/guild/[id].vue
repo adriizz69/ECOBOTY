@@ -1,6 +1,6 @@
 <template>
   <ClientOnly>
-    <section class="page">
+    <section class="page" :class="{ 'nav-collapsed': !mobileMenuOpen && !guildBan?.banned }">
       <AppContextBar
         v-if="!guildBan?.banned"
         class="guild-context-bar"
@@ -10,6 +10,7 @@
         :show-menu-toggle="true"
         :menu-open="mobileMenuOpen"
         :menu-label="$t('adminGuild.sidebar.menu')"
+        :show-servers-link="true"
         :is-logged-in="Boolean(guildMe?.username || guildMe?.discord_id)"
         :username="guildMe?.username || ''"
         :avatar-url="guildMeAvatarUrl"
@@ -26,31 +27,8 @@
       />
 
       <aside v-if="!guildBan?.banned" class="section-nav" :class="{ open: mobileMenuOpen }">
-      <div class="section-head">
-        <div class="section-brand">
-          <img src="/logo.png" alt="EcoBoty" class="section-logo" />
-          <div>
-            <div class="section-title">EcoBoty</div>
-            <p class="section-sub">{{ guildDisplayName }}</p>
-          </div>
-        </div>
-        <button
-          class="section-toggle"
-          type="button"
-          :aria-expanded="mobileMenuOpen"
-          @click="mobileMenuOpen = !mobileMenuOpen"
-        >
-          <UIcon name="i-lucide-menu" class="size-5" />
-          <span class="toggle-text">{{ $t("adminGuild.sidebar.menu") }}</span>
-        </button>
-      </div>
       <div class="section-nav-scroll">
       <div class="section-links">
-          <NuxtLink to="/servers" class="nav-item nav-link nav-back">
-            <UIcon name="i-lucide-arrow-left" class="nav-ico" />
-            <span>{{ $t("nav.servers") }}</span>
-          </NuxtLink>
-          <div class="nav-divider"></div>
           <div class="nav-group">{{ $t("adminGuild.sidebar.groups.economy") }}</div>
           <button :class="['nav-item', 'tab-economy', activeTab === 'economy' && 'active']" @click="selectTab('economy')">
           <UIcon name="i-lucide-layout-dashboard" class="nav-ico" />
@@ -194,9 +172,6 @@
           </div>
         </div>
         <div class="hero-actions">
-          <UButton color="neutral" variant="soft" size="sm" to="/servers" icon="i-lucide-arrow-left">
-            Serveurs
-          </UButton>
           <UButton
             :color="form.enabled ? 'primary' : 'neutral'"
             variant="soft"
@@ -3355,8 +3330,8 @@ const loadManagedGuildServers = async () => {
   }
 };
 
-const guildServerOptions = computed(() =>
-  managedGuildServers.value.map((server) => {
+const guildServerOptions = computed(() => {
+  const rows = managedGuildServers.value.map((server) => {
     const isPremium = Boolean(server.billing?.isPremium);
     const planLabel = isPremium ? t("billing.status.premium") : t("billing.status.free");
     return {
@@ -3365,8 +3340,18 @@ const guildServerOptions = computed(() =>
       shortLabel: String(server.name || server.id),
       isPremium
     };
-  })
-);
+  });
+  const currentId = String(route.params.id || "");
+  if (currentId && !rows.some((row) => row.value === currentId)) {
+    rows.unshift({
+      value: currentId,
+      label: String(guildDisplayName.value || currentId),
+      shortLabel: String(guildDisplayName.value || currentId),
+      isPremium: Boolean(isGuildPremium.value)
+    });
+  }
+  return rows;
+});
 
 const selectedGuildServerId = computed({
   get: () => String(route.params.id || ""),
@@ -3605,7 +3590,7 @@ const syncTabQuery = (tab) => {
   const query = { ...route.query, tab: nextTab };
   router.replace({ path: route.path, query });
 };
-const mobileMenuOpen = ref(false);
+const mobileMenuOpen = ref(true);
 const adminTabLabel = computed(() => {
   const map = {
     economy: t("adminGuild.sidebar.items.overview"),
@@ -3911,6 +3896,12 @@ const inviteUrl = computed(() => {
   return `https://discord.com/api/oauth2/authorize?client_id=${clientId}&permissions=${permissions}&scope=${scopes}&guild_id=${id}&disable_guild_select=true`;
 });
 
+const closeMobileNavIfNeeded = () => {
+  if (process.client && window.innerWidth <= 980) {
+    mobileMenuOpen.value = false;
+  }
+};
+
 const selectTab = (tab) => {
   if (tab === activeTab.value) return;
   if (isDirty.value) {
@@ -3920,7 +3911,7 @@ const selectTab = (tab) => {
   }
   activeTab.value = tab;
   syncTabQuery(tab);
-  mobileMenuOpen.value = false;
+  closeMobileNavIfNeeded();
   loadTabData(tab);
 };
 const markSaved = () => {
@@ -3937,7 +3928,7 @@ const continueWithoutSaving = () => {
   if (pendingTab.value) {
     activeTab.value = pendingTab.value;
     syncTabQuery(pendingTab.value);
-    mobileMenuOpen.value = false;
+    closeMobileNavIfNeeded();
     pendingTab.value = null;
     loadTabData(activeTab.value);
   }
@@ -3975,7 +3966,7 @@ const saveAndContinue = async () => {
   showUnsavedModal.value = false;
   activeTab.value = pendingTab.value;
   syncTabQuery(pendingTab.value);
-  mobileMenuOpen.value = false;
+  closeMobileNavIfNeeded();
   pendingTab.value = null;
   loadTabData(activeTab.value);
   if (saved) {
@@ -8269,6 +8260,10 @@ onBeforeUnmount(() => {
   box-sizing: border-box;
 }
 
+.page.nav-collapsed {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .guild-context-bar {
   grid-column: 1 / -1;
   position: sticky;
@@ -8279,17 +8274,21 @@ onBeforeUnmount(() => {
 /* ——— Sidebar ——— */
 .section-nav {
   position: sticky;
-  top: 96px;
+  top: 76px;
   background: linear-gradient(180deg, rgba(45, 212, 160, 0.06), transparent 28%), var(--surface);
   border: 1px solid var(--border);
   border-radius: 22px;
   box-shadow: var(--shadow);
-  padding: 16px 12px;
-  max-height: calc(100vh - 120px);
-  display: flex;
+  padding: 14px 12px;
+  max-height: calc(100vh - 100px);
+  display: none;
   flex-direction: column;
   overflow: hidden;
   backdrop-filter: blur(14px);
+}
+
+.section-nav.open {
+  display: flex;
 }
 
 .section-nav-scroll {
@@ -10081,23 +10080,20 @@ label {
   }
 
   .section-nav {
+    display: none;
     position: relative;
     top: 0;
     max-height: none;
     overflow: visible;
   }
 
-  .section-toggle {
-    display: inline-flex;
+  .section-nav.open {
+    display: flex;
   }
 
   .section-links {
-    display: none;
-    margin-top: 10px;
-  }
-
-  .section-nav.open .section-links {
     display: flex;
+    margin-top: 0;
   }
 
   .inv-layout,
@@ -10199,6 +10195,10 @@ label {
   box-sizing: border-box;
 }
 
+.page.nav-collapsed {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .guild-context-bar {
   grid-column: 1 / -1;
   position: sticky;
@@ -10208,17 +10208,21 @@ label {
 
 .section-nav {
   position: sticky;
-  top: 96px;
+  top: 76px;
   background: linear-gradient(180deg, rgba(45, 212, 160, 0.08), transparent 32%), var(--surface);
   border: 1px solid var(--border);
   border-radius: 24px;
   box-shadow: var(--shadow);
-  padding: 18px 14px;
-  max-height: calc(100vh - 120px);
-  display: flex;
+  padding: 14px 12px;
+  max-height: calc(100vh - 100px);
+  display: none;
   flex-direction: column;
   overflow: hidden;
   backdrop-filter: blur(14px);
+}
+
+.section-nav.open {
+  display: flex;
 }
 
 .section-nav-scroll {
@@ -10456,7 +10460,14 @@ label {
     gap: 14px;
   }
 
+  .guild-context-bar {
+    position: sticky;
+    top: 8px;
+    z-index: 50;
+  }
+
   .section-nav {
+    display: none;
     position: relative;
     top: 0;
     max-height: none;
@@ -10465,25 +10476,21 @@ label {
     z-index: 40;
   }
 
-  .section-toggle {
-    display: inline-flex;
-    min-height: 44px;
-    min-width: 44px;
-    padding: 10px 14px;
+  .section-nav.open {
+    display: flex;
   }
 
-  .section-nav-scroll,
-  .section-account {
-    display: none;
-  }
-
-  .section-nav.open .section-nav-scroll {
+  .section-nav-scroll {
     display: block;
-    margin-top: 10px;
-    max-height: min(55vh, 420px);
+    max-height: min(70vh, 560px);
+    overflow: auto;
   }
 
-  .section-nav.open .section-account {
+  .section-links {
+    display: flex;
+  }
+
+  .section-account {
     display: none;
   }
 

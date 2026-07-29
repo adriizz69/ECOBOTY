@@ -118,6 +118,7 @@
           :show-menu-toggle="true"
           :menu-open="mobileNavOpen"
           :menu-label="$t('nav.home')"
+          :show-servers-link="isLoggedIn"
           brand-title="EcoBoty"
           :brand-subtitle="$t('topbar.title')"
           brand-to="/"
