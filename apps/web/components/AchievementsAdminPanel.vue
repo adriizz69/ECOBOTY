@@ -243,7 +243,12 @@
               </label>
               <label v-if="form.type === 'unique' && form.eventKey === 'role_received'" class="event-condition-field">
                 Role a obtenir pour valider le succes
-                <EbSelect v-model="form.eventTargetRoleId" :items="targetRoleSelectItems" />
+                <select v-model="form.eventTargetRoleId" class="role-select-native">
+                  <option value="">Selectionner un role</option>
+                  <option v-for="role in roles" :key="role.id" :value="String(role.id)">
+                    {{ role.name }}
+                  </option>
+                </select>
                 <span class="muted small">Des que le membre obtient ce role, le succes est valide.</span>
               </label>
               <label v-else-if="form.type === 'unique' && form.eventKey === 'server_boost'" class="event-condition-field">
@@ -547,9 +552,17 @@
 </template>
 
 <script setup>
-import { defineComponent, h, resolveComponent } from "vue";
+import { defineComponent, h } from "vue";
 
-const EbSelect = resolveComponent("EbSelect");
+const normalizeSelectValue = (value) => {
+  if (value == null || value === false) return "";
+  if (typeof value === "object") {
+    if (value.value != null) return String(value.value);
+    if (value.id != null) return String(value.id);
+    return "";
+  }
+  return String(value);
+};
 
 const props = defineProps({
   guildId: {
@@ -814,14 +827,6 @@ const eventSelectItems = computed(() =>
     value: event.key
   }))
 );
-
-const targetRoleSelectItems = computed(() => [
-  { label: "Selectionner un role", value: "" },
-  ...roles.value.map((role) => ({
-    label: role.name,
-    value: String(role.id)
-  }))
-]);
 
 const previewStyle = computed(() => {
   const accent = colorMap[form.badge.color] || "#7c3aed";
@@ -1593,6 +1598,7 @@ const openCreate = () => {
   resetTierPanels(form.tiers);
   setEditorSnapshot(buildPayload());
   editorOpen.value = true;
+  void loadRoles();
 };
 
 const openEdit = (item) => {
@@ -1602,6 +1608,7 @@ const openEdit = (item) => {
   resetTierPanels(item?.tiers);
   setEditorSnapshot(buildPayloadFromAchievement(item));
   editorOpen.value = true;
+  void loadRoles();
 };
 
 const closeEditor = () => {
@@ -1883,24 +1890,32 @@ const RewardEditor = defineComponent({
     const renderRoleSelector = ({ field, candidateRef, label, emptyText, addLabel }) => {
       const options = availableRolesForField(field);
       const picked = selectedRolesForField(field);
-      const roleItems = [
-        { label: "Selectionner un role", value: "" },
-        ...options.map((role) => ({
-          label: String(role.name || "Role sans nom"),
-          value: String(role.id)
-        }))
-      ];
+      // Native <select> — USelectMenu portals are clipped / unusable inside the editor modal
+      // (overflow + z-index), which blocked add/remove role rewards.
       return h("div", { class: "reward-role-block" }, [
         h("div", { class: "reward-role-label" }, label),
         h("div", { class: "reward-role-inline" }, [
-          h(EbSelect, {
-            modelValue: candidateRef.value,
-            items: roleItems,
-            class: "role-select-single",
-            "onUpdate:modelValue": (value) => {
-              candidateRef.value = String(value || "");
-            }
-          }),
+          h(
+            "select",
+            {
+              class: "role-select-single",
+              value: candidateRef.value,
+              disabled: !options.length,
+              onChange: (event) => {
+                candidateRef.value = normalizeSelectValue(event?.target?.value);
+              }
+            },
+            [
+              h(
+                "option",
+                { value: "" },
+                options.length ? "Selectionner un role" : "Aucun role disponible"
+              ),
+              ...options.map((role) =>
+                h("option", { value: String(role.id) }, String(role.name || "Role sans nom"))
+              )
+            ]
+          ),
           h(
             "button",
             {
@@ -2831,7 +2846,7 @@ textarea:focus {
   border: 1px solid rgba(148, 163, 184, 0.24);
   border-radius: 12px;
   background: rgba(15, 23, 42, 0.26);
-  overflow: hidden;
+  overflow: visible;
 }
 :deep(.reward-section-head) {
   border: 0;
@@ -2842,6 +2857,7 @@ textarea:focus {
   border-top: 1px solid rgba(148, 163, 184, 0.2);
   padding: 10px;
   background: rgba(2, 6, 23, 0.34);
+  overflow: visible;
 }
 :deep(.reward-empty) {
   margin: 0;
@@ -2862,8 +2878,12 @@ textarea:focus {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
+  align-items: stretch;
 }
-:deep(.role-select-single) {
+:deep(.role-select-single),
+.role-select-native {
+  width: 100%;
+  min-height: 42px;
   border-radius: 10px;
   border: 1px solid rgba(148, 163, 184, 0.24);
   background: rgba(2, 6, 23, 0.56);
