@@ -95,14 +95,21 @@
           </UPageCard>
         </div>
 
-        <UPageCard title="Récompenses" description="Montant crédité sur le serveur où le membre claim." variant="subtle">
+        <UPageCard title="Réglages Top.gg" description="Sépare la sync serveurs des récompenses de vote." variant="subtle">
           <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div class="flex items-center justify-between gap-3">
               <div>
-                <div class="text-sm font-medium">Activer l’intégration</div>
-                <div class="text-xs text-muted">Coupe sync + claims (token .env toujours requis).</div>
+                <div class="text-sm font-medium">Activer la sync serveurs</div>
+                <div class="text-xs text-muted">Envoie le nombre de serveurs vers Top.gg.</div>
               </div>
-              <USwitch v-model="enabled" />
+              <USwitch v-model="syncEnabled" />
+            </div>
+            <div class="flex items-center justify-between gap-3">
+              <div>
+                <div class="text-sm font-medium">Activer les récompenses</div>
+                <div class="text-xs text-muted">Autorise `/vote claim` et les gains liés aux votes.</div>
+              </div>
+              <USwitch v-model="rewardsEnabled" />
             </div>
             <UFormField label="Récompense de base (coins)">
               <UInput v-model.number="rewardAmount" type="number" min="0" step="1" />
@@ -197,7 +204,8 @@ const { isAdmin, requireAdmin } = useAdminV2Guard();
 const { loadTopggOverview, saveTopggSettings, syncTopggMetrics } = useAdminV2Data();
 
 const overview = ref(null);
-const enabled = ref(true);
+const syncEnabled = ref(true);
+const rewardsEnabled = ref(true);
 const rewardAmount = ref(500);
 const saveLoading = ref(false);
 const syncLoading = ref(false);
@@ -237,7 +245,8 @@ const metricsLogColor = (log) => {
 const refresh = async () => {
   overview.value = await loadTopggOverview();
   if (overview.value?.settings) {
-    enabled.value = Boolean(overview.value.settings.enabled);
+    syncEnabled.value = Boolean(overview.value.settings.sync_enabled ?? overview.value.settings.enabled);
+    rewardsEnabled.value = Boolean(overview.value.settings.rewards_enabled ?? overview.value.settings.enabled);
     rewardAmount.value = Number(overview.value.settings.reward_amount || 0);
   }
 };
@@ -247,7 +256,8 @@ const saveSettings = async () => {
   statusMessage.value = "";
   try {
     const result = await saveTopggSettings({
-      enabled: enabled.value,
+      syncEnabled: syncEnabled.value,
+      rewardsEnabled: rewardsEnabled.value,
       rewardAmount: rewardAmount.value
     });
     statusMessage.value = result.ok ? "Réglages enregistrés." : result.message || "Erreur";

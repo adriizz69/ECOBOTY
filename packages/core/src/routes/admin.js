@@ -350,6 +350,8 @@ adminRouter.post("/topgg/settings", async (req, res) => {
   try {
     const settings = await saveTopggSettings({
       enabled: req.body?.enabled,
+      syncEnabled: req.body?.syncEnabled ?? req.body?.sync_enabled,
+      rewardsEnabled: req.body?.rewardsEnabled ?? req.body?.rewards_enabled,
       rewardAmount: req.body?.rewardAmount ?? req.body?.reward_amount
     });
     await insertAdminLog({
@@ -357,6 +359,8 @@ adminRouter.post("/topgg/settings", async (req, res) => {
       action: "topgg_settings_updated",
       data: {
         enabled: settings.enabled,
+        sync_enabled: settings.sync_enabled,
+        rewards_enabled: settings.rewards_enabled,
         reward_amount: settings.reward_amount
       }
     });

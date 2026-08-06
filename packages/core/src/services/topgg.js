@@ -24,8 +24,13 @@ export const getTopggEnvConfig = () => ({
 
 export const isTopggTokenConfigured = () => Boolean(getTopggEnvConfig().token);
 
-const normalizeSettingsRow = (row) => ({
-  enabled: row ? Boolean(row.enabled) : true,
+const normalizeSettingsRow = (row) => {
+  const syncEnabled = row ? Boolean(row.sync_enabled ?? row.enabled ?? true) : true;
+  const rewardsEnabled = row ? Boolean(row.rewards_enabled ?? row.enabled ?? true) : true;
+  return {
+  enabled: syncEnabled || rewardsEnabled,
+  sync_enabled: syncEnabled,
+  rewards_enabled: rewardsEnabled,
   reward_amount: Math.max(0, Number(row?.reward_amount ?? DEFAULT_REWARD_AMOUNT) || 0),
   last_metrics_sync_at: row?.last_metrics_sync_at || null,
   last_metrics_server_count:
@@ -34,7 +39,8 @@ const normalizeSettingsRow = (row) => ({
       : Number(row.last_metrics_server_count),
   last_metrics_error: row?.last_metrics_error || null,
   updated_at: row?.updated_at || null
-});
+  };
+};
 
 export const getTopggSettings = async () => {
   let row = await db("topgg_settings").orderBy("id", "asc").first();
@@ -50,9 +56,13 @@ export const getTopggSettings = async () => {
   return normalizeSettingsRow(row);
 };
 
-export const saveTopggSettings = async ({ enabled, rewardAmount } = {}) => {
+export const saveTopggSettings = async ({ enabled, syncEnabled, rewardsEnabled, rewardAmount } = {}) => {
   const current = await getTopggSettings();
-  const nextEnabled = enabled === undefined ? current.enabled : Boolean(enabled);
+  const nextSyncEnabled =
+    syncEnabled === undefined ? current.sync_enabled : Boolean(syncEnabled);
+  const nextRewardsEnabled =
+    rewardsEnabled === undefined ? current.rewards_enabled : Boolean(rewardsEnabled);
+  const nextEnabled = enabled === undefined ? nextSyncEnabled || nextRewardsEnabled : Boolean(enabled);
   const nextReward =
     rewardAmount === undefined
       ? current.reward_amount
@@ -61,6 +71,8 @@ export const saveTopggSettings = async ({ enabled, rewardAmount } = {}) => {
   const existing = await db("topgg_settings").orderBy("id", "asc").first();
   const payload = {
     enabled: nextEnabled,
+    sync_enabled: nextSyncEnabled,
+    rewards_enabled: nextRewardsEnabled,
     reward_amount: nextReward,
     updated_at: new Date()
   };
@@ -79,7 +91,21 @@ export const isTopggIntegrationActive = async () => {
   const env = getTopggEnvConfig();
   if (!env.token || !env.envEnabled) return false;
   const settings = await getTopggSettings();
-  return Boolean(settings.enabled);
+  return Boolean(settings.sync_enabled || settings.rewards_enabled);
+};
+
+export const isTopggMetricsSyncActive = async () => {
+  const env = getTopggEnvConfig();
+  if (!env.token || !env.envEnabled) return false;
+  const settings = await getTopggSettings();
+  return Boolean(settings.sync_enabled);
+};
+
+export const isTopggRewardsActive = async () => {
+  const env = getTopggEnvConfig();
+  if (!env.token || !env.envEnabled) return false;
+  const settings = await getTopggSettings();
+  return Boolean(settings.rewards_enabled);
 };
 
 const topggFetch = async (path, { method = "GET", body } = {}) => {
@@ -171,21 +197,20 @@ export const hasVotedOnTopgg = async (discordUserId) => {
 };
 
 export const postTopggServerCount = async (serverCount, { force = false, origin = "unknown" } = {}) => {
-  const active = await isTopggIntegrationActive();
+  const count = Math.max(0, Math.floor(Number(serverCount) || 0));
+  const active = await isTopggMetricsSyncActive();
   if (!active) {
-    const result = { ok: false, skipped: true, reason: "disabled", serverCount: 0 };
+    const result = { ok: false, skipped: true, reason: "disabled", serverCount: count };
     await insertTopggMetricsLog({
       origin,
-      serverCount: 0,
+      serverCount: count,
       success: false,
       skipped: true,
       reason: "disabled",
-      message: "Top.gg integration disabled"
+      message: "Top.gg metrics sync disabled"
     });
     return result;
   }
-
-  const count = Math.max(0, Math.floor(Number(serverCount) || 0));
   const settings = await getTopggSettings();
   const lastSync = settings.last_metrics_sync_at ? new Date(settings.last_metrics_sync_at).getTime() : 0;
   const lastCount =
@@ -363,6 +388,7 @@ export const getTopggVoteStatusForUser = async (discordUserId) => {
   return {
     votePageUrl: env.botPageUrl,
     rewardAmount: settings.reward_amount,
+    rewardsEnabled: Boolean(settings.rewards_enabled),
     hasClaimable: Boolean(claimable),
     claimable: claimable
       ? {
@@ -398,7 +424,7 @@ export const claimTopggVoteReward = async ({ guildId, userId }) => {
 
   const settings = await getTopggSettings();
   const env = getTopggEnvConfig();
-  if (!settings.enabled || !env.envEnabled) {
+  if (!settings.rewards_enabled || !env.envEnabled) {
     return { ok: false, reason: "disabled", votePageUrl: env.botPageUrl };
   }
 
@@ -502,7 +528,7 @@ export const getTopggAdminOverview = async () => {
     webhookConfigured: Boolean(env.webhookSecret),
     votePageUrl: env.botPageUrl,
     settings,
-    active: Boolean(env.token && env.envEnabled && settings.enabled),
+    active: Boolean(env.token && env.envEnabled && (settings.sync_enabled || settings.rewards_enabled)),
     localServerCount,
     project,
     projectError,
