@@ -69,11 +69,19 @@
           <UPageCard title="Serveurs (local)" variant="subtle">
             <p class="text-2xl font-semibold">{{ overview?.localServerCount ?? "—" }}</p>
             <p class="mt-1 text-xs text-muted">
-              Dernière sync :
+              Dernière sync poussée vers Top.gg :
               {{ formatDate(overview?.settings?.last_metrics_sync_at) }}
             </p>
+            <p class="mt-1 text-xs text-muted">
+              Dernier total envoyé :
+              <strong>{{ overview?.settings?.last_metrics_server_count ?? "—" }}</strong>
+            </p>
             <p v-if="overview?.settings?.last_metrics_error" class="mt-1 text-xs text-error">
-              {{ overview.settings.last_metrics_error }}
+              Erreur sync : {{ overview.settings.last_metrics_error }}
+            </p>
+            <p class="mt-2 text-[11px] text-muted">
+              Top.gg n’envoie pas le nombre de serveurs : c’est le bot qui le pousse.
+              Utilise « Forcer sync » ici (pas le bouton Sync du site Top.gg).
             </p>
           </UPageCard>
 
@@ -213,11 +221,14 @@ const forceSync = async () => {
   try {
     const result = await syncTopggMetrics();
     if (result.ok) {
-      statusMessage.value = `Sync OK (${result.serverCount ?? "?"} serveurs).`;
+      statusMessage.value = `Sync OK (${result.serverCount ?? "?"} serveurs envoyés à Top.gg).`;
     } else if (result.skipped) {
-      statusMessage.value = `Sync ignorée : ${result.reason || "disabled"}`;
+      statusMessage.value =
+        result.reason === "disabled"
+          ? "Sync ignorée : intégration désactivée (active le switch ci-dessous)."
+          : `Sync ignorée : ${result.reason || "disabled"}`;
     } else {
-      statusMessage.value = result.message || result.error || "Sync échouée";
+      statusMessage.value = result.message || result.error || "Sync échouée — voir l’erreur rouge ci-dessus.";
     }
     await refresh();
   } finally {

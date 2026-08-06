@@ -110,6 +110,7 @@ client.on(Events.GuildCreate, async (guild) => {
 
   await syncGuildInfo({ guild, addedById, addedByUsername });
   await sendWelcomeMessage(guild);
+  void sendBotHeartbeat();
 });
 
 client.on(Events.GuildDelete, async (guild) => {
@@ -128,6 +129,7 @@ client.on(Events.GuildDelete, async (guild) => {
       stopVoiceInterval(key);
     }
   }
+  void sendBotHeartbeat();
 });
 
 const reportCommunityMessageDeleted = async ({ guildId, channelId, messageId }) => {

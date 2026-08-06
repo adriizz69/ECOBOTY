@@ -137,15 +137,23 @@ export const postTopggServerCount = async (serverCount, { force = false } = {}) 
   const count = Math.max(0, Math.floor(Number(serverCount) || 0));
   const settings = await getTopggSettings();
   const lastSync = settings.last_metrics_sync_at ? new Date(settings.last_metrics_sync_at).getTime() : 0;
-  if (!force && lastSync && Date.now() - lastSync < METRICS_SYNC_MIN_INTERVAL_MS) {
+  const lastCount =
+    settings.last_metrics_server_count === null || settings.last_metrics_server_count === undefined
+      ? null
+      : Number(settings.last_metrics_server_count);
+  const countChanged = lastCount === null || lastCount !== count;
+  // Always push when the guild count changed; otherwise keep the 20 min debounce.
+  const shouldForce = Boolean(force) || countChanged;
+  if (!shouldForce && lastSync && Date.now() - lastSync < METRICS_SYNC_MIN_INTERVAL_MS) {
     return { ok: true, skipped: true, reason: "debounced", serverCount: count };
   }
 
   const existing = await db("topgg_settings").orderBy("id", "asc").first();
   try {
+    // Top.gg v1 Discord bot payload — at least one field required; include shard_count for clarity.
     await topggFetch("/projects/@me/metrics", {
       method: "PATCH",
-      body: { server_count: count }
+      body: { server_count: count, shard_count: 1 }
     });
     const patch = {
       last_metrics_sync_at: new Date(),
@@ -156,9 +164,12 @@ export const postTopggServerCount = async (serverCount, { force = false } = {}) 
     if (existing?.id) {
       await db("topgg_settings").where({ id: existing.id }).update(patch);
     }
-    return { ok: true, serverCount: count };
+    return { ok: true, serverCount: count, forced: shouldForce };
   } catch (error) {
-    const message = String(error?.data?.detail || error?.message || "topgg_metrics_failed").slice(0, 500);
+    const message = String(
+      error?.data?.detail || error?.data?.title || error?.message || "topgg_metrics_failed"
+    ).slice(0, 500);
+    console.error("[topgg-metrics]", message, error?.data || "");
     if (existing?.id) {
       await db("topgg_settings").where({ id: existing.id }).update({
         last_metrics_error: message,
@@ -172,7 +183,8 @@ export const postTopggServerCount = async (serverCount, { force = false } = {}) 
 export const maybeSyncTopggFromHeartbeat = async (guildCount) => {
   try {
     return await postTopggServerCount(guildCount, { force: false });
-  } catch {
+  } catch (error) {
+    console.error("[topgg-metrics] heartbeat sync failed", error?.message || error);
     return { ok: false, skipped: true, reason: "error" };
   }
 };
