@@ -24,31 +24,28 @@
           title="Intégration Top.gg"
           description="Sync du nombre de serveurs, votes, récompenses claimables via /vote."
           variant="naked"
-          orientation="horizontal"
         >
-          <template #trailing>
-            <div class="flex flex-wrap gap-2">
-              <UButton
-                color="primary"
-                variant="solid"
-                icon="i-lucide-external-link"
-                :to="votePageUrl"
-                target="_blank"
-                rel="noreferrer"
-              >
-                Voter sur Top.gg
-              </UButton>
-              <UButton
-                color="neutral"
-                variant="outline"
-                icon="i-lucide-refresh-cw"
-                :loading="syncLoading"
-                @click="forceSync"
-              >
-                Forcer sync
-              </UButton>
-            </div>
-          </template>
+          <div class="flex flex-wrap gap-2">
+            <UButton
+              color="primary"
+              variant="solid"
+              icon="i-lucide-external-link"
+              :to="votePageUrl"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Voter sur Top.gg
+            </UButton>
+            <UButton
+              color="neutral"
+              variant="outline"
+              icon="i-lucide-refresh-cw"
+              :loading="syncLoading"
+              @click="forceSync"
+            >
+              Forcer sync
+            </UButton>
+          </div>
         </UPageCard>
 
         <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -154,6 +151,40 @@
             </table>
           </div>
         </UPageCard>
+
+        <UPageCard title="Logs Top.gg" description="Historique des syncs serveurs vers Top.gg." variant="subtle">
+          <div class="overflow-x-auto">
+            <table class="w-full min-w-[760px] text-left text-sm">
+              <thead class="text-xs text-muted">
+                <tr>
+                  <th class="py-2 pr-3">Date</th>
+                  <th class="py-2 pr-3">Origine</th>
+                  <th class="py-2 pr-3">Serveurs</th>
+                  <th class="py-2 pr-3">Statut</th>
+                  <th class="py-2">Détail</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="log in metricsLogs" :key="log.id" class="border-t border-default">
+                  <td class="py-2 pr-3">{{ formatDate(log.createdAt) }}</td>
+                  <td class="py-2 pr-3">
+                    <code class="text-xs">{{ log.origin }}</code>
+                  </td>
+                  <td class="py-2 pr-3">{{ log.serverCount }}</td>
+                  <td class="py-2 pr-3">
+                    <UBadge :color="metricsLogColor(log)" variant="soft">
+                      {{ metricsLogLabel(log) }}
+                    </UBadge>
+                  </td>
+                  <td class="py-2 text-xs text-muted">{{ log.message || log.reason || "—" }}</td>
+                </tr>
+                <tr v-if="!metricsLogs.length">
+                  <td colspan="5" class="py-6 text-center text-muted">Aucun log Top.gg pour le moment.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </UPageCard>
       </div>
     </template>
   </UDashboardPanel>
@@ -176,6 +207,7 @@ const votePageUrl = computed(
   () => overview.value?.votePageUrl || "https://top.gg/fr/bot/1465377603090383161"
 );
 const votes = computed(() => overview.value?.recentVotes || []);
+const metricsLogs = computed(() => overview.value?.metricsLogs || []);
 const projectVotes = computed(() => overview.value?.project?.votes ?? "—");
 const projectVotesTotal = computed(() => overview.value?.project?.votes_total ?? "—");
 const projectScore = computed(() => {
@@ -190,6 +222,16 @@ const formatDate = (value) => {
   } catch {
     return String(value);
   }
+};
+
+const metricsLogLabel = (log) => {
+  if (log?.skipped) return `Ignoré${log?.reason ? ` (${log.reason})` : ""}`;
+  return log?.success ? "Succès" : "Échec";
+};
+
+const metricsLogColor = (log) => {
+  if (log?.skipped) return "warning";
+  return log?.success ? "success" : "error";
 };
 
 const refresh = async () => {

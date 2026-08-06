@@ -117,6 +117,48 @@ const topggFetch = async (path, { method = "GET", body } = {}) => {
 
 export const getTopggProject = async () => topggFetch("/projects/@me");
 
+const insertTopggMetricsLog = async ({
+  origin = "unknown",
+  serverCount = 0,
+  success = false,
+  skipped = false,
+  reason = null,
+  message = null,
+  payload = null
+} = {}) => {
+  const hasLogs = await db.schema.hasTable("topgg_metrics_logs");
+  if (!hasLogs) return;
+  await db("topgg_metrics_logs").insert({
+    origin: String(origin || "unknown").slice(0, 32),
+    server_count: Math.max(0, Math.floor(Number(serverCount) || 0)),
+    success: Boolean(success),
+    skipped: Boolean(skipped),
+    reason: reason ? String(reason).slice(0, 64) : null,
+    message: message ? String(message).slice(0, 1000) : null,
+    payload: payload ? JSON.stringify(payload) : null,
+    created_at: new Date()
+  });
+};
+
+export const listTopggMetricsLogs = async ({ limit = 50 } = {}) => {
+  const hasLogs = await db.schema.hasTable("topgg_metrics_logs");
+  if (!hasLogs) return [];
+  const rows = await db("topgg_metrics_logs")
+    .orderBy("created_at", "desc")
+    .limit(Math.min(200, Math.max(1, Number(limit) || 50)));
+  return rows.map((row) => ({
+    id: Number(row.id),
+    origin: row.origin || "unknown",
+    serverCount: Number(row.server_count || 0),
+    success: Boolean(row.success),
+    skipped: Boolean(row.skipped),
+    reason: row.reason || null,
+    message: row.message || null,
+    payload: row.payload || null,
+    createdAt: row.created_at || null
+  }));
+};
+
 export const hasVotedOnTopgg = async (discordUserId) => {
   const userId = String(discordUserId || "").trim();
   if (!userId) return null;
@@ -128,10 +170,19 @@ export const hasVotedOnTopgg = async (discordUserId) => {
   }
 };
 
-export const postTopggServerCount = async (serverCount, { force = false } = {}) => {
+export const postTopggServerCount = async (serverCount, { force = false, origin = "unknown" } = {}) => {
   const active = await isTopggIntegrationActive();
   if (!active) {
-    return { ok: false, skipped: true, reason: "disabled" };
+    const result = { ok: false, skipped: true, reason: "disabled", serverCount: 0 };
+    await insertTopggMetricsLog({
+      origin,
+      serverCount: 0,
+      success: false,
+      skipped: true,
+      reason: "disabled",
+      message: "Top.gg integration disabled"
+    });
+    return result;
   }
 
   const count = Math.max(0, Math.floor(Number(serverCount) || 0));
@@ -145,7 +196,16 @@ export const postTopggServerCount = async (serverCount, { force = false } = {}) 
   // Always push when the guild count changed; otherwise keep the 20 min debounce.
   const shouldForce = Boolean(force) || countChanged;
   if (!shouldForce && lastSync && Date.now() - lastSync < METRICS_SYNC_MIN_INTERVAL_MS) {
-    return { ok: true, skipped: true, reason: "debounced", serverCount: count };
+    const result = { ok: true, skipped: true, reason: "debounced", serverCount: count };
+    await insertTopggMetricsLog({
+      origin,
+      serverCount: count,
+      success: true,
+      skipped: true,
+      reason: "debounced",
+      message: "Skipped because metrics were recently synced"
+    });
+    return result;
   }
 
   const existing = await db("topgg_settings").orderBy("id", "asc").first();
@@ -164,7 +224,17 @@ export const postTopggServerCount = async (serverCount, { force = false } = {}) 
     if (existing?.id) {
       await db("topgg_settings").where({ id: existing.id }).update(patch);
     }
-    return { ok: true, serverCount: count, forced: shouldForce };
+    const result = { ok: true, serverCount: count, forced: shouldForce };
+    await insertTopggMetricsLog({
+      origin,
+      serverCount: count,
+      success: true,
+      skipped: false,
+      reason: shouldForce ? "forced" : "sent",
+      message: "Metrics sent to Top.gg",
+      payload: { server_count: count, shard_count: 1 }
+    });
+    return result;
   } catch (error) {
     const message = String(
       error?.data?.detail || error?.data?.title || error?.message || "topgg_metrics_failed"
@@ -176,13 +246,22 @@ export const postTopggServerCount = async (serverCount, { force = false } = {}) 
         updated_at: new Date()
       });
     }
+    await insertTopggMetricsLog({
+      origin,
+      serverCount: count,
+      success: false,
+      skipped: false,
+      reason: "error",
+      message,
+      payload: error?.data || null
+    });
     return { ok: false, error: message, serverCount: count };
   }
 };
 
 export const maybeSyncTopggFromHeartbeat = async (guildCount) => {
   try {
-    return await postTopggServerCount(guildCount, { force: false });
+    return await postTopggServerCount(guildCount, { force: false, origin: "heartbeat" });
   } catch (error) {
     console.error("[topgg-metrics] heartbeat sync failed", error?.message || error);
     return { ok: false, skipped: true, reason: "error" };
@@ -414,6 +493,7 @@ export const getTopggAdminOverview = async () => {
   }
 
   const recentVotes = await listTopggVotes({ limit: 30 });
+  const metricsLogs = await listTopggMetricsLogs({ limit: 30 });
   const unclaimed = await db("topgg_votes").whereNull("claimed_at").count({ count: "*" }).first();
 
   return {
@@ -426,6 +506,7 @@ export const getTopggAdminOverview = async () => {
     localServerCount,
     project,
     projectError,
+    metricsLogs,
     unclaimedVotes: Number(unclaimed?.count || 0),
     recentVotes
   };

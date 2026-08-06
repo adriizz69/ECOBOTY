@@ -370,7 +370,7 @@ adminRouter.post("/topgg/sync", async (_req, res) => {
   try {
     const health = await db("bot_health_status").orderBy("id", "asc").first();
     const serverCount = Number(health?.guild_count || 0);
-    const result = await postTopggServerCount(serverCount, { force: true });
+    const result = await postTopggServerCount(serverCount, { force: true, origin: "manual" });
     await insertAdminLog({
       adminId: _req.user?.discord_id,
       action: "topgg_metrics_sync",
