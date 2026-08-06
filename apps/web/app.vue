@@ -222,8 +222,19 @@ const tawkToWidgetUrl = computed(
 const shouldLoadAdsense = computed(
   () => consentCookie.value === "accepted" && adsenseClient.value.length > 0
 );
+const discordTawkName = computed(() => {
+  const username = String(me.value?.username || "").trim();
+  if (username) return username;
+  const discordId = String(me.value?.discord_id || "").trim();
+  return discordId ? `Discord ${discordId}` : "";
+});
+
 const shouldLoadTawk = computed(
-  () => consentCookie.value === "accepted" && tawkToWidgetUrl.value.length > 0
+  () =>
+    consentCookie.value === "accepted" &&
+    tawkToWidgetUrl.value.length > 0 &&
+    isLoggedIn.value &&
+    Boolean(me.value?.discord_id)
 );
 
 const colorMode = useColorMode();
@@ -563,17 +574,172 @@ const ensureAdsenseLoaded = () => {
   document.head.appendChild(script);
 };
 
+let tawkBoundDiscordId = "";
+
+const TAWK_BOUND_STORAGE_KEY = "ecoboty_tawk_bound_discord_id";
+
+const clearBrowserStorageKeys = (storage) => {
+  if (!storage) return;
+  const keys = [];
+  for (let i = 0; i < storage.length; i += 1) {
+    const key = storage.key(i);
+    if (!key) continue;
+    const lower = key.toLowerCase();
+    if (
+      lower.includes("tawk") ||
+      lower.startsWith("twk_") ||
+      lower.includes("ssosession") ||
+      lower === "$navigator.locks-requestqueuemap" ||
+      lower === "$navigator.locks-clientids" ||
+      lower === "$navigator.locks-heldlockset" ||
+      lower === "previousnav"
+    ) {
+      keys.push(key);
+    }
+  }
+  keys.forEach((key) => {
+    try {
+      storage.removeItem(key);
+    } catch {
+      // ignore
+    }
+  });
+};
+
+const clearTawkCookies = () => {
+  const host = String(window.location.hostname || "");
+  const parts = host.split(".").filter(Boolean);
+  const domains = new Set(["", host, `.${host}`]);
+  if (parts.length >= 2) {
+    domains.add(`.${parts.slice(-2).join(".")}`);
+  }
+
+  const cookieNames = document.cookie
+    .split(";")
+    .map((chunk) => chunk.split("=")[0]?.trim())
+    .filter(Boolean);
+
+  cookieNames.forEach((name) => {
+    const lower = name.toLowerCase();
+    if (
+      !(
+        lower.startsWith("tawk_") ||
+        lower.startsWith("twk_") ||
+        lower === "tawkconnectiontime"
+      )
+    ) {
+      return;
+    }
+    // Expire cookie for path=/ and common domain variants (tawk UUID survives otherwise).
+    document.cookie = `${name}=; Max-Age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
+    domains.forEach((domain) => {
+      if (!domain) return;
+      document.cookie = `${name}=; Max-Age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=${domain}`;
+    });
+  });
+};
+
+const clearTawkBrowserIdentity = () => {
+  if (!process.client) return;
+  try {
+    window.Tawk_API?.logout?.(() => {});
+  } catch {
+    // ignore
+  }
+  clearTawkCookies();
+  clearBrowserStorageKeys(window.localStorage);
+  clearBrowserStorageKeys(window.sessionStorage);
+  try {
+    window.localStorage.removeItem(TAWK_BOUND_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+};
+
+const unloadTawk = ({ clearIdentity = true } = {}) => {
+  if (!process.client) return;
+  const globalWindow = window;
+  try {
+    globalWindow.Tawk_API?.hideWidget?.();
+    globalWindow.Tawk_API?.shutdown?.();
+  } catch {
+    // ignore
+  }
+  document.querySelectorAll('script[data-tawk-widget="1"]').forEach((node) => node.remove());
+  document
+    .querySelectorAll('iframe[src*="tawk.to"], iframe[title*="chat widget" i]')
+    .forEach((node) => node.remove());
+  // Tawk leaves floating containers behind after shutdown.
+  document
+    .querySelectorAll('div[id^="tawkchat"], div[class*="tawk-"], div[id*="tawk"]')
+    .forEach((node) => {
+      try {
+        node.remove();
+      } catch {
+        // ignore
+      }
+    });
+  if (clearIdentity) {
+    clearTawkBrowserIdentity();
+  }
+  tawkBoundDiscordId = "";
+};
+
 const ensureTawkLoaded = () => {
   if (!process.client) return;
-  if (!shouldLoadTawk.value) return;
+  if (!shouldLoadTawk.value) {
+    unloadTawk({ clearIdentity: true });
+    return;
+  }
 
+  const discordId = String(me.value?.discord_id || "").trim();
+  const visitorName = discordTawkName.value || `Discord ${discordId}`;
   const existingScript = document.querySelector('script[data-tawk-widget="1"]');
-  if (existingScript?.getAttribute("src") === tawkToWidgetUrl.value) return;
-  if (existingScript) existingScript.remove();
+  let previouslyBound = "";
+  try {
+    previouslyBound = String(window.localStorage.getItem(TAWK_BOUND_STORAGE_KEY) || "");
+  } catch {
+    previouslyBound = "";
+  }
+  const sameWidget =
+    existingScript?.getAttribute("src") === tawkToWidgetUrl.value &&
+    tawkBoundDiscordId === discordId &&
+    previouslyBound === discordId;
+
+  if (sameWidget) {
+    try {
+      window.Tawk_API?.showWidget?.();
+    } catch {
+      // ignore
+    }
+    return;
+  }
+
+  // Anonymous tawk UUID cookies block Discord name unless wiped on account change/login.
+  const needsIdentityReset = previouslyBound !== discordId;
+  unloadTawk({ clearIdentity: needsIdentityReset });
 
   const globalWindow = window;
-  globalWindow.Tawk_API = globalWindow.Tawk_API || {};
+  globalWindow.Tawk_API = {};
   globalWindow.Tawk_LoadStart = new Date();
+  // Must be set before script download so the dashboard shows the Discord username.
+  globalWindow.Tawk_API.visitor = {
+    name: visitorName
+  };
+  globalWindow.Tawk_API.onLoad = function onTawkLoad() {
+    try {
+      globalWindow.Tawk_API.setAttributes(
+        {
+          "discord-id": discordId,
+          username: String(me.value?.username || visitorName)
+        },
+        () => {}
+      );
+      globalWindow.Tawk_API.showWidget?.();
+    } catch {
+      // ignore
+    }
+  };
 
   const script = document.createElement("script");
   script.async = true;
@@ -581,14 +747,21 @@ const ensureTawkLoaded = () => {
   script.charset = "UTF-8";
   script.setAttribute("crossorigin", "*");
   script.setAttribute("data-tawk-widget", "1");
+  script.setAttribute("data-tawk-discord-id", discordId);
   document.head.appendChild(script);
+  tawkBoundDiscordId = discordId;
+  try {
+    window.localStorage.setItem(TAWK_BOUND_STORAGE_KEY, discordId);
+  } catch {
+    // ignore
+  }
 };
 
 watch([shouldLoadAdsense, adsenseClient], () => {
   ensureAdsenseLoaded();
 }, { immediate: true });
 
-watch([shouldLoadTawk, tawkToWidgetUrl], () => {
+watch([shouldLoadTawk, tawkToWidgetUrl, discordTawkName], () => {
   ensureTawkLoaded();
 }, { immediate: true });
 

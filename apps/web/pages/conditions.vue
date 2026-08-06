@@ -578,7 +578,7 @@
             </tr>
             <tr>
               <td>Tawk.to</td>
-              <td>Chat de support en ligne (si activé)</td>
+              <td>Chat de support en ligne (uniquement si connecté Discord et cookies acceptés)</td>
               <td>Tawk.to Ltd</td>
             </tr>
           </tbody>
