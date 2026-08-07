@@ -575,15 +575,39 @@ const ensureAdsenseLoaded = () => {
 };
 
 let tawkBoundDiscordId = "";
+let tawkScriptLoading = false;
+let tawkLoggedInDiscordId = "";
 
 const TAWK_BOUND_STORAGE_KEY = "ecoboty_tawk_bound_discord_id";
 
-const clearBrowserStorageKeys = (storage) => {
+const getTawkBoundDiscordId = () => {
+  try {
+    return String(window.localStorage.getItem(TAWK_BOUND_STORAGE_KEY) || "").trim();
+  } catch {
+    return "";
+  }
+};
+
+const setTawkBoundDiscordId = (discordId) => {
+  tawkBoundDiscordId = String(discordId || "").trim();
+  try {
+    if (tawkBoundDiscordId) {
+      window.localStorage.setItem(TAWK_BOUND_STORAGE_KEY, tawkBoundDiscordId);
+    } else {
+      window.localStorage.removeItem(TAWK_BOUND_STORAGE_KEY);
+    }
+  } catch {
+    // ignore
+  }
+};
+
+const clearBrowserStorageKeys = (storage, { preserveBoundKey = false } = {}) => {
   if (!storage) return;
   const keys = [];
   for (let i = 0; i < storage.length; i += 1) {
     const key = storage.key(i);
     if (!key) continue;
+    if (preserveBoundKey && key === TAWK_BOUND_STORAGE_KEY) continue;
     const lower = key.toLowerCase();
     if (
       lower.includes("tawk") ||
@@ -630,7 +654,6 @@ const clearTawkCookies = () => {
     ) {
       return;
     }
-    // Expire cookie for path=/ and common domain variants (tawk UUID survives otherwise).
     document.cookie = `${name}=; Max-Age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
     domains.forEach((domain) => {
       if (!domain) return;
@@ -639,6 +662,7 @@ const clearTawkCookies = () => {
   });
 };
 
+/** Hard reset — only when Discord account changes or user logs out. */
 const clearTawkBrowserIdentity = () => {
   if (!process.client) return;
   try {
@@ -647,21 +671,26 @@ const clearTawkBrowserIdentity = () => {
     // ignore
   }
   clearTawkCookies();
-  clearBrowserStorageKeys(window.localStorage);
+  clearBrowserStorageKeys(window.localStorage, { preserveBoundKey: false });
   clearBrowserStorageKeys(window.sessionStorage);
+  setTawkBoundDiscordId("");
+  tawkLoggedInDiscordId = "";
+};
+
+const hideTawkWidget = () => {
+  if (!process.client) return;
   try {
-    window.localStorage.removeItem(TAWK_BOUND_STORAGE_KEY);
+    window.Tawk_API?.hideWidget?.();
   } catch {
     // ignore
   }
 };
 
-const unloadTawk = ({ clearIdentity = true } = {}) => {
+const destroyTawkDom = () => {
   if (!process.client) return;
-  const globalWindow = window;
   try {
-    globalWindow.Tawk_API?.hideWidget?.();
-    globalWindow.Tawk_API?.shutdown?.();
+    window.Tawk_API?.hideWidget?.();
+    window.Tawk_API?.shutdown?.();
   } catch {
     // ignore
   }
@@ -669,7 +698,6 @@ const unloadTawk = ({ clearIdentity = true } = {}) => {
   document
     .querySelectorAll('iframe[src*="tawk.to"], iframe[title*="chat widget" i]')
     .forEach((node) => node.remove());
-  // Tawk leaves floating containers behind after shutdown.
   document
     .querySelectorAll('div[id^="tawkchat"], div[class*="tawk-"], div[id*="tawk"]')
     .forEach((node) => {
@@ -679,10 +707,15 @@ const unloadTawk = ({ clearIdentity = true } = {}) => {
         // ignore
       }
     });
+  tawkScriptLoading = false;
+  tawkLoggedInDiscordId = "";
+};
+
+const unloadTawk = ({ clearIdentity = false } = {}) => {
+  destroyTawkDom();
   if (clearIdentity) {
     clearTawkBrowserIdentity();
   }
-  tawkBoundDiscordId = "";
 };
 
 const clipTawkValue = (value) => {
@@ -698,13 +731,16 @@ const buildTawkAttributes = () => {
   const selectedServer = managedServers.value.find((row) => String(row.id) === String(guildId));
   const guildName = clipTawkValue(selectedServer?.name || selectedGuild.value?.name || "");
   const isPremium = Boolean(selectedServer?.billing?.isPremium);
-  const plan = clipTawkValue(selectedServer?.billing?.planKey || (guildId ? (isPremium ? "premium" : "free") : ""));
+  const plan = clipTawkValue(
+    selectedServer?.billing?.planKey || (guildId ? (isPremium ? "premium" : "free") : "")
+  );
   const avatarHash = String(me.value?.avatar || "").trim();
-  const avatarUrlForTawk = avatarHash && discordId
-    ? `https://cdn.discordapp.com/avatars/${discordId}/${avatarHash}.png?size=256`
-    : discordId
-      ? `https://cdn.discordapp.com/embed/avatars/${Number(BigInt(discordId) % 6n)}.png`
-      : "";
+  const avatarUrlForTawk =
+    avatarHash && discordId
+      ? `https://cdn.discordapp.com/avatars/${discordId}/${avatarHash}.png?size=256`
+      : discordId
+        ? `https://cdn.discordapp.com/embed/avatars/${Number(BigInt(discordId) % 6n)}.png`
+        : "";
 
   const attrs = {
     "discord-id": discordId,
@@ -723,7 +759,6 @@ const buildTawkAttributes = () => {
     attrs.avatar = avatarUrlForTawk;
   }
 
-  // Tawk rejects empty custom values.
   Object.keys(attrs).forEach((key) => {
     if (!attrs[key]) delete attrs[key];
   });
@@ -745,55 +780,142 @@ const syncTawkAttributes = () => {
   }
 };
 
+const fetchTawkSecureSession = async () => {
+  const token = getToken();
+  if (!token) return null;
+  try {
+    const res = await fetch(`${config.public.apiBase}/api/tawk/session`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data?.enabled || !data?.userId || !data?.hash) return null;
+    return data;
+  } catch {
+    return null;
+  }
+};
+
+const loginTawkSecureUser = async ({ force = false } = {}) => {
+  if (!process.client || !shouldLoadTawk.value) return false;
+  const api = window.Tawk_API;
+  if (!api?.login) return false;
+  const discordId = String(me.value?.discord_id || "").trim();
+  if (!force && tawkLoggedInDiscordId && tawkLoggedInDiscordId === discordId) {
+    syncTawkAttributes();
+    return true;
+  }
+  const session = await fetchTawkSecureSession();
+  if (!session) return false;
+
+  const attrs = buildTawkAttributes();
+  return new Promise((resolve) => {
+    try {
+      api.login(
+        {
+          userId: String(session.userId),
+          hash: String(session.hash),
+          name: String(session.name || discordTawkName.value || session.userId),
+          ...attrs
+        },
+        (error) => {
+          if (error) {
+            console.warn("[tawk] login failed:", error);
+            resolve(false);
+            return;
+          }
+          tawkLoggedInDiscordId = String(session.userId);
+          syncTawkAttributes();
+          resolve(true);
+        }
+      );
+    } catch (error) {
+      console.warn("[tawk] login threw:", error);
+      resolve(false);
+    }
+  });
+};
+
 const ensureTawkLoaded = () => {
   if (!process.client) return;
+
+  // Logged out / cookies refused: hide and wipe visitor only on real logout.
   if (!shouldLoadTawk.value) {
-    unloadTawk({ clearIdentity: true });
+    const hasSession = Boolean(getToken() && me.value?.discord_id);
+    if (!hasSession && (tawkBoundDiscordId || getTawkBoundDiscordId())) {
+      unloadTawk({ clearIdentity: true });
+    } else {
+      hideTawkWidget();
+    }
     return;
   }
 
   const discordId = String(me.value?.discord_id || "").trim();
   const visitorName = discordTawkName.value || `Discord ${discordId}`;
+  const previouslyBound = getTawkBoundDiscordId();
   const existingScript = document.querySelector('script[data-tawk-widget="1"]');
-  let previouslyBound = "";
-  try {
-    previouslyBound = String(window.localStorage.getItem(TAWK_BOUND_STORAGE_KEY) || "");
-  } catch {
-    previouslyBound = "";
-  }
-  const sameWidget =
-    existingScript?.getAttribute("src") === tawkToWidgetUrl.value &&
-    tawkBoundDiscordId === discordId &&
-    previouslyBound === discordId;
+  const sameUser =
+    Boolean(discordId) &&
+    (tawkBoundDiscordId === discordId || previouslyBound === discordId);
 
-  if (sameWidget) {
+  // Same Discord user: keep Tawk session/cookies so chat history stays.
+  // Guild / locale / premium changes = attributes only (no new conversation).
+  if (sameUser && (existingScript || window.Tawk_API?.setAttributes || window.Tawk_API?.login)) {
+    tawkBoundDiscordId = discordId;
+    setTawkBoundDiscordId(discordId);
     try {
       window.Tawk_API?.showWidget?.();
-      syncTawkAttributes();
+      // Already identified: update guild/locale attrs only — do not re-login (new chats).
+      if (tawkLoggedInDiscordId === discordId) {
+        syncTawkAttributes();
+      } else {
+        void loginTawkSecureUser().then((ok) => {
+          if (!ok) syncTawkAttributes();
+        });
+      }
     } catch {
       // ignore
     }
     return;
   }
 
-  // Anonymous tawk UUID cookies block Discord name unless wiped on account change/login.
-  const needsIdentityReset = previouslyBound !== discordId;
-  unloadTawk({ clearIdentity: needsIdentityReset });
+  // Account switch: wipe old anonymous/other-user session once, then bind new Discord user.
+  if (previouslyBound && previouslyBound !== discordId) {
+    unloadTawk({ clearIdentity: true });
+  } else if (!previouslyBound) {
+    // First Discord bind: clear any leftover anonymous Tawk UUID from older embeds.
+    const hasLegacyTawk =
+      /(?:^|;\s*)(tawk_|twk_|TawkConnectionTime)/i.test(document.cookie) ||
+      Object.keys(window.localStorage || {}).some((key) => /tawk|twk_/i.test(key));
+    if (hasLegacyTawk) {
+      clearTawkBrowserIdentity();
+    }
+    if (existingScript) destroyTawkDom();
+  } else if (existingScript && !sameUser) {
+    destroyTawkDom();
+  }
+
+  if (tawkScriptLoading) return;
+  tawkScriptLoading = true;
 
   const globalWindow = window;
-  globalWindow.Tawk_API = {};
+  globalWindow.Tawk_API = globalWindow.Tawk_API || {};
   globalWindow.Tawk_LoadStart = new Date();
-  // Must be set before script download so the dashboard shows the Discord username.
+  // Fallback visitor name if Secure Mode login is unavailable.
   globalWindow.Tawk_API.visitor = {
     name: visitorName
   };
   globalWindow.Tawk_API.onLoad = function onTawkLoad() {
-    try {
-      syncTawkAttributes();
-      globalWindow.Tawk_API.showWidget?.();
-    } catch (error) {
-      console.warn("[tawk] onLoad failed:", error);
-    }
+    tawkScriptLoading = false;
+    void (async () => {
+      try {
+        const loggedIn = await loginTawkSecureUser();
+        if (!loggedIn) syncTawkAttributes();
+        globalWindow.Tawk_API.showWidget?.();
+      } catch (error) {
+        console.warn("[tawk] onLoad failed:", error);
+      }
+    })();
   };
 
   const script = document.createElement("script");
@@ -804,12 +926,7 @@ const ensureTawkLoaded = () => {
   script.setAttribute("data-tawk-widget", "1");
   script.setAttribute("data-tawk-discord-id", discordId);
   document.head.appendChild(script);
-  tawkBoundDiscordId = discordId;
-  try {
-    window.localStorage.setItem(TAWK_BOUND_STORAGE_KEY, discordId);
-  } catch {
-    // ignore
-  }
+  setTawkBoundDiscordId(discordId);
 };
 
 watch([shouldLoadAdsense, adsenseClient], () => {
@@ -820,6 +937,7 @@ watch([shouldLoadTawk, tawkToWidgetUrl, discordTawkName], () => {
   ensureTawkLoaded();
 }, { immediate: true });
 
+// Context updates must NOT remount Tawk (that would spawn new chats/connections).
 watch([selectedGuild, managedServers, locale], () => {
   syncTawkAttributes();
 }, { deep: true });

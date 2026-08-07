@@ -21,6 +21,7 @@ const envSchema = z.object({
   TWITCH_EVENTSUB_CALLBACK: z.string().optional().default(""),
   ADSENSE_CLIENT: z.string().optional().default(""),
   TAWK_TO_WIDGET_URL: z.string().optional().default(""),
+  TAWK_API_KEY: z.string().optional().default(""),
   TOPGG_TOKEN: z.string().optional().default(""),
   TOPGG_WEBHOOK_SECRET: z.string().optional().default(""),
   TOPGG_BOT_PAGE_URL: z.string().optional().default("https://top.gg/fr/bot/1465377603090383161"),

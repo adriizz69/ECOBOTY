@@ -53,6 +53,7 @@ const merged = {
   // Public web
   ADSENSE_CLIENT: pick(root.ADSENSE_CLIENT, web.ADSENSE_CLIENT, legacyFront.ADSENSE_CLIENT),
   TAWK_TO_WIDGET_URL: pick(root.TAWK_TO_WIDGET_URL, web.TAWK_TO_WIDGET_URL, legacyFront.TAWK_TO_WIDGET_URL),
+  TAWK_API_KEY: pick(root.TAWK_API_KEY, ""),
 
   // MySQL
   DATABASE_URL: pick(root.DATABASE_URL),
@@ -104,6 +105,7 @@ const lines = [
   "# --- Public web (Nuxt runtimeConfig) ---",
   `ADSENSE_CLIENT=${merged.ADSENSE_CLIENT}`,
   `TAWK_TO_WIDGET_URL=${merged.TAWK_TO_WIDGET_URL}`,
+  merged.TAWK_API_KEY ? `TAWK_API_KEY=${merged.TAWK_API_KEY}` : "# TAWK_API_KEY=  # Secure Mode key from Tawk Admin > Overview > JavaScript API",
   "",
   "# --- MySQL ---",
   `DATABASE_URL=${merged.DATABASE_URL}`,

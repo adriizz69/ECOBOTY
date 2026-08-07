@@ -82,6 +82,7 @@ import {
   assertUserCanManageGuild,
   fetchUserManagedGuildIds
 } from "../services/billing-guild-access.js";
+import { buildTawkLoginPayload, isTawkSecureModeConfigured } from "../services/tawk.js";
 
 export const apiRouter = Router();
 
@@ -484,6 +485,28 @@ apiRouter.get("/me", (req, res) => {
       exp: user.exp
     }
   });
+});
+
+apiRouter.get("/tawk/session", (req, res) => {
+  try {
+    if (!isTawkSecureModeConfigured()) {
+      return res.json({
+        enabled: false,
+        reason: "tawk_api_key_missing",
+        userId: null,
+        hash: null,
+        name: null
+      });
+    }
+    const user = req.user || {};
+    const payload = buildTawkLoginPayload({
+      discordId: user.discord_id,
+      username: user.username
+    });
+    return res.json(payload);
+  } catch (error) {
+    return res.status(500).json({ error: error?.message || "tawk_session_failed" });
+  }
 });
 
 const refreshDiscordUserToken = async (refreshToken) => {
