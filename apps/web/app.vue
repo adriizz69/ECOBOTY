@@ -581,13 +581,9 @@ let tawkSecureSessionCache = null;
 
 const TAWK_BOUND_STORAGE_KEY = "ecoboty_tawk_bound_discord_id";
 
-const isTawkWidgetMounted = () => {
+const hasTawkEmbedScript = () => {
   if (!process.client) return false;
-  return Boolean(
-    document.querySelector('script[data-tawk-widget="1"]') &&
-      (document.querySelector('iframe[src*="tawk.to"]') ||
-        document.querySelector('div[id^="tawkchat"], #tawkchat-minified-wrapper'))
-  );
+  return Boolean(document.querySelector('script[data-tawk-widget="1"]'));
 };
 
 const getTawkBoundDiscordId = () => {
@@ -913,21 +909,20 @@ const ensureTawkLoaded = () => {
   const discordId = String(me.value?.discord_id || "").trim();
   const visitorName = discordTawkName.value || `Discord ${discordId}`;
   const previouslyBound = getTawkBoundDiscordId();
-  const existingScript = document.querySelector('script[data-tawk-widget="1"]');
+  const existingScript = hasTawkEmbedScript();
   const sameUser =
     Boolean(discordId) &&
     (tawkBoundDiscordId === discordId || previouslyBound === discordId);
-  const widgetAlive = isTawkWidgetMounted();
 
-  // Same Discord user + live widget: attributes only (no remount / no re-login loop).
-  if (sameUser && widgetAlive) {
+  // Same user + embed already injected: never remount (avoids destroy loops).
+  if (sameUser && existingScript) {
     tawkBoundDiscordId = discordId;
     setTawkBoundDiscordId(discordId);
     try {
       showTawkWidget();
       if (tawkLoggedInDiscordId === discordId) {
         syncTawkAttributes();
-      } else {
+      } else if (!tawkScriptLoading) {
         void loginTawkSecureUser().then((ok) => {
           if (!ok) syncTawkAttributes();
           showTawkWidget();
@@ -940,12 +935,7 @@ const ensureTawkLoaded = () => {
   }
 
   // Script still injecting — wait for onLoad.
-  if (sameUser && existingScript && tawkScriptLoading) return;
-
-  // Ghost API / script without iframe after shutdown: remount below.
-  if (existingScript && !widgetAlive && !tawkScriptLoading) {
-    destroyTawkDom();
-  }
+  if (existingScript && tawkScriptLoading) return;
 
   // Account switch: wipe old anonymous/other-user session once, then bind new Discord user.
   if (previouslyBound && previouslyBound !== discordId) {
@@ -958,13 +948,24 @@ const ensureTawkLoaded = () => {
     if (hasLegacyTawk) {
       clearTawkBrowserIdentity();
     }
-    if (document.querySelector('script[data-tawk-widget="1"]')) destroyTawkDom();
+    if (hasTawkEmbedScript()) destroyTawkDom();
   } else if (existingScript && !sameUser) {
     destroyTawkDom();
+  } else if (!existingScript && window.Tawk_API) {
+    // Ghost API left after a previous shutdown — drop stubs then reinject.
+    try {
+      delete window.Tawk_API;
+      delete window.Tawk_LoadStart;
+    } catch {
+      window.Tawk_API = undefined;
+      window.Tawk_LoadStart = undefined;
+    }
+    tawkLoggedInDiscordId = "";
+    tawkSecureSessionCache = null;
   }
 
   if (tawkScriptLoading) return;
-  if (isTawkWidgetMounted()) {
+  if (hasTawkEmbedScript()) {
     showTawkWidget();
     return;
   }
@@ -980,7 +981,8 @@ const ensureTawkLoaded = () => {
   globalWindow.Tawk_API.onLoad = function onTawkLoad() {
     tawkScriptLoading = false;
     // Always show first — never block the bubble on Secure Mode login.
-    showTawkWidget({ forceStart: true });
+    // Use showWidget only (start() is for autoStart:false and can break a live widget).
+    showTawkWidget();
     void (async () => {
       try {
         const loggedIn = await loginTawkSecureUser();
@@ -1012,9 +1014,22 @@ watch([shouldLoadAdsense, adsenseClient], () => {
   ensureAdsenseLoaded();
 }, { immediate: true });
 
-watch([shouldLoadTawk, tawkToWidgetUrl, discordTawkName], () => {
+// Do NOT remount when only the display name changes — that was destroying the bubble.
+watch([shouldLoadTawk, tawkToWidgetUrl], () => {
   ensureTawkLoaded();
 }, { immediate: true });
+
+watch(discordTawkName, () => {
+  if (!process.client || !shouldLoadTawk.value) return;
+  try {
+    if (window.Tawk_API?.visitor) {
+      window.Tawk_API.visitor.name = discordTawkName.value || window.Tawk_API.visitor.name;
+    }
+  } catch {
+    // ignore
+  }
+  syncTawkAttributes();
+});
 
 // Context updates must NOT remount Tawk (that would spawn new chats/connections).
 watch([selectedGuild, managedServers, locale], () => {
