@@ -685,6 +685,66 @@ const unloadTawk = ({ clearIdentity = true } = {}) => {
   tawkBoundDiscordId = "";
 };
 
+const clipTawkValue = (value) => {
+  const text = String(value ?? "").trim();
+  if (!text) return "";
+  return text.length > 255 ? text.slice(0, 255) : text;
+};
+
+const buildTawkAttributes = () => {
+  const discordId = clipTawkValue(me.value?.discord_id);
+  const visitorName = clipTawkValue(discordTawkName.value || `Discord ${discordId}`);
+  const guildId = clipTawkValue(selectedGuild.value?.id);
+  const selectedServer = managedServers.value.find((row) => String(row.id) === String(guildId));
+  const guildName = clipTawkValue(selectedServer?.name || selectedGuild.value?.name || "");
+  const isPremium = Boolean(selectedServer?.billing?.isPremium);
+  const plan = clipTawkValue(selectedServer?.billing?.planKey || (guildId ? (isPremium ? "premium" : "free") : ""));
+  const avatarHash = String(me.value?.avatar || "").trim();
+  const avatarUrlForTawk = avatarHash && discordId
+    ? `https://cdn.discordapp.com/avatars/${discordId}/${avatarHash}.png?size=256`
+    : discordId
+      ? `https://cdn.discordapp.com/embed/avatars/${Number(BigInt(discordId) % 6n)}.png`
+      : "";
+
+  const attrs = {
+    "discord-id": discordId,
+    username: clipTawkValue(me.value?.username || visitorName),
+    locale: clipTawkValue(locale.value || "fr"),
+    "guild-count": String(managedServers.value.length)
+  };
+
+  if (guildId) attrs["guild-id"] = guildId;
+  if (guildName) attrs["guild-name"] = guildName;
+  if (plan) {
+    attrs.plan = plan;
+    attrs.premium = isPremium ? "yes" : "no";
+  }
+  if (avatarUrlForTawk && avatarUrlForTawk.length <= 255) {
+    attrs.avatar = avatarUrlForTawk;
+  }
+
+  // Tawk rejects empty custom values.
+  Object.keys(attrs).forEach((key) => {
+    if (!attrs[key]) delete attrs[key];
+  });
+  return attrs;
+};
+
+const syncTawkAttributes = () => {
+  if (!process.client || !shouldLoadTawk.value) return;
+  const api = window.Tawk_API;
+  if (!api?.setAttributes) return;
+  const attrs = buildTawkAttributes();
+  if (!Object.keys(attrs).length) return;
+  try {
+    api.setAttributes(attrs, (error) => {
+      if (error) console.warn("[tawk] setAttributes failed:", error, attrs);
+    });
+  } catch (error) {
+    console.warn("[tawk] setAttributes threw:", error);
+  }
+};
+
 const ensureTawkLoaded = () => {
   if (!process.client) return;
   if (!shouldLoadTawk.value) {
@@ -709,6 +769,7 @@ const ensureTawkLoaded = () => {
   if (sameWidget) {
     try {
       window.Tawk_API?.showWidget?.();
+      syncTawkAttributes();
     } catch {
       // ignore
     }
@@ -728,16 +789,10 @@ const ensureTawkLoaded = () => {
   };
   globalWindow.Tawk_API.onLoad = function onTawkLoad() {
     try {
-      globalWindow.Tawk_API.setAttributes(
-        {
-          "discord-id": discordId,
-          username: String(me.value?.username || visitorName)
-        },
-        () => {}
-      );
+      syncTawkAttributes();
       globalWindow.Tawk_API.showWidget?.();
-    } catch {
-      // ignore
+    } catch (error) {
+      console.warn("[tawk] onLoad failed:", error);
     }
   };
 
@@ -764,6 +819,10 @@ watch([shouldLoadAdsense, adsenseClient], () => {
 watch([shouldLoadTawk, tawkToWidgetUrl, discordTawkName], () => {
   ensureTawkLoaded();
 }, { immediate: true });
+
+watch([selectedGuild, managedServers, locale], () => {
+  syncTawkAttributes();
+}, { deep: true });
 
 const avatarUrl = computed(() => {
   if (!me.value?.discord_id || !me.value?.avatar) return "";
