@@ -668,14 +668,9 @@ const clearTawkCookies = () => {
   });
 };
 
-/** Hard reset — only when Discord account changes or user logs out. */
+/** Soft clear cookies/storage — no logout()/shutdown() (those kill the bubble). */
 const clearTawkBrowserIdentity = () => {
   if (!process.client) return;
-  try {
-    window.Tawk_API?.logout?.(() => {});
-  } catch {
-    // ignore
-  }
   clearTawkCookies();
   clearBrowserStorageKeys(window.localStorage, { preserveBoundKey: false });
   clearBrowserStorageKeys(window.sessionStorage);
@@ -693,17 +688,10 @@ const hideTawkWidget = () => {
   }
 };
 
-const showTawkWidget = ({ forceStart = false } = {}) => {
+const showTawkWidget = () => {
   if (!process.client) return;
   try {
-    const api = window.Tawk_API;
-    if (!api) return;
-    // forceStart after shutdown()/remount — showWidget alone may leave the bubble hidden.
-    if (forceStart && typeof api.start === "function") {
-      api.start({ showWidget: true });
-      return;
-    }
-    api.showWidget?.();
+    window.Tawk_API?.showWidget?.();
   } catch {
     // ignore
   }
@@ -711,12 +699,7 @@ const showTawkWidget = ({ forceStart = false } = {}) => {
 
 const destroyTawkDom = () => {
   if (!process.client) return;
-  try {
-    window.Tawk_API?.hideWidget?.();
-    window.Tawk_API?.shutdown?.();
-  } catch {
-    // ignore
-  }
+  // Remove DOM only — avoid shutdown() which leaves TawkConnectionTime=0 and no bubble.
   document.querySelectorAll('script[data-tawk-widget="1"]').forEach((node) => node.remove());
   document
     .querySelectorAll('iframe[src*="tawk.to"], iframe[title*="chat widget" i]')
@@ -731,7 +714,6 @@ const destroyTawkDom = () => {
       }
     });
   try {
-    // Drop dead API stubs so we remount a fresh widget instead of calling ghost methods.
     delete window.Tawk_API;
     delete window.Tawk_LoadStart;
   } catch {
@@ -801,11 +783,10 @@ const syncTawkAttributes = () => {
   if (!process.client || !shouldLoadTawk.value) return;
   const api = window.Tawk_API;
   if (!api?.setAttributes) return;
+  // With Secure Mode on, setAttributes without hash is ignored / can break the session.
+  if (!tawkSecureSessionCache?.hash) return;
   const attrs = buildTawkAttributes();
-  // Secure Mode: hash required for setAttributes to stick.
-  if (tawkSecureSessionCache?.hash) {
-    attrs.hash = String(tawkSecureSessionCache.hash);
-  }
+  attrs.hash = String(tawkSecureSessionCache.hash);
   if (!Object.keys(attrs).length) return;
   try {
     api.setAttributes(attrs, (error) => {
@@ -894,7 +875,6 @@ const ensureTawkLoaded = () => {
   // Logged out / cookies refused.
   if (!shouldLoadTawk.value) {
     const token = getToken();
-    // Auth still hydrating: do not tear down an existing (or soon-to-load) widget.
     if (token && !me.value?.discord_id) return;
 
     const loggedOut = !token;
@@ -907,52 +887,33 @@ const ensureTawkLoaded = () => {
   }
 
   const discordId = String(me.value?.discord_id || "").trim();
-  const visitorName = discordTawkName.value || `Discord ${discordId}`;
   const previouslyBound = getTawkBoundDiscordId();
   const existingScript = hasTawkEmbedScript();
   const sameUser =
     Boolean(discordId) &&
     (tawkBoundDiscordId === discordId || previouslyBound === discordId);
 
-  // Same user + embed already injected: never remount (avoids destroy loops).
+  // Same user + embed already injected: keep it, never remount.
   if (sameUser && existingScript) {
     tawkBoundDiscordId = discordId;
     setTawkBoundDiscordId(discordId);
-    try {
-      showTawkWidget();
-      if (tawkLoggedInDiscordId === discordId) {
-        syncTawkAttributes();
-      } else if (!tawkScriptLoading) {
-        void loginTawkSecureUser().then((ok) => {
-          if (!ok) syncTawkAttributes();
-          showTawkWidget();
-        });
-      }
-    } catch {
-      // ignore
+    showTawkWidget();
+    if (tawkLoggedInDiscordId !== discordId && !tawkScriptLoading) {
+      void loginTawkSecureUser();
+    } else {
+      syncTawkAttributes();
     }
     return;
   }
 
-  // Script still injecting — wait for onLoad.
   if (existingScript && tawkScriptLoading) return;
 
-  // Account switch: wipe old anonymous/other-user session once, then bind new Discord user.
+  // Account switch only.
   if (previouslyBound && previouslyBound !== discordId) {
     unloadTawk({ clearIdentity: true });
-  } else if (!previouslyBound) {
-    // First Discord bind: clear any leftover anonymous Tawk UUID from older embeds.
-    const hasLegacyTawk =
-      /(?:^|;\s*)(tawk_|twk_|TawkConnectionTime)/i.test(document.cookie) ||
-      Object.keys(window.localStorage || {}).some((key) => /tawk|twk_/i.test(key));
-    if (hasLegacyTawk) {
-      clearTawkBrowserIdentity();
-    }
-    if (hasTawkEmbedScript()) destroyTawkDom();
   } else if (existingScript && !sameUser) {
     destroyTawkDom();
   } else if (!existingScript && window.Tawk_API) {
-    // Ghost API left after a previous shutdown — drop stubs then reinject.
     try {
       delete window.Tawk_API;
       delete window.Tawk_LoadStart;
@@ -969,24 +930,19 @@ const ensureTawkLoaded = () => {
     showTawkWidget();
     return;
   }
-  tawkScriptLoading = true;
 
+  // Official-style embed. Do NOT set visitor.name without hash while Secure Mode is on —
+  // that prevents the bubble from rendering (cookies appear, TawkConnectionTime stays 0).
+  tawkScriptLoading = true;
   const globalWindow = window;
   globalWindow.Tawk_API = globalWindow.Tawk_API || {};
   globalWindow.Tawk_LoadStart = new Date();
-  // Fallback visitor name if Secure Mode login is unavailable.
-  globalWindow.Tawk_API.visitor = {
-    name: visitorName
-  };
   globalWindow.Tawk_API.onLoad = function onTawkLoad() {
     tawkScriptLoading = false;
-    // Always show first — never block the bubble on Secure Mode login.
-    // Use showWidget only (start() is for autoStart:false and can break a live widget).
     showTawkWidget();
     void (async () => {
       try {
-        const loggedIn = await loginTawkSecureUser();
-        if (!loggedIn) syncTawkAttributes();
+        await loginTawkSecureUser();
         showTawkWidget();
       } catch (error) {
         console.warn("[tawk] onLoad failed:", error);
@@ -1006,7 +962,12 @@ const ensureTawkLoaded = () => {
     tawkScriptLoading = false;
     console.warn("[tawk] embed script failed to load");
   };
-  document.head.appendChild(script);
+  const firstScript = document.getElementsByTagName("script")[0];
+  if (firstScript?.parentNode) {
+    firstScript.parentNode.insertBefore(script, firstScript);
+  } else {
+    document.head.appendChild(script);
+  }
   setTawkBoundDiscordId(discordId);
 };
 
