@@ -14,7 +14,7 @@
         <li :class="{ done: step > 1, current: step === 1 }">
           <div class="step-head">
             <span class="num">1</span>
-            <strong>Vérifie que ton Twitch est lié à Discord</strong>
+            <strong>Étape 1 — Vérifie que ton Discord est bien lié à Twitch</strong>
           </div>
           <p>
             Dans Discord → Paramètres → Connexions, ton compte Twitch doit apparaître.
@@ -32,11 +32,13 @@
         <li :class="{ done: step > 2, current: step === 2 }">
           <div class="step-head">
             <span class="num">2</span>
-            <strong>Lie ton Discord à EcoBoty</strong>
+            <strong>Étape 2 — Lie ton Discord à EcoBoty</strong>
           </div>
           <p>
             Une seule liaison pour tout EcoBoty (tous les streameurs / serveurs).
-            On vérifie que c’est bien le Twitch <strong>@{{ twitchLogin || "…" }}</strong>.
+            <span v-if="twitchLogin">
+              On vérifie que c’est bien le Twitch <strong>@{{ twitchLogin }}</strong>.
+            </span>
           </p>
           <a
             v-if="!done && info.linkUrl"
@@ -52,7 +54,7 @@
         <li :class="{ done: step > 3, current: step === 3 }">
           <div class="step-head">
             <span class="num">3</span>
-            <strong>Rejoins le Discord du streameur</strong>
+            <strong>Étape 3 — Rejoins le Discord du streameur</strong>
           </div>
           <p>Entre sur le serveur pour débloquer les récompenses.</p>
           <a
@@ -67,10 +69,10 @@
           <p v-else class="warn">Pas d’invitation Discord configurée pour ce serveur.</p>
         </li>
 
-        <li :class="{ current: step === 4 }">
+        <li :class="{ done: done, current: step === 4 }">
           <div class="step-head">
             <span class="num">4</span>
-            <strong>Valide ta première récompense</strong>
+            <strong>C’est bon — valide ta récompense</strong>
           </div>
           <p v-if="done">
             Maintenant tape <code>!daily</code> dans le tchat de
@@ -118,7 +120,7 @@ const loading = ref(true);
 const error = ref("");
 
 const step = computed(() => {
-  if (done.value) return 3;
+  if (done.value) return 4;
   if (info.value?.linkUrl) return 2;
   return 1;
 });

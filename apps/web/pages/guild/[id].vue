@@ -1041,6 +1041,16 @@
               <h4>{{ $t("adminGuild.twitch.connectionTitle") }}</h4>
               <p class="muted">{{ $t("adminGuild.twitch.tips.connection") }}</p>
             </div>
+            <UButton
+              v-if="twitchStatus.connected"
+              color="neutral"
+              variant="soft"
+              size="sm"
+              :loading="twitchStatusLoading"
+              @click="refreshTwitchConnection"
+            >
+              {{ $t("adminGuild.twitch.refreshStatus") }}
+            </UButton>
           </div>
           <div class="twitch-connect-card">
             <div class="twitch-connect-main">
@@ -1073,6 +1083,71 @@
               </UButton>
             </div>
           </div>
+
+          <div v-if="twitchStatus.connected" class="twitch-live-details">
+            <div class="twitch-detail-chip" :class="twitchStatus.live ? 'is-live' : 'is-off'">
+              <span class="twitch-live-dot" v-if="twitchStatus.live" />
+              {{ twitchStatus.live ? $t("adminGuild.twitch.liveOn") : $t("adminGuild.twitch.liveOff") }}
+            </div>
+            <div class="twitch-detail-item">
+              <span class="muted">{{ $t("adminGuild.twitch.liveTitle") }}</span>
+              <strong>{{ twitchStatus.live ? (twitchStatus.title || "—") : "—" }}</strong>
+            </div>
+            <div class="twitch-detail-item">
+              <span class="muted">{{ $t("adminGuild.twitch.liveGame") }}</span>
+              <strong>{{ twitchStatus.live ? (twitchStatus.gameName || "—") : "—" }}</strong>
+            </div>
+            <div class="twitch-detail-item">
+              <span class="muted">{{ $t("adminGuild.twitch.liveViewers") }}</span>
+              <strong>{{ twitchStatus.live ? formatTwitchNumber(twitchStatus.viewerCount) : "—" }}</strong>
+            </div>
+            <div class="twitch-detail-item">
+              <span class="muted">{{ $t("adminGuild.twitch.liveStarted") }}</span>
+              <strong>{{ twitchStatus.live ? formatTwitchDateTime(twitchStatus.startedAt) : "—" }}</strong>
+            </div>
+            <div class="twitch-detail-item twitch-detail-link">
+              <span class="muted">{{ $t("adminGuild.twitch.linkSlugLabel") }}</span>
+              <div class="twitch-slug-editor">
+                <div class="twitch-slug-input-row">
+                  <span class="twitch-slug-prefix">{{ twitchLinkUrlPrefix }}/</span>
+                  <input
+                    v-model="twitchLinkSlugDraft"
+                    type="text"
+                    maxlength="64"
+                    autocomplete="off"
+                    spellcheck="false"
+                    :placeholder="$t('adminGuild.twitch.linkSlugPlaceholder')"
+                    :class="{ 'is-invalid': Boolean(twitchLinkSlugClientError) }"
+                    @input="twitchLinkSlugSaveError = ''"
+                    @blur="onTwitchLinkSlugBlur"
+                  />
+                  <UButton
+                    size="sm"
+                    color="primary"
+                    :loading="twitchLinkSlugSaving"
+                    :disabled="!twitchLinkSlugCanSave"
+                    @click="saveTwitchLinkSlug"
+                  >
+                    {{ $t("common.save") }}
+                  </UButton>
+                </div>
+                <p v-if="twitchLinkSlugClientError" class="twitch-slug-error">
+                  {{ twitchLinkSlugClientError }}
+                </p>
+                <p v-else-if="twitchLinkSlugSaveError" class="twitch-slug-error">
+                  {{ twitchLinkSlugSaveError }}
+                </p>
+                <p class="muted" style="margin:6px 0 0;font-size:0.8rem;">
+                  {{ $t("adminGuild.twitch.linkSlugHelp") }}
+                </p>
+                <p v-if="twitchLinkBaseUrl" class="muted" style="margin:4px 0 0;font-size:0.8rem;">
+                  {{ $t("adminGuild.twitch.linkSlugPreview") }}
+                  <a :href="twitchLinkBaseUrl" target="_blank" rel="noreferrer">{{ twitchLinkBaseUrl }}</a>
+                </p>
+              </div>
+            </div>
+          </div>
+
           <div class="twitch-field-grid">
             <div class="twitch-field switch-field">
               <span>{{ $t("adminGuild.twitch.liveOnly") }}</span>
@@ -1089,6 +1164,72 @@
                 @click="saveTwitchLiveMode"
               >
                 {{ $t("adminGuild.twitch.saveMode") }}
+              </UButton>
+            </div>
+          </div>
+
+          <div v-if="twitchStatus.connected" class="twitch-history">
+            <div class="twitch-section-head">
+              <div>
+                <h4>{{ $t("adminGuild.twitch.historyTitle") }}</h4>
+                <p class="muted">{{ $t("adminGuild.twitch.historyHelp") }}</p>
+              </div>
+            </div>
+            <div class="twitch-history-table-wrap">
+              <table class="twitch-history-table">
+                <thead>
+                  <tr>
+                    <th>{{ $t("adminGuild.twitch.historyDate") }}</th>
+                    <th>{{ $t("adminGuild.twitch.historyStreamTitle") }}</th>
+                    <th>{{ $t("adminGuild.twitch.historyGames") }}</th>
+                    <th>{{ $t("adminGuild.twitch.historyAvgViewers") }}</th>
+                    <th>{{ $t("adminGuild.twitch.historyUniqueViewers") }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-if="twitchHistoryLoading">
+                    <td colspan="5" class="muted">{{ $t("common.loading") }}</td>
+                  </tr>
+                  <tr v-else-if="!twitchLiveHistory.length">
+                    <td colspan="5" class="muted">{{ $t("adminGuild.twitch.historyEmpty") }}</td>
+                  </tr>
+                  <tr v-for="row in twitchLiveHistory" :key="row.id">
+                    <td>
+                      <div>{{ formatTwitchDateTime(row.startedAt) }}</div>
+                      <span v-if="row.live" class="twitch-history-live">{{ $t("adminGuild.twitch.liveOn") }}</span>
+                      <span v-else-if="row.endedAt" class="muted" style="font-size:0.78rem;">
+                        → {{ formatTwitchDateTime(row.endedAt) }}
+                      </span>
+                    </td>
+                    <td>{{ row.title || "—" }}</td>
+                    <td>{{ (row.games || []).join(", ") || "—" }}</td>
+                    <td>{{ formatTwitchNumber(row.avgViewers) }}</td>
+                    <td>{{ formatTwitchNumber(row.uniqueViewers) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="twitch-history-pager">
+              <UButton
+                size="sm"
+                color="neutral"
+                variant="soft"
+                :disabled="twitchHistoryPage <= 1 || twitchHistoryLoading"
+                @click="changeTwitchHistoryPage(twitchHistoryPage - 1)"
+              >
+                {{ $t("common.prev") }}
+              </UButton>
+              <span class="muted">
+                {{ $t("adminGuild.twitch.historyPage", { page: twitchHistoryPage, pages: twitchHistoryPages }) }}
+              </span>
+              <UButton
+                size="sm"
+                color="neutral"
+                variant="soft"
+                :disabled="twitchHistoryPage >= twitchHistoryPages || twitchHistoryLoading"
+                @click="changeTwitchHistoryPage(twitchHistoryPage + 1)"
+              >
+                {{ $t("common.next") }}
               </UButton>
             </div>
           </div>
@@ -1276,6 +1417,22 @@
                 <h4>{{ $t("adminGuild.twitch.promoTitle") }}</h4>
                 <p class="muted">{{ $t("adminGuild.twitch.promoHelp") }}</p>
               </div>
+            </div>
+
+            <div class="twitch-callout twitch-link-callout">
+              <strong>{{ $t("adminGuild.twitch.linkSlugLabel") }}</strong>
+              <p>
+                <a
+                  v-if="twitchLinkBaseUrl"
+                  :href="twitchLinkBaseUrl"
+                  target="_blank"
+                  rel="noreferrer"
+                >{{ twitchLinkBaseUrl }}</a>
+                <span v-else class="muted">{{ $t("adminGuild.twitch.linkSlugMissing") }}</span>
+              </p>
+              <p class="muted" style="margin-top:6px;">
+                {{ $t("adminGuild.twitch.promoLinkHelp") }}
+              </p>
             </div>
 
             <div class="twitch-toggle-list">
@@ -4076,7 +4233,26 @@ const gainLogs = ref([]);
 const transactionLogs = ref([]);
 const gameLogs = ref([]);
 const leaveLogs = ref([]);
-const twitchStatus = ref({ connected: false, login: "", live: false });
+const twitchStatus = ref({
+  connected: false,
+  login: "",
+  live: false,
+  title: "",
+  gameName: "",
+  viewerCount: 0,
+  startedAt: null,
+  linkSlug: "",
+  effectiveLinkSlug: ""
+});
+const twitchStatusLoading = ref(false);
+const twitchLinkSlugDraft = ref("");
+const twitchLinkSlugSaving = ref(false);
+const twitchLinkSlugSaveError = ref("");
+const twitchLiveHistory = ref([]);
+const twitchHistoryLoading = ref(false);
+const twitchHistoryPage = ref(1);
+const twitchHistoryTotal = ref(0);
+const twitchHistoryPageSize = 10;
 const generatingDiscordInvite = ref(false);
 const twitchLiveOnly = ref(true);
 const twitchSubTab = ref("connection");
@@ -4120,6 +4296,8 @@ const twitchPromo = reactive({
   defaultTemplate: "",
   stopPhrase: "Plus intéressé ? Tape !stop pour ne plus recevoir ce message.",
   maxChars: 500,
+  linkSlug: "",
+  linkExample: "",
   placeholders: [
     { tag: "{user}", label: "Pseudo Twitch de la personne concernée (login, pas Discord)" },
     { tag: "{pseudo}", label: "Identique à {user}" },
@@ -4243,14 +4421,21 @@ const twitchPromoPreview = computed(() => {
   const user = "Viewer";
   const discord = String(twitchPromo.discordUrl || "https://discord.gg/votre-serveur").trim();
   const siteBase = String(config.public.baseUrl || config.public.apiBase || "https://ecoboty.eu").replace(/\/$/, "");
-  const slugGuess = String(currentGuildDiscordName.value || "serveur")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 48) || "serveur";
-  const link = `${siteBase}/link/${slugGuess}/viewer`;
+  const slug =
+    String(
+      twitchLinkSlugDraft.value ||
+        twitchStatus.value.linkSlug ||
+        twitchStatus.value.effectiveLinkSlug ||
+        twitchPromo.linkSlug ||
+        ""
+    )
+      .trim()
+      .toLowerCase() || "ton_serveur";
+  const link =
+    String(twitchPromo.linkExample || "").trim() ||
+    (/^[a-z0-9_]{2,64}$/.test(slug)
+      ? `${siteBase}/link/${slug}/viewer`
+      : `${siteBase}/link/ton_serveur/viewer`);
   const stopText = twitchPromo.stopEnabled
     ? String(twitchPromo.stopPhrase || "Plus intéressé ? Tape !stop pour ne plus recevoir ce message.")
     : "";
@@ -4278,6 +4463,63 @@ const twitchPromoPreview = computed(() => {
   }
   return text.replace(/\s{2,}/g, " ").trim() || "—";
 });
+const twitchLinkUrlPrefix = computed(() => {
+  const siteBase = String(config.public.baseUrl || "https://ecoboty.eu").replace(/\/$/, "");
+  return `${siteBase}/link`;
+});
+const twitchLinkBaseUrl = computed(() => {
+  const slug = String(
+    twitchLinkSlugDraft.value ||
+      twitchStatus.value.linkSlug ||
+      twitchStatus.value.effectiveLinkSlug ||
+      ""
+  )
+    .trim()
+    .toLowerCase();
+  if (!slug || !/^[a-z0-9_]{2,64}$/.test(slug)) return "";
+  return `${twitchLinkUrlPrefix.value}/${encodeURIComponent(slug)}`;
+});
+const twitchLinkSlugClientError = computed(() => {
+  const raw = String(twitchLinkSlugDraft.value || "");
+  const slug = raw.trim().toLowerCase();
+  if (!raw.trim()) return "";
+  if (/\s/.test(raw)) return t("adminGuild.twitch.linkSlugErrors.spaces");
+  if (!/^[a-z0-9_]{2,64}$/.test(slug)) {
+    return t("adminGuild.twitch.linkSlugErrors.invalid", { chars: "a-z, 0-9, _" });
+  }
+  return "";
+});
+const twitchLinkSlugCanSave = computed(() => {
+  if (twitchLinkSlugSaving.value) return false;
+  const next = String(twitchLinkSlugDraft.value || "").trim().toLowerCase();
+  if (!next) return false;
+  if (twitchLinkSlugClientError.value) return false;
+  const current = String(
+    twitchStatus.value.linkSlug || twitchStatus.value.effectiveLinkSlug || ""
+  )
+    .trim()
+    .toLowerCase();
+  return next !== current;
+});
+const twitchHistoryPages = computed(() =>
+  Math.max(1, Math.ceil(Number(twitchHistoryTotal.value || 0) / twitchHistoryPageSize) || 1)
+);
+
+const formatTwitchNumber = (value) => {
+  const n = Number(value || 0);
+  if (!Number.isFinite(n)) return "0";
+  return new Intl.NumberFormat(undefined).format(Math.max(0, Math.round(n)));
+};
+
+const formatTwitchDateTime = (value) => {
+  if (!value) return "—";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "short",
+    timeStyle: "short"
+  }).format(date);
+};
 const twitchPromoMaxChars = computed(() => Number(twitchPromo.maxChars || 500));
 const twitchPromoPreviewLength = computed(() => {
   const text = String(twitchPromoPreview.value || "").trim();
@@ -6898,6 +7140,19 @@ const loadTwitchPromoSettings = async () => {
   twitchPromo.defaultTemplate = String(settings.defaultTemplate || "");
   twitchPromo.stopPhrase = String(settings.stopPhrase || twitchPromo.stopPhrase || "");
   twitchPromo.maxChars = Number(settings.maxChars || 500);
+  twitchPromo.linkSlug = String(settings.linkSlug || "");
+  twitchPromo.linkExample = String(settings.linkExample || "");
+  if (Object.prototype.hasOwnProperty.call(settings, "linkSlug")) {
+    const effective = String(settings.effectiveLinkSlug || settings.linkSlug || "");
+    twitchStatus.value = {
+      ...twitchStatus.value,
+      linkSlug: String(settings.linkSlug || ""),
+      effectiveLinkSlug: effective
+    };
+    if (!twitchLinkSlugDraft.value) {
+      twitchLinkSlugDraft.value = String(settings.linkSlug || effective || "");
+    }
+  }
   twitchPromo.placeholders = Array.isArray(settings.placeholders)
     ? settings.placeholders
     : twitchPromo.placeholders;
@@ -6978,19 +7233,120 @@ const loadGamesSettings = async () => {
 
 const loadTwitchStatus = async () => {
   const token = getToken();
-  const res = await fetch(`${config.public.apiBase}/api/guilds/${id}/twitch/status`, {
-    cache: "no-store",
-    headers: { Authorization: `Bearer ${token}` }
-  });
-  if (handleUnauthorized(res)) return;
-  if (!res.ok) return;
-  const data = await parseJsonSafe(res, {});
-  twitchStatus.value = {
-    connected: Boolean(data.connected),
-    login: data.login || "",
-    live: Boolean(data.live)
-  };
-  twitchLiveOnly.value = data.live_only !== false;
+  twitchStatusLoading.value = true;
+  try {
+    const res = await fetch(`${config.public.apiBase}/api/guilds/${id}/twitch/status`, {
+      cache: "no-store",
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (handleUnauthorized(res)) return;
+    if (!res.ok) return;
+    const data = await parseJsonSafe(res, {});
+    twitchStatus.value = {
+      connected: Boolean(data.connected),
+      login: data.login || "",
+      live: Boolean(data.live),
+      title: data.title || "",
+      gameName: data.gameName || "",
+      viewerCount: Number(data.viewerCount || 0) || 0,
+      startedAt: data.startedAt || null,
+      linkSlug: data.linkSlug || "",
+      effectiveLinkSlug: data.effectiveLinkSlug || data.linkSlug || ""
+    };
+    twitchLinkSlugDraft.value = String(
+      data.linkSlug || data.effectiveLinkSlug || ""
+    );
+    twitchLinkSlugSaveError.value = "";
+    twitchLiveOnly.value = data.live_only !== false;
+    if (twitchStatus.value.connected) {
+      await loadTwitchLiveHistory(twitchHistoryPage.value);
+    } else {
+      twitchLiveHistory.value = [];
+      twitchHistoryTotal.value = 0;
+    }
+  } finally {
+    twitchStatusLoading.value = false;
+  }
+};
+
+const loadTwitchLiveHistory = async (page = 1) => {
+  if (!twitchStatus.value.connected) return;
+  const token = getToken();
+  twitchHistoryLoading.value = true;
+  try {
+    const safePage = Math.max(1, Number(page) || 1);
+    const res = await fetch(
+      `${config.public.apiBase}/api/guilds/${id}/twitch/live-history?page=${safePage}&pageSize=${twitchHistoryPageSize}`,
+      {
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${token}` }
+      }
+    );
+    if (handleUnauthorized(res)) return;
+    if (!res.ok) return;
+    const data = await parseJsonSafe(res, {});
+    twitchLiveHistory.value = Array.isArray(data.items) ? data.items : [];
+    twitchHistoryTotal.value = Number(data.total || 0);
+    twitchHistoryPage.value = Number(data.page || safePage);
+  } finally {
+    twitchHistoryLoading.value = false;
+  }
+};
+
+const changeTwitchHistoryPage = async (page) => {
+  await loadTwitchLiveHistory(page);
+};
+
+const refreshTwitchConnection = async () => {
+  await loadTwitchStatus();
+};
+
+const onTwitchLinkSlugBlur = () => {
+  if (String(twitchLinkSlugDraft.value || "").trim()) return;
+  twitchLinkSlugDraft.value = String(
+    twitchStatus.value.linkSlug || twitchStatus.value.effectiveLinkSlug || ""
+  );
+};
+
+const saveTwitchLinkSlug = async () => {
+  if (!twitchLinkSlugCanSave.value) return;
+  const token = getToken();
+  twitchLinkSlugSaving.value = true;
+  twitchLinkSlugSaveError.value = "";
+  try {
+    const res = await fetch(`${config.public.apiBase}/api/guilds/${id}/twitch/link-slug`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ slug: String(twitchLinkSlugDraft.value || "").trim() })
+    });
+    if (handleUnauthorized(res)) return;
+    const data = await parseJsonSafe(res, {});
+    if (!res.ok) {
+      const code = String(data.error || "");
+      const map = {
+        link_slug_required: t("adminGuild.twitch.linkSlugErrors.required"),
+        link_slug_spaces: t("adminGuild.twitch.linkSlugErrors.spaces"),
+        link_slug_invalid: t("adminGuild.twitch.linkSlugErrors.invalid", { chars: "a-z, 0-9, _" }),
+        link_slug_taken: t("adminGuild.twitch.linkSlugErrors.taken")
+      };
+      twitchLinkSlugSaveError.value =
+        map[code] || t("adminGuild.twitch.linkSlugErrors.generic");
+      return;
+    }
+    const slug = String(data.linkSlug || twitchLinkSlugDraft.value || "")
+      .trim()
+      .toLowerCase();
+    twitchLinkSlugDraft.value = slug;
+    twitchStatus.value = {
+      ...twitchStatus.value,
+      linkSlug: slug,
+      effectiveLinkSlug: String(data.effectiveLinkSlug || slug)
+    };
+    twitchPromo.linkSlug = slug;
+    twitchPromo.linkExample = `${twitchLinkUrlPrefix.value}/${slug}/viewer`;
+  } finally {
+    twitchLinkSlugSaving.value = false;
+  }
 };
 
 const disconnectTwitch = async () => {
@@ -9566,6 +9922,144 @@ label {
   justify-content: center;
 }
 
+.twitch-live-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.14);
+}
+
+.twitch-detail-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  width: fit-content;
+}
+
+.twitch-detail-chip.is-live {
+  background: rgba(239, 68, 68, 0.14);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+}
+
+.twitch-detail-chip.is-off {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-soft);
+  border: 1px solid var(--border);
+}
+
+.twitch-detail-item {
+  display: grid;
+  gap: 4px;
+  font-size: 0.85rem;
+}
+
+.twitch-detail-item strong {
+  word-break: break-word;
+}
+
+.twitch-detail-link {
+  grid-column: 1 / -1;
+}
+
+.twitch-slug-editor {
+  margin-top: 4px;
+}
+
+.twitch-slug-input-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.twitch-slug-prefix {
+  font-size: 0.85rem;
+  color: var(--text-soft);
+  white-space: nowrap;
+}
+
+.twitch-slug-input-row input {
+  flex: 1;
+  min-width: 140px;
+  max-width: 280px;
+}
+
+.twitch-slug-input-row input.is-invalid {
+  border-color: #f87171 !important;
+  box-shadow: 0 0 0 1px rgba(248, 113, 113, 0.35);
+}
+
+.twitch-slug-error {
+  margin: 6px 0 0;
+  color: #f87171;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.twitch-detail-link a,
+.twitch-link-callout a {
+  color: #c4b5fd;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  word-break: break-all;
+}
+
+.twitch-history-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.twitch-history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+
+.twitch-history-table th,
+.twitch-history-table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.twitch-history-table th {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-soft);
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.twitch-history-table tr:last-child td {
+  border-bottom: none;
+}
+
+.twitch-history-live {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #fca5a5;
+}
+
+.twitch-history-pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 @media (max-width: 720px) {
   .twitch-connect-card,
   .twitch-section-head,
@@ -9582,6 +10076,112 @@ label {
   .twitch-tab {
     white-space: nowrap;
   }
+}
+
+.twitch-live-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.14);
+}
+
+.twitch-detail-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  width: fit-content;
+}
+
+.twitch-detail-chip.is-live {
+  background: rgba(239, 68, 68, 0.14);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+}
+
+.twitch-detail-chip.is-off {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-soft);
+  border: 1px solid var(--border);
+}
+
+.twitch-detail-item {
+  display: grid;
+  gap: 4px;
+  font-size: 0.85rem;
+}
+
+.twitch-detail-item strong {
+  word-break: break-word;
+}
+
+.twitch-detail-link {
+  grid-column: 1 / -1;
+}
+
+.twitch-detail-link a {
+  color: #c4b5fd;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.twitch-link-callout a {
+  color: #c4b5fd;
+  word-break: break-all;
+}
+
+.twitch-history-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.twitch-history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+
+.twitch-history-table th,
+.twitch-history-table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.twitch-history-table th {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-soft);
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.twitch-history-table tr:last-child td {
+  border-bottom: none;
+}
+
+.twitch-history-live {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #fca5a5;
+}
+
+.twitch-history-pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 /* ——— Tabs / chips / pills ——— */

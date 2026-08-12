@@ -9,6 +9,8 @@ const twitchClientTokens = new Map();
 const watchIntervals = new Map();
 const reconnectTimers = new Map();
 const manualStopGuilds = new Set();
+/** @type {Map<string, { streamId: string, chatters: Set<string> }>} */
+const liveSessionChatters = new Map();
 
 const clearReconnectTimer = (guildId) => {
   const timer = reconnectTimers.get(guildId);
@@ -334,7 +336,7 @@ export const updateTwitchLiveMode = async (guildId, liveOnly, trx = db) => {
 const TWITCH_CHAT_MAX_CHARS = 500;
 
 const DEFAULT_PROMO_TEMPLATE =
-  "Hey @{user} ! Rejoins le Discord : {discord} pour gagner des {currency} et plein d'avantages. Un seul lien pour lier ton compte : {link} — puis tape !daily dans le tchat. Subs, bits et subgifts = des {currency} ! {stop}";
+  "Hey @{user} ! Lie ton compte et rejoins le Discord (étapes) ici : {link} {stop}";
 
 const PROMO_STOP_PHRASE =
   "Plus intéressé ? Tape !stop pour ne plus recevoir ce message.";
@@ -344,7 +346,9 @@ const LEGACY_PROMO_TEMPLATES = [
   "@{user} Rejoins le Discord : {discord} pour gagner des {currency} et débloquer plein d'avantages ! Tape !daily dans le chat pour lier ton Discord, ou passe par ce lien : {link} — à chaque sub, bits ou subgift tu pourras gagner des {currency}.",
   "@{user} Rejoins le Discord : {discord} pour gagner des {currency} et débloquer plein d'avantages ! Tape !daily dans le chat pour lier ton Discord, ou passe par ce lien : {link} — à chaque sub, bits ou subgift tu pourras gagner des {currency}. {stop}",
   "Hey @{user} ! Rejoins le Discord {discord} pour gagner des {currency} et plein d'avantages. Lie ton compte ici : {link} — puis tape !daily dans le tchat. Subs, bits et subgifts = des {currency} !",
-  "Hey @{user} ! Rejoins le Discord {discord} pour gagner des {currency} et plein d'avantages. Lie ton compte ici : {link} — puis tape !daily dans le tchat. Subs, bits et subgifts = des {currency} ! {stop}"
+  "Hey @{user} ! Rejoins le Discord {discord} pour gagner des {currency} et plein d'avantages. Lie ton compte ici : {link} — puis tape !daily dans le tchat. Subs, bits et subgifts = des {currency} ! {stop}",
+  "Hey @{user} ! Rejoins le Discord : {discord} pour gagner des {currency} et plein d'avantages. Un seul lien pour lier ton compte : {link} — puis tape !daily dans le tchat. Subs, bits et subgifts = des {currency} ! {stop}",
+  "Hey @{user} ! Rejoins le Discord : {discord} pour gagner des {currency} et plein d'avantages. Un seul lien pour lier ton compte : {link} — puis tape !daily dans le tchat. Subs, bits et subgifts = des {currency} !"
 ];
 
 const normalizePromoTemplateText = (raw) => String(raw || "").replace(/\s+/g, " ").trim();
@@ -395,44 +399,99 @@ export const isForeignSharedChatMessage = (tags = {}) => {
   return sourceRoomId !== roomId;
 };
 
+/** URL-safe slug for /link/{slug}: lowercase letters, digits, underscore only. */
+export const LINK_SLUG_ALLOWED_RE = /^[a-z0-9_]{2,64}$/;
+export const LINK_SLUG_CHARSET = "a-z, 0-9, _";
+
+export const normalizeLinkSlugInput = (raw) =>
+  String(raw || "")
+    .trim()
+    .toLowerCase();
+
+export const validateLinkSlug = (raw) => {
+  const slug = normalizeLinkSlugInput(raw);
+  if (!slug) {
+    return { ok: false, slug: "", error: "link_slug_required" };
+  }
+  if (/\s/.test(String(raw || ""))) {
+    return { ok: false, slug, error: "link_slug_spaces" };
+  }
+  if (!LINK_SLUG_ALLOWED_RE.test(slug)) {
+    return { ok: false, slug, error: "link_slug_invalid" };
+  }
+  return { ok: true, slug, error: null };
+};
+
 export const slugifyGuildName = (name) => {
   const base = String(name || "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
     .slice(0, 48);
   return base || "serveur";
 };
 
+/**
+ * Returns the stored custom slug if any.
+ * Does NOT invent a slug from the Discord server name anymore.
+ */
+export const getGuildLinkSlug = async (guildId, trx = db) => {
+  const guild = await ensureGuild(guildId, trx);
+  const hasColumn = await trx.schema.hasColumn("guilds", "link_slug");
+  if (!hasColumn) return "";
+  return String(guild.link_slug || "").trim().toLowerCase();
+};
+
+/**
+ * Effective path segment for /link/{slug}: custom slug, else Discord guild id.
+ */
 export const ensureGuildLinkSlug = async (guildId, trx = db) => {
   const guild = await ensureGuild(guildId, trx);
-  const existingSlug = String(guild.link_slug || "").trim();
+  const existingSlug = String(guild.link_slug || "").trim().toLowerCase();
   if (existingSlug) return existingSlug;
+  return String(guild.discord_guild_id || guildId);
+};
 
+export const updateGuildLinkSlug = async (guildId, rawSlug, trx = db) => {
+  const guild = await ensureGuild(guildId, trx);
   const hasColumn = await trx.schema.hasColumn("guilds", "link_slug");
-  if (!hasColumn) return String(guild.discord_guild_id || guildId);
-
-  let base = slugifyGuildName(guild.name);
-  let slug = base;
-  let n = 0;
-  for (;;) {
-    const clash = await trx("guilds").where({ link_slug: slug }).whereNot({ id: guild.id }).first();
-    if (!clash) break;
-    n += 1;
-    slug = `${base}-${n}`.slice(0, 64);
+  if (!hasColumn) {
+    const err = new Error("link_slug_not_migrated");
+    throw err;
   }
-  await trx("guilds").where({ id: guild.id }).update({ link_slug: slug });
-  guild.link_slug = slug;
-  return slug;
+
+  const checked = validateLinkSlug(rawSlug);
+  if (!checked.ok) {
+    const err = new Error(checked.error);
+    err.code = checked.error;
+    throw err;
+  }
+
+  const clash = await trx("guilds")
+    .where({ link_slug: checked.slug })
+    .whereNot({ id: guild.id })
+    .first();
+  if (clash) {
+    const err = new Error("link_slug_taken");
+    err.code = "link_slug_taken";
+    throw err;
+  }
+
+  await trx("guilds").where({ id: guild.id }).update({ link_slug: checked.slug });
+  guild.link_slug = checked.slug;
+  return {
+    slug: checked.slug,
+    effectiveSlug: checked.slug
+  };
 };
 
 export const resolveGuildByLinkSlug = async (slug, trx = db) => {
   const safe = String(slug || "")
     .trim()
     .toLowerCase()
-    .replace(/[^a-z0-9-]/g, "")
+    .replace(/[^a-z0-9_-]/g, "")
     .slice(0, 64);
   if (!safe) return null;
   const hasColumn = await trx.schema.hasColumn("guilds", "link_slug");
@@ -442,41 +501,70 @@ export const resolveGuildByLinkSlug = async (slug, trx = db) => {
 
 export const getTwitchPromoSettings = async (guildId, trx = db) => {
   const settings = await getTwitchSettings(guildId, trx);
+  const placeholders = [
+    { tag: "{user}", label: "Pseudo Twitch de la personne concernée (login, pas Discord)" },
+    { tag: "{pseudo}", label: "Identique à {user}" },
+    { tag: "{discord}", label: "Lien d’invitation Discord (étape 3 de la page /link)" },
+    { tag: "{invite}", label: "Identique à {discord}" },
+    { tag: "{currency}", label: "Nom de la monnaie du serveur" },
+    { tag: "{money}", label: "Identique à {currency}" },
+    {
+      tag: "{link}",
+      label: "Lien unique étapes : /link/{nom-du-serveur}/{pseudo-twitch}"
+    },
+    { tag: "{channel}", label: "Pseudo de la chaîne Twitch connectée" },
+    { tag: "{stop}", label: "Phrase !stop (vide si l’option est désactivée)" }
+  ];
   if (!settings) {
     return {
       connected: false,
       ...normalizePromoSettings({}),
-      placeholders: [
-        { tag: "{user}", label: "Pseudo Twitch de la personne concernée (login, pas Discord)" },
-        { tag: "{pseudo}", label: "Identique à {user}" },
-        { tag: "{discord}", label: "Lien d’invitation Discord" },
-        { tag: "{invite}", label: "Identique à {discord}" },
-        { tag: "{currency}", label: "Nom de la monnaie du serveur" },
-        { tag: "{money}", label: "Identique à {currency}" },
-        { tag: "{link}", label: "Lien court d’onboarding EcoBoty (/link/serveur/pseudo)" },
-        { tag: "{channel}", label: "Pseudo de la chaîne Twitch connectée" },
-        { tag: "{stop}", label: "Phrase !stop (vide si l’option est désactivée)" }
-      ],
+      placeholders,
       defaultTemplate: DEFAULT_PROMO_TEMPLATE,
-      stopPhrase: PROMO_STOP_PHRASE
+      stopPhrase: PROMO_STOP_PHRASE,
+      linkSlug: "",
+      effectiveLinkSlug: "",
+      linkExample: ""
     };
   }
+
+  const resolved = normalizePromoSettings(settings);
+  const rawStored = normalizePromoTemplateText(settings.promo_template);
+  if (
+    rawStored &&
+    rawStored !== resolved.template &&
+    LEGACY_PROMO_TEMPLATES.some((item) => normalizePromoTemplateText(item) === rawStored)
+  ) {
+    try {
+      await trx("twitch_settings").where({ guild_id: settings.guild_id }).update({
+        promo_template: DEFAULT_PROMO_TEMPLATE,
+        updated_at: new Date()
+      });
+    } catch {
+      // ignore auto-upgrade failures
+    }
+  }
+
+  let linkSlug = "";
+  let effectiveLinkSlug = "";
+  let linkExample = "";
+  try {
+    linkSlug = await getGuildLinkSlug(guildId, trx);
+    effectiveLinkSlug = await ensureGuildLinkSlug(guildId, trx);
+    linkExample = await buildTwitchLinkUrl(guildId, "viewer");
+  } catch {
+    // ignore
+  }
+
   return {
     connected: true,
-    ...normalizePromoSettings(settings),
-    placeholders: [
-      { tag: "{user}", label: "Pseudo Twitch de la personne concernée (login, pas Discord)" },
-      { tag: "{pseudo}", label: "Identique à {user}" },
-      { tag: "{discord}", label: "Lien d’invitation Discord" },
-      { tag: "{invite}", label: "Identique à {discord}" },
-      { tag: "{currency}", label: "Nom de la monnaie du serveur" },
-      { tag: "{money}", label: "Identique à {currency}" },
-      { tag: "{link}", label: "Lien court d’onboarding EcoBoty (/link/serveur/pseudo)" },
-      { tag: "{channel}", label: "Pseudo de la chaîne Twitch connectée" },
-      { tag: "{stop}", label: "Phrase !stop (vide si l’option est désactivée)" }
-    ],
+    ...resolved,
+    placeholders,
     defaultTemplate: DEFAULT_PROMO_TEMPLATE,
-    stopPhrase: PROMO_STOP_PHRASE
+    stopPhrase: PROMO_STOP_PHRASE,
+    linkSlug,
+    effectiveLinkSlug,
+    linkExample
   };
 };
 
@@ -1247,10 +1335,16 @@ const fetchChatters = async (settings) => {
 };
 
 const fetchStreamInfo = async (settings) => {
+  const empty = {
+    live: false,
+    streamId: null,
+    title: "",
+    gameName: "",
+    viewerCount: 0,
+    startedAt: null
+  };
   const { clientId } = getEnv();
-  if (!clientId || !settings?.twitch_broadcaster_id) {
-    return { live: false, streamId: null };
-  }
+  if (!clientId || !settings?.twitch_broadcaster_id) return empty;
   const refreshed = await refreshTokenIfNeeded(settings);
   const res = await fetch(
     `https://api.twitch.tv/helix/streams?user_id=${refreshed.twitch_broadcaster_id}`,
@@ -1261,11 +1355,18 @@ const fetchStreamInfo = async (settings) => {
       }
     }
   );
-  if (!res.ok) return { live: false, streamId: null };
+  if (!res.ok) return empty;
   const data = await res.json().catch(() => ({}));
   const stream = Array.isArray(data?.data) ? data.data[0] : null;
-  if (!stream) return { live: false, streamId: null };
-  return { live: true, streamId: String(stream.id || "").trim() || null };
+  if (!stream) return empty;
+  return {
+    live: true,
+    streamId: String(stream.id || "").trim() || null,
+    title: String(stream.title || "").trim().slice(0, 255),
+    gameName: String(stream.game_name || "").trim().slice(0, 120),
+    viewerCount: Math.max(0, Number(stream.viewer_count || 0) || 0),
+    startedAt: stream.started_at ? new Date(stream.started_at) : null
+  };
 };
 
 const fetchLiveStatus = async (settings) => {
@@ -1274,29 +1375,45 @@ const fetchLiveStatus = async (settings) => {
 };
 
 const isLiveCached = async (guildId) => {
-  const key = String(guildId);
-  const cached = liveStatusCache.get(key);
-  if (cached && Date.now() - cached.at < LIVE_TTL_MS) return cached.live;
-  const settings = await getTwitchSettings(guildId);
-  if (!settings) return false;
-  const info = await fetchStreamInfo(settings);
-  liveStatusCache.set(key, { live: info.live, streamId: info.streamId, at: Date.now() });
-  return info.live;
+  const info = await getLiveStreamInfoCached(guildId);
+  return Boolean(info.live);
 };
 
 const getLiveStreamInfoCached = async (guildId, { forceRefresh = false } = {}) => {
   const key = String(guildId);
   const cached = liveStatusCache.get(key);
   if (!forceRefresh && cached && Date.now() - cached.at < LIVE_TTL_MS) {
-    return { live: Boolean(cached.live), streamId: cached.streamId || null };
+    return {
+      live: Boolean(cached.live),
+      streamId: cached.streamId || null,
+      title: cached.title || "",
+      gameName: cached.gameName || "",
+      viewerCount: Number(cached.viewerCount || 0) || 0,
+      startedAt: cached.startedAt || null
+    };
   }
   const settings = await getTwitchSettings(guildId);
   if (!settings) {
-    liveStatusCache.set(key, { live: false, streamId: null, at: Date.now() });
-    return { live: false, streamId: null };
+    liveStatusCache.set(key, {
+      live: false,
+      streamId: null,
+      title: "",
+      gameName: "",
+      viewerCount: 0,
+      startedAt: null,
+      at: Date.now()
+    });
+    return {
+      live: false,
+      streamId: null,
+      title: "",
+      gameName: "",
+      viewerCount: 0,
+      startedAt: null
+    };
   }
   const info = await fetchStreamInfo(settings);
-  liveStatusCache.set(key, { live: info.live, streamId: info.streamId, at: Date.now() });
+  liveStatusCache.set(key, { ...info, at: Date.now() });
   return info;
 };
 
@@ -1304,16 +1421,187 @@ const fetchLiveStatusFresh = async (guildId, settings = null) => {
   const key = String(guildId);
   const currentSettings = settings || (await getTwitchSettings(guildId));
   if (!currentSettings) {
-    liveStatusCache.set(key, { live: false, streamId: null, at: Date.now() });
+    liveStatusCache.set(key, {
+      live: false,
+      streamId: null,
+      title: "",
+      gameName: "",
+      viewerCount: 0,
+      startedAt: null,
+      at: Date.now()
+    });
     return false;
   }
   const info = await fetchStreamInfo(currentSettings);
-  liveStatusCache.set(key, { live: info.live, streamId: info.streamId, at: Date.now() });
+  liveStatusCache.set(key, { ...info, at: Date.now() });
   return info.live;
 };
 
 export const getTwitchLiveStatus = async (guildId) => {
   return isLiveCached(guildId);
+};
+
+export const getTwitchStreamSnapshot = async (guildId, { forceRefresh = false } = {}) => {
+  return getLiveStreamInfoCached(guildId, { forceRefresh });
+};
+
+const parseGamesJson = (raw) => {
+  if (!raw) return [];
+  try {
+    const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((item) => String(item || "").trim()).filter(Boolean);
+  } catch {
+    return [];
+  }
+};
+
+const mergeGames = (existing, gameName) => {
+  const list = [...existing];
+  const next = String(gameName || "").trim();
+  if (!next) return list;
+  if (!list.some((item) => item.toLowerCase() === next.toLowerCase())) {
+    list.push(next);
+  }
+  return list.slice(0, 20);
+};
+
+const closeOpenLiveSessions = async (guildId, { exceptStreamId = null } = {}) => {
+  const guild = await ensureGuild(guildId);
+  const query = db("twitch_live_sessions")
+    .where({ guild_id: guild.id })
+    .whereNull("ended_at");
+  if (exceptStreamId) {
+    query.whereNot({ stream_id: String(exceptStreamId) });
+  }
+  await query.update({ ended_at: new Date(), updated_at: new Date() });
+};
+
+export const recordTwitchLiveSessionTick = async (guildId, streamInfo = {}, chatters = []) => {
+  try {
+    if (!(await db.schema.hasTable("twitch_live_sessions"))) return null;
+    const guild = await ensureGuild(guildId);
+    const guildKey = String(guildId);
+    const live = Boolean(streamInfo?.live);
+    const streamId = String(streamInfo?.streamId || "").trim();
+
+    if (!live || !streamId) {
+      liveSessionChatters.delete(guildKey);
+      await closeOpenLiveSessions(guildId);
+      return null;
+    }
+
+    await closeOpenLiveSessions(guildId, { exceptStreamId: streamId });
+
+    let memory = liveSessionChatters.get(guildKey);
+    if (!memory || memory.streamId !== streamId) {
+      memory = { streamId, chatters: new Set() };
+      liveSessionChatters.set(guildKey, memory);
+    }
+    for (const chatter of chatters || []) {
+      const login = String(chatter?.user_login || chatter?.login || "")
+        .trim()
+        .toLowerCase();
+      if (login) memory.chatters.add(login);
+    }
+
+    const viewerCount = Math.max(0, Number(streamInfo.viewerCount || 0) || 0);
+    const title = String(streamInfo.title || "").trim().slice(0, 255);
+    const gameName = String(streamInfo.gameName || "").trim().slice(0, 120);
+    const startedAt = streamInfo.startedAt instanceof Date ? streamInfo.startedAt : null;
+
+    const existing = await db("twitch_live_sessions")
+      .where({ guild_id: guild.id, stream_id: streamId })
+      .first();
+
+    if (!existing) {
+      const games = mergeGames([], gameName);
+      const row = {
+        guild_id: guild.id,
+        stream_id: streamId,
+        title: title || null,
+        started_at: startedAt || new Date(),
+        ended_at: null,
+        avg_viewers: viewerCount,
+        peak_viewers: viewerCount,
+        viewer_samples_sum: viewerCount,
+        viewer_samples_count: 1,
+        unique_viewers: memory.chatters.size,
+        games_json: JSON.stringify(games),
+        created_at: new Date(),
+        updated_at: new Date()
+      };
+      const [id] = await db("twitch_live_sessions").insert(row);
+      return { id, ...row, games };
+    }
+
+    const samplesSum = Number(existing.viewer_samples_sum || 0) + viewerCount;
+    const samplesCount = Number(existing.viewer_samples_count || 0) + 1;
+    const avgViewers = samplesCount > 0 ? Math.round(samplesSum / samplesCount) : viewerCount;
+    const peakViewers = Math.max(Number(existing.peak_viewers || 0), viewerCount);
+    const games = mergeGames(parseGamesJson(existing.games_json), gameName);
+    const uniqueViewers = Math.max(Number(existing.unique_viewers || 0), memory.chatters.size);
+
+    await db("twitch_live_sessions")
+      .where({ id: existing.id })
+      .update({
+        title: title || existing.title,
+        started_at: existing.started_at || startedAt || existing.started_at,
+        ended_at: null,
+        avg_viewers: avgViewers,
+        peak_viewers: peakViewers,
+        viewer_samples_sum: samplesSum,
+        viewer_samples_count: samplesCount,
+        unique_viewers: uniqueViewers,
+        games_json: JSON.stringify(games),
+        updated_at: new Date()
+      });
+
+    return {
+      id: existing.id,
+      avg_viewers: avgViewers,
+      peak_viewers: peakViewers,
+      unique_viewers: uniqueViewers,
+      games
+    };
+  } catch {
+    return null;
+  }
+};
+
+export const listTwitchLiveSessions = async (
+  guildId,
+  { page = 1, pageSize = 10 } = {}
+) => {
+  if (!(await db.schema.hasTable("twitch_live_sessions"))) {
+    return { items: [], total: 0, page: 1, pageSize };
+  }
+  const guild = await ensureGuild(guildId);
+  const safePage = Math.max(1, Number(page) || 1);
+  const safeSize = Math.min(50, Math.max(1, Number(pageSize) || 10));
+  const base = db("twitch_live_sessions").where({ guild_id: guild.id });
+  const totalRow = await base.clone().count({ count: "*" }).first();
+  const total = Number(totalRow?.count || 0);
+  const rows = await base
+    .clone()
+    .orderByRaw("COALESCE(started_at, created_at) DESC")
+    .offset((safePage - 1) * safeSize)
+    .limit(safeSize);
+
+  const items = rows.map((row) => ({
+    id: row.id,
+    streamId: row.stream_id,
+    title: row.title || "",
+    startedAt: row.started_at,
+    endedAt: row.ended_at,
+    live: !row.ended_at,
+    avgViewers: Number(row.avg_viewers || 0),
+    peakViewers: Number(row.peak_viewers || 0),
+    uniqueViewers: Number(row.unique_viewers || 0),
+    games: parseGamesJson(row.games_json)
+  }));
+
+  return { items, total, page: safePage, pageSize: safeSize };
 };
 
 const isLiveOnlyEnabled = async (guildId) => {
@@ -2145,10 +2433,13 @@ const ensureWatchInterval = (guildKey) => {
         return;
       }
 
-      const streamIsLive = await fetchLiveStatusFresh(guildKey, refreshed);
+      const streamInfo = await fetchStreamInfo(refreshed);
+      liveStatusCache.set(String(guildKey), { ...streamInfo, at: Date.now() });
+      const streamIsLive = Boolean(streamInfo.live);
       const liveOnly = normalizeLiveOnly(refreshed.live_only);
+      const chatters = streamIsLive ? await fetchChatters(refreshed) : [];
+      await recordTwitchLiveSessionTick(guildKey, streamInfo, chatters);
       if (liveOnly && !streamIsLive) return;
-      const chatters = await fetchChatters(refreshed);
       debugLog("watch-tick", {
         guildId: guildKey,
         streamIsLive,

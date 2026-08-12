@@ -29,13 +29,18 @@ import {
   stopTwitchListener,
   getTwitchAutomationConfig,
   saveTwitchAutomationConfig,
-  getTwitchLiveStatus,
+  getTwitchStreamSnapshot,
+  listTwitchLiveSessions,
+  recordTwitchLiveSessionTick,
   updateTwitchLiveMode,
   syncCurrentSubs,
   getTwitchPromoSettings,
   saveTwitchPromoSettings,
   refreshTokenIfNeeded,
-  startTwitchListener
+  startTwitchListener,
+  ensureGuildLinkSlug,
+  getGuildLinkSlug,
+  updateGuildLinkSlug
 } from "../services/twitch.js";
 import { getBotSettings, getGuildStatus, saveBotSettings, setGuildUserUiDisabled, createGuildInvite } from "../services/admin.js";
 import { listGuildInventories, removeInventoryItem } from "../services/shop.js";
@@ -893,7 +898,17 @@ apiRouter.get("/guilds/:id/twitch/status", async (req, res) => {
     if (!settings) return res.json({ connected: false });
     const refreshed = await refreshTokenIfNeeded(settings);
     void startTwitchListener(req.params.id);
-    const live = await getTwitchLiveStatus(req.params.id);
+    const snapshot = await getTwitchStreamSnapshot(req.params.id, { forceRefresh: true });
+    void recordTwitchLiveSessionTick(req.params.id, snapshot || { live: false }, []);
+    let linkSlug = "";
+    let effectiveLinkSlug = "";
+    try {
+      linkSlug = await getGuildLinkSlug(req.params.id);
+      effectiveLinkSlug = await ensureGuildLinkSlug(req.params.id);
+    } catch {
+      linkSlug = "";
+      effectiveLinkSlug = "";
+    }
     res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
     res.set("Pragma", "no-cache");
     res.set("Expires", "0");
@@ -901,13 +916,48 @@ apiRouter.get("/guilds/:id/twitch/status", async (req, res) => {
       connected: true,
       login: refreshed.twitch_login,
       broadcasterId: refreshed.twitch_broadcaster_id,
-      live,
+      live: Boolean(snapshot.live),
+      title: snapshot.title || "",
+      gameName: snapshot.gameName || "",
+      viewerCount: Number(snapshot.viewerCount || 0) || 0,
+      startedAt: snapshot.startedAt || null,
+      linkSlug,
+      effectiveLinkSlug,
       live_only: refreshed.live_only === undefined || refreshed.live_only === null
         ? true
         : Boolean(refreshed.live_only)
     });
   } catch (error) {
     return res.status(400).json({ error: error.message || "twitch_status_failed" });
+  }
+});
+
+apiRouter.post("/guilds/:id/twitch/link-slug", async (req, res) => {
+  try {
+    const settings = await getTwitchSettings(req.params.id);
+    if (!settings) return res.status(400).json({ error: "twitch_not_connected" });
+    const result = await updateGuildLinkSlug(req.params.id, req.body?.slug);
+    return res.json({
+      ok: true,
+      linkSlug: result.slug,
+      effectiveLinkSlug: result.effectiveSlug
+    });
+  } catch (error) {
+    const code = error?.code || error?.message || "link_slug_failed";
+    return res.status(400).json({ error: code });
+  }
+});
+
+apiRouter.get("/guilds/:id/twitch/live-history", async (req, res) => {
+  try {
+    const settings = await getTwitchSettings(req.params.id);
+    if (!settings) return res.json({ items: [], total: 0, page: 1, pageSize: 10 });
+    const page = Number(req.query.page || 1);
+    const pageSize = Number(req.query.pageSize || req.query.limit || 10);
+    const data = await listTwitchLiveSessions(req.params.id, { page, pageSize });
+    return res.json(data);
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "twitch_live_history_failed" });
   }
 });
 
