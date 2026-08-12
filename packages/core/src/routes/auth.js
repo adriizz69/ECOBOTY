@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { SignJWT } from "jose";
+import { SignJWT, jwtVerify } from "jose";
 import { db } from "../services/db.js";
 import { saveTwitchSettings } from "../services/twitch.js";
 import { startTwitchListener } from "../services/twitch.js";
@@ -45,6 +45,58 @@ const renderHtml = (title, message) => `<!doctype html>
   </body>
 </html>`;
 
+const redirectTwitchLinkPage = async (
+  res,
+  { guildId, twitchLogin = "", error = "", done = false, pending = "" } = {}
+) => {
+  try {
+    const { ensureGuildLinkSlug } = await import("../services/twitch.js");
+    const slug = guildId ? await ensureGuildLinkSlug(String(guildId)) : "";
+    if (!slug) return false;
+    const login = String(twitchLogin || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_]/g, "")
+      .slice(0, 25);
+    const qs = new URLSearchParams();
+    if (done) qs.set("done", "1");
+    if (error) qs.set("error", String(error));
+    if (pending) qs.set("pending", String(pending));
+    const path = login
+      ? `/link/${encodeURIComponent(slug)}/${encodeURIComponent(login)}`
+      : `/link/${encodeURIComponent(slug)}`;
+    const query = qs.toString();
+    res.redirect(302, query ? `${path}?${query}` : path);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const getJwtSecret = () => {
+  const raw = String(process.env.API_SECRET_KEY || "").trim();
+  if (!raw) return null;
+  return new TextEncoder().encode(raw);
+};
+
+const signTwitchLinkPending = async (payload) => {
+  const secret = getJwtSecret();
+  if (!secret) throw new Error("missing_api_secret");
+  return new SignJWT({ ...payload, kind: "twitch-link-pending" })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("20m")
+    .sign(secret);
+};
+
+export const verifyTwitchLinkPending = async (token) => {
+  const secret = getJwtSecret();
+  if (!secret) throw new Error("missing_api_secret");
+  const { payload } = await jwtVerify(String(token || ""), secret);
+  if (payload?.kind !== "twitch-link-pending") throw new Error("invalid_pending");
+  return payload;
+};
+
 const discordAuthorizeUrl = (redirect, { prompt } = {}) => {
   const params = new URLSearchParams({
     client_id: process.env.DISCORD_CLIENT_ID,
@@ -75,10 +127,18 @@ authRouter.get("/discord/login", (req, res) => {
 
 authRouter.get("/discord/twitch-link", (req, res) => {
   const guildId = req.query.guildId;
-  const twitchLogin = req.query.twitchLogin || req.query.login;
-  if (!guildId || !twitchLogin) return res.status(400).send("Missing guildId/twitchLogin");
+  const twitchLogin = req.query.twitchLogin || req.query.login || "";
+  if (!guildId) return res.status(400).send("Missing guildId");
   const redirect = req.query.redirect || process.env.BASE_URL || "https://ecoboty.eu";
-  const state = encodeState({ kind: "twitch-link", guildId, twitchLogin });
+  const state = encodeState({
+    kind: "twitch-link",
+    guildId,
+    twitchLogin: String(twitchLogin || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_]/g, "")
+      .slice(0, 25)
+  });
   return res.redirect(discordAuthorizeUrl(state, { prompt: "consent" }));
 });
 
@@ -144,12 +204,14 @@ authRouter.get("/discord/callback", async (req, res) => {
         const connections = await connectionsRes.json();
         twitchConnections = connections.filter((c) => c.type === "twitch");
         twitchConnection = twitchConnections[0] || null;
-        if (state?.kind === "twitch-link" && twitchConnections.length > 1) {
+        if (state?.kind === "twitch-link" && twitchConnections.length) {
           const desiredLogin = String(state.twitchLogin || "").toLowerCase();
-          const match = twitchConnections.find(
-            (c) => String(c.name || "").toLowerCase() === desiredLogin
-          );
-          if (match) twitchConnection = match;
+          if (desiredLogin) {
+            const match = twitchConnections.find(
+              (c) => String(c.name || "").toLowerCase() === desiredLogin
+            );
+            if (match) twitchConnection = match;
+          }
         }
       }
     } catch {
@@ -163,118 +225,58 @@ authRouter.get("/discord/callback", async (req, res) => {
     const twitchLogin = twitchConnection?.name || null;
 
     if (state?.kind === "twitch-link") {
-      const desiredLogin = String(state.twitchLogin || "").toLowerCase();
+      const hintLogin = String(state.twitchLogin || "").toLowerCase();
       const connectedLogin = twitchLogin ? String(twitchLogin).toLowerCase() : "";
       const previousLogin = previousTwitchLogin ? String(previousTwitchLogin).toLowerCase() : "";
-      if (!desiredLogin) {
-        return res
-          .status(400)
-          .send(renderHtml("Lien Twitch invalide", "Aucun compte Twitch fourni."));
-      }
-      if (previousLogin && previousLogin === desiredLogin) {
-        try {
-          const { ensureGuildLinkSlug } = await import("../services/twitch.js");
-          const slug = state?.guildId ? await ensureGuildLinkSlug(String(state.guildId)) : "";
-          if (slug && desiredLogin) {
-            const qs = new URLSearchParams({ done: "1" });
-            return res.redirect(
-              302,
-              `/link/${encodeURIComponent(slug)}/${encodeURIComponent(desiredLogin)}?${qs}`
-            );
-          }
-        } catch {
-          // fall through
-        }
+      const linkedLogin = connectedLogin || previousLogin || hintLogin;
+
+      // Already linked → return to steps (Discord Twitch is the source of truth).
+      if (previousLogin && connectedLogin && previousLogin === connectedLogin) {
+        const redirected = await redirectTwitchLinkPage(res, {
+          guildId: state.guildId,
+          twitchLogin: previousLogin,
+          done: true
+        });
+        if (redirected) return;
         return res.send(
           renderHtml(
             "Compte déjà lié",
-            "Ton Discord est déjà associé à ce Twitch. Tu peux retourner sur le chat."
+            "Ton Discord est déjà associé à Twitch. Tu peux retourner sur la page d’étapes."
           )
         );
       }
       if (!twitchConnection) {
+        const redirected = await redirectTwitchLinkPage(res, {
+          guildId: state.guildId,
+          twitchLogin: hintLogin,
+          error: "no_twitch"
+        });
+        if (redirected) return;
         return res
           .status(400)
           .send(
             renderHtml(
               "Twitch non lié",
               `Ton Discord n’a pas de compte Twitch relié.<br><br>
-              👉 Ouvre Discord &gt; Paramètres utilisateur &gt; Connexions, puis relie ton Twitch.<br>
-              Une fois fait, relance la commande !daily dans le chat Twitch.<br><br>
-              Besoin d’aide ? <a href="https://support.discord.com/hc/fr/articles/212112068-FAQ-sur-l-int%C3%A9gration-de-Twitch" target="_blank" rel="noreferrer">Guide officiel Discord</a>.`
-            )
-          );
-      }
-      if (connectedLogin !== desiredLogin) {
-        return res
-          .status(400)
-          .send(
-            renderHtml(
-              "Mauvais compte Twitch",
-              `Le compte Twitch relié à ton Discord ne correspond pas au compte qui parle dans le chat.<br><br>
-              ✅ Connecte le bon Twitch dans Discord (Paramètres utilisateur &gt; Connexions), puis relance la commande !daily.<br>
-              ℹ️ Tu peux avoir plusieurs comptes Twitch liés, mais le compte du chat doit faire partie de ces connexions.<br><br>
+              👉 Ouvre Discord &gt; Paramètres utilisateur &gt; Connexions, puis relie ton Twitch.<br><br>
               Besoin d’aide ? <a href="https://support.discord.com/hc/fr/articles/212112068-FAQ-sur-l-int%C3%A9gration-de-Twitch" target="_blank" rel="noreferrer">Guide officiel Discord</a>.`
             )
           );
       }
 
-      let liveChannel = String(state.twitchLogin || "").toLowerCase();
-      if (state?.guildId) {
-        try {
-          const guild = await db("guilds")
-            .where({ discord_guild_id: String(state.guildId) })
-            .first();
-          if (guild) {
-            const settings = await db("twitch_settings").where({ guild_id: guild.id }).first();
-            if (settings?.twitch_login) {
-              liveChannel = String(settings.twitch_login).toLowerCase();
-            }
-          }
-        } catch {
-          // ignore fallback to state login
-        }
-      }
-      if (state?.guildId) {
-        try {
-          await recordAchievementEvent({
-            guildId: String(state.guildId),
-            userId: String(user.id),
-            eventKey: "twitch_authenticated",
-            increment: 1,
-            metadata: { source: "discord_connections" }
-          });
-        } catch {
-          // do not block auth flow
-        }
-      }
-      const liveUrl = liveChannel ? `https://www.twitch.tv/${liveChannel}` : "";
-      const scopeNote = tokenScopes.includes("guilds")
-        ? ""
-        : `<br><br><strong>Serveurs non récupérés</strong> : l’autorisation "guilds" n’a pas été accordée. Supprime l’app des Apps autorisées puis reconnecte.`;
-      const serversNote =
-        userGuildsFetched && Array.isArray(userGuilds) && userGuilds.length === 0
-          ? `<br><br><strong>Serveurs non récupérés</strong> : retire l’autorisation de l’app dans Discord (Paramètres &gt; Apps autorisées), puis reconnecte-toi pour récupérer tes serveurs.`
-          : userGuildsError
-            ? `<br><br><strong>Serveurs non récupérés</strong> : ${userGuildsError}`
-            : "";
-      const message = liveUrl
-        ? `Ton Discord est bien associé à ton Twitch. Tu peux retourner sur le chat.<br><br>
-          <a href="${liveUrl}" target="_blank" rel="noreferrer" style="display:inline-block;padding:10px 16px;border-radius:999px;background:#7c3aed;color:white;text-decoration:none;">Retourner sur le live</a>${scopeNote}${serversNote}`
-        : `Ton Discord est bien associé à ton Twitch. Tu peux retourner sur le chat.${scopeNote}${serversNote}`;
-
-      const userPayload = {
+      // Persist Discord identity + guilds now; Twitch is confirmed on the steps page.
+      const userBasePayload = {
         username: user.username,
-        avatar: user.avatar,
-        twitch_id: twitchId,
-        twitch_login: twitchLogin
+        avatar: user.avatar
       };
       if (existing) {
-        await db("users").where({ discord_id: user.id }).update(userPayload);
+        await db("users").where({ discord_id: user.id }).update(userBasePayload);
       } else {
         await db("users").insert({
           discord_id: user.id,
-          ...userPayload
+          ...userBasePayload,
+          twitch_id: null,
+          twitch_login: null
         });
         await insertAdminLog({
           adminId: String(user.id),
@@ -282,7 +284,7 @@ authRouter.get("/discord/callback", async (req, res) => {
           data: {
             discordId: String(user.id),
             username: String(user.username || ""),
-            source: "discord_oauth"
+            source: "discord_oauth_twitch_link"
           }
         });
       }
@@ -353,27 +355,53 @@ authRouter.get("/discord/callback", async (req, res) => {
       } catch (error) {
         console.warn("[auth] oauth state update failed", error?.message || error);
       }
-      console.log("[auth] guilds", {
-        userId: user?.id,
-        scopes: tokenScopes,
-        guildsFetched: userGuildsFetched,
-        guildsCount: guildCount,
-        guildsError: userGuildsError || null
-      });
 
-      // Redirect to the step-by-step onboarding page for the right streamer/guild.
-      try {
-        const { ensureGuildLinkSlug } = await import("../services/twitch.js");
-        const slug = state?.guildId ? await ensureGuildLinkSlug(String(state.guildId)) : "";
-        const loginForUrl = String(desiredLogin || twitchLogin || "").toLowerCase();
-        if (slug && loginForUrl) {
-          const qs = new URLSearchParams({ done: "1" });
-          return res.redirect(302, `/link/${encodeURIComponent(slug)}/${encodeURIComponent(loginForUrl)}?${qs}`);
-        }
-      } catch {
-        // fall through to HTML
+      const accounts = twitchConnections
+        .map((c) => ({
+          id: String(c.id || "").trim(),
+          login: String(c.name || "")
+            .trim()
+            .toLowerCase()
+            .replace(/[^a-z0-9_]/g, "")
+            .slice(0, 25),
+          verified: Boolean(c.verified)
+        }))
+        .filter((c) => c.id && c.login);
+
+      if (!accounts.length) {
+        const redirectedEmpty = await redirectTwitchLinkPage(res, {
+          guildId: state.guildId,
+          twitchLogin: hintLogin,
+          error: "no_twitch"
+        });
+        if (redirectedEmpty) return;
+        return res.status(400).send(renderHtml("Twitch non lié", "Aucun compte Twitch détecté."));
       }
-      return res.send(renderHtml("Compte lié", message));
+
+      let pendingToken = "";
+      try {
+        pendingToken = await signTwitchLinkPending({
+          discordId: String(user.id),
+          guildId: String(state.guildId || ""),
+          accounts
+        });
+      } catch (error) {
+        console.warn("[auth] pending token failed", error?.message || error);
+        return res.status(500).send(renderHtml("Erreur", "Impossible de préparer la confirmation Twitch."));
+      }
+
+      const redirectedPending = await redirectTwitchLinkPage(res, {
+        guildId: state.guildId,
+        twitchLogin: accounts[0].login,
+        pending: pendingToken
+      });
+      if (redirectedPending) return;
+      return res.send(
+        renderHtml(
+          "Confirme ton Twitch",
+          "Retourne sur la page d’étapes pour confirmer le compte Twitch détecté."
+        )
+      );
     }
 
     const resolvedTwitch = twitchConnection

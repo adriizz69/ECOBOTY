@@ -12,8 +12,58 @@
       <p v-else-if="loading" class="lead">Chargement…</p>
       <p v-else class="lead error">{{ error || "Lien introuvable." }}</p>
 
-      <ol v-if="info" class="steps">
-        <!-- Étape 1 -->
+      <!-- Confirmation Twitch détecté -->
+      <div v-if="pendingAccounts.length" class="confirm-box">
+        <h2>Compte Twitch détecté</h2>
+        <p v-if="pendingAccounts.length === 1">
+          Nous avons détecté que le compte Twitch lié à Discord est
+          <strong>@{{ pendingAccounts[0].login }}</strong>.
+          Confirmes-tu ?
+        </p>
+        <p v-else>
+          Plusieurs comptes Twitch sont liés à ton Discord. Choisis celui qui sera
+          <strong>le seul</strong> utilisé par EcoBoty pour la monnaie virtuelle chez les streameurs.
+        </p>
+
+        <div v-if="pendingAccounts.length > 1" class="account-list">
+          <label
+            v-for="acc in pendingAccounts"
+            :key="acc.id"
+            class="account-option"
+            :class="{ selected: selectedTwitchId === acc.id }"
+          >
+            <input v-model="selectedTwitchId" type="radio" name="twitch" :value="acc.id" />
+            <span>@{{ acc.login }}</span>
+          </label>
+        </div>
+
+        <p v-if="rejectMessage" class="warn">{{ rejectMessage }}</p>
+        <p v-if="confirmError" class="warn">{{ confirmError }}</p>
+
+        <div class="actions">
+          <button
+            type="button"
+            class="btn primary"
+            :disabled="confirmBusy || (pendingAccounts.length > 1 && !selectedTwitchId)"
+            @click="confirmTwitch(true)"
+          >
+            {{ confirmBusy ? "Validation…" : "Oui, confirmer" }}
+          </button>
+          <button
+            type="button"
+            class="btn ghost"
+            :disabled="confirmBusy"
+            @click="confirmTwitch(false)"
+          >
+            Non
+          </button>
+        </div>
+        <p class="hint">
+          Ce Twitch sera le seul compte détecté par EcoBoty pour cumuler la monnaie chez tous les streameurs EcoBoty.
+        </p>
+      </div>
+
+      <ol v-else-if="info" class="steps">
         <li :class="stepClass(1)">
           <div class="step-head">
             <span class="num">{{ step > 1 ? "✓" : "1" }}</span>
@@ -21,8 +71,7 @@
           </div>
           <template v-if="step === 1">
             <p>
-              Dans Discord → Paramètres → Connexions, ton compte Twitch doit apparaître
-              <span v-if="twitchLogin">(<strong>@{{ twitchLogin }}</strong>)</span>.
+              Dans Discord → Paramètres → Connexions, ton compte Twitch doit apparaître.
             </p>
             <div class="actions">
               <a
@@ -41,7 +90,6 @@
           <p v-else class="ok">Étape validée</p>
         </li>
 
-        <!-- Étape 2 -->
         <li :class="stepClass(2)">
           <div class="step-head">
             <span class="num">{{ step > 2 ? "✓" : "2" }}</span>
@@ -50,42 +98,32 @@
           <template v-if="step === 2">
             <p>
               Une seule liaison pour tous les lives EcoBoty.
-              <span v-if="twitchLogin">
-                On vérifie le Twitch <strong>@{{ twitchLogin }}</strong>.
-              </span>
+              On vérifie le Twitch connecté dans Discord, puis tu confirmes.
             </p>
-            <p v-if="linked" class="ok">Compte déjà lié ✓</p>
+            <p v-if="flowError" class="warn">{{ flowError }}</p>
+            <p v-if="rejectMessage" class="warn">{{ rejectMessage }}</p>
+            <p v-if="linked" class="ok">
+              Compte lié
+              <span v-if="confirmedLogin"> (@{{ confirmedLogin }})</span> ✓
+            </p>
             <div v-else class="actions">
               <a
                 v-if="oauthLink"
                 class="btn primary"
                 :href="oauthLink"
-                target="_blank"
-                rel="noreferrer"
-                @click="onOauthOpened"
               >
                 Lier mon Discord
               </a>
-              <p v-else class="warn">
-                Ouvre ce lien depuis le chat Twitch pour identifier ton pseudo.
-              </p>
-              <button
-                v-if="oauthLink"
-                type="button"
-                class="btn ghost"
-                :disabled="statusChecking"
-                @click="refreshStatus"
-              >
-                {{ statusChecking ? "Vérification…" : "J’ai terminé" }}
-              </button>
             </div>
             <p v-if="statusHint" class="hint">{{ statusHint }}</p>
           </template>
-          <p v-else-if="step > 2" class="ok">Compte lié ✓</p>
+          <p v-else-if="step > 2" class="ok">
+            Compte lié
+            <span v-if="confirmedLogin"> (@{{ confirmedLogin }})</span> ✓
+          </p>
           <p v-else class="muted-line">Valide d’abord l’étape 1.</p>
         </li>
 
-        <!-- Étape 3 -->
         <li :class="stepClass(3)">
           <div class="step-head">
             <span class="num">{{ step > 3 ? "✓" : "3" }}</span>
@@ -124,7 +162,6 @@
           <p v-else class="muted-line">Complète d’abord la liaison.</p>
         </li>
 
-        <!-- Étape 4 -->
         <li :class="stepClass(4)">
           <div class="step-head">
             <span class="num">{{ allDone ? "✓" : "4" }}</span>
@@ -167,6 +204,7 @@ useHead({
 });
 
 const route = useRoute();
+const router = useRouter();
 const config = useRuntimeConfig();
 
 const slug = computed(() => String(route.params.slug || "").trim().toLowerCase());
@@ -189,7 +227,14 @@ const inGuild = ref(false);
 const statusChecking = ref(false);
 const statusHint = ref("");
 const membershipHint = ref("");
-const oauthOpened = ref(false);
+const flowError = ref("");
+const confirmedLogin = ref("");
+const pendingToken = ref("");
+const pendingAccounts = ref([]);
+const selectedTwitchId = ref("");
+const rejectMessage = ref("");
+const confirmError = ref("");
+const confirmBusy = ref(false);
 let pollTimer = null;
 
 const apiBase = computed(() => String(config.public.apiBase || "").replace(/\/$/, ""));
@@ -232,16 +277,15 @@ const markStep1Done = () => {
   }
 };
 
-const onOauthOpened = () => {
-  oauthOpened.value = true;
-  statusHint.value = "Termine la connexion dans le nouvel onglet, puis clique sur « J’ai terminé ».";
-  startPolling();
-};
-
-const fetchStatus = async () => {
-  if (!twitchLogin.value || !slug.value) return null;
+const fetchStatus = async (login = twitchLogin.value || confirmedLogin.value) => {
+  const safe = String(login || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_]/g, "")
+    .slice(0, 25);
+  if (!safe || !slug.value) return null;
   const res = await fetch(
-    `${apiBase.value}/public/link/${encodeURIComponent(slug.value)}/status?twitch=${encodeURIComponent(twitchLogin.value)}`
+    `${apiBase.value}/public/link/${encodeURIComponent(slug.value)}/status?twitch=${encodeURIComponent(safe)}`
   );
   if (!res.ok) return null;
   return res.json();
@@ -259,10 +303,11 @@ const refreshStatus = async () => {
     }
     linked.value = Boolean(data.linked);
     inGuild.value = Boolean(data.inGuild);
+    if (data.linked && !confirmedLogin.value) {
+      confirmedLogin.value = String(twitchLogin.value || "");
+    }
     if (!data.linked) {
-      statusHint.value = oauthOpened.value
-        ? "Liaison pas encore détectée. Termine Discord dans l’autre onglet, puis réessaie."
-        : "Compte pas encore lié. Clique sur « Lier mon Discord ».";
+      statusHint.value = "Compte pas encore lié. Clique sur « Lier mon Discord ».";
     } else if (!data.inGuild) {
       membershipHint.value =
         data.membershipChecked === false
@@ -288,14 +333,9 @@ const startPolling = () => {
       if (!data) return;
       linked.value = Boolean(data.linked);
       inGuild.value = Boolean(data.inGuild);
-      if (data.linked && step.value === 2) {
-        statusHint.value = "Compte lié ✓";
-      }
-      if (data.linked && data.inGuild) {
-        stopPolling();
-      }
+      if (data.linked && data.inGuild) stopPolling();
     } catch {
-      // ignore poll errors
+      // ignore
     }
   }, 4000);
 };
@@ -304,6 +344,78 @@ const stopPolling = () => {
   if (pollTimer) {
     clearInterval(pollTimer);
     pollTimer = null;
+  }
+};
+
+const loadPending = async (token) => {
+  const res = await fetch(
+    `${apiBase.value}/public/link/pending?token=${encodeURIComponent(token)}`
+  );
+  if (!res.ok) {
+    flowError.value = "Session de confirmation expirée. Relie à nouveau ton Discord.";
+    return;
+  }
+  const data = await res.json();
+  pendingToken.value = token;
+  pendingAccounts.value = Array.isArray(data.accounts) ? data.accounts : [];
+  selectedTwitchId.value = pendingAccounts.value[0]?.id || "";
+  step1Done.value = true;
+};
+
+const confirmTwitch = async (accepted) => {
+  if (!pendingToken.value || confirmBusy.value) return;
+  confirmBusy.value = true;
+  confirmError.value = "";
+  rejectMessage.value = "";
+  try {
+    const body = accepted
+      ? {
+          token: pendingToken.value,
+          action: "confirm",
+          twitchId: selectedTwitchId.value || pendingAccounts.value[0]?.id
+        }
+      : { token: pendingToken.value, action: "reject" };
+    const res = await fetch(`${apiBase.value}/public/link/confirm`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      if (data.error === "twitch_already_linked") {
+        confirmError.value =
+          "Ce Twitch est déjà lié à un autre Discord EcoBoty. Choisis un autre compte ou contacte le support.";
+      } else {
+        confirmError.value = "Impossible de valider. Réessaie.";
+      }
+      return;
+    }
+    if (data.rejected) {
+      rejectMessage.value = String(
+        data.message ||
+          "Alors il faudra délier ton compte Twitch dans Discord (Paramètres → Connexions), puis le relier avec le bon compte, et recommencer."
+      );
+      pendingAccounts.value = [];
+      pendingToken.value = "";
+      return;
+    }
+    confirmedLogin.value = String(data.twitchLogin || "");
+    linked.value = true;
+    pendingAccounts.value = [];
+    pendingToken.value = "";
+    step1Done.value = true;
+    await router.replace({
+      path: confirmedLogin.value
+        ? `/link/${slug.value}/${confirmedLogin.value}`
+        : `/link/${slug.value}`,
+      query: { done: "1" }
+    });
+    await refreshStatus();
+    startPolling();
+  } catch {
+    confirmError.value = "Impossible de valider. Réessaie.";
+  } finally {
+    confirmBusy.value = false;
   }
 };
 
@@ -321,6 +433,12 @@ onMounted(async () => {
     if (String(route.query.done || "") === "1") {
       step1Done.value = true;
     }
+    const err = String(route.query.error || "");
+    if (err === "no_twitch") {
+      step1Done.value = true;
+      flowError.value =
+        "Aucun Twitch trouvé sur ton Discord. Relie Twitch dans Paramètres → Connexions, puis réessaie.";
+    }
 
     const qs = twitchLogin.value ? `?twitch=${encodeURIComponent(twitchLogin.value)}` : "";
     const res = await fetch(`${apiBase.value}/public/link/${encodeURIComponent(slug.value)}${qs}`);
@@ -332,10 +450,17 @@ onMounted(async () => {
     }
     info.value = await res.json();
 
-    if (twitchLogin.value) {
+    const pending = String(route.query.pending || "");
+    if (pending) {
+      await loadPending(pending);
+      return;
+    }
+
+    if (twitchLogin.value || confirmedLogin.value) {
       await refreshStatus();
       if (String(route.query.done || "") === "1" || linked.value) {
         step1Done.value = true;
+        if (linked.value) confirmedLogin.value = confirmedLogin.value || twitchLogin.value;
         startPolling();
       }
     }
@@ -379,6 +504,10 @@ h1 {
   line-height: 1.2;
   font-weight: 750;
 }
+h2 {
+  margin: 0 0 10px;
+  font-size: 1.15rem;
+}
 .lead {
   margin: 0 0 22px;
   color: #9aa3b5;
@@ -386,6 +515,35 @@ h1 {
 }
 .lead.error {
   color: #f87171;
+}
+.confirm-box {
+  border: 1px solid rgba(167, 139, 250, 0.45);
+  background: rgba(124, 58, 237, 0.14);
+  border-radius: 14px;
+  padding: 16px;
+}
+.confirm-box p {
+  margin: 0 0 12px;
+  color: #b7bfd0;
+  line-height: 1.45;
+}
+.account-list {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.account-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  cursor: pointer;
+}
+.account-option.selected {
+  border-color: rgba(167, 139, 250, 0.6);
+  background: rgba(124, 58, 237, 0.18);
 }
 .steps {
   list-style: none;
@@ -400,7 +558,6 @@ h1 {
   padding: 14px 14px 16px;
   background: rgba(255, 255, 255, 0.02);
   opacity: 0.55;
-  transition: opacity 0.2s ease, border-color 0.2s ease, background 0.2s ease;
 }
 .steps li.current,
 .steps li.done {
@@ -489,7 +646,6 @@ code {
 }
 .warn {
   color: #fbbf24 !important;
-  margin: 0 !important;
 }
 .hint {
   margin: 10px 0 0 !important;

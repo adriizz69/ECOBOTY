@@ -68,6 +68,99 @@ publicRouter.get("/billing/plans", async (_req, res) => {
   }
 });
 
+publicRouter.get("/link/pending", async (req, res) => {
+  try {
+    const { verifyTwitchLinkPending } = await import("./auth.js");
+    const payload = await verifyTwitchLinkPending(req.query.token);
+    const accounts = Array.isArray(payload.accounts) ? payload.accounts : [];
+    return res.json({
+      discordId: String(payload.discordId || ""),
+      guildId: String(payload.guildId || ""),
+      accounts
+    });
+  } catch {
+    return res.status(400).json({ error: "invalid_pending" });
+  }
+});
+
+publicRouter.post("/link/confirm", async (req, res) => {
+  try {
+    const { verifyTwitchLinkPending } = await import("./auth.js");
+    const { recordAchievementEvent } = await import("../services/achievements.js");
+    const action = String(req.body?.action || "confirm").toLowerCase();
+    const payload = await verifyTwitchLinkPending(req.body?.token);
+    const accounts = Array.isArray(payload.accounts) ? payload.accounts : [];
+    const discordId = String(payload.discordId || "").replace(/\D/g, "");
+    const guildId = String(payload.guildId || "").replace(/\D/g, "");
+
+    if (!discordId) return res.status(400).json({ error: "invalid_pending" });
+
+    if (action === "reject") {
+      return res.json({
+        ok: true,
+        rejected: true,
+        message:
+          "Alors il faudra délier ton compte Twitch dans Discord (Paramètres → Connexions), puis le relier avec le bon compte Twitch, et recommencer."
+      });
+    }
+
+    const twitchId = String(req.body?.twitchId || "").trim();
+    const selected =
+      accounts.find((a) => String(a.id) === twitchId) ||
+      (accounts.length === 1 ? accounts[0] : null);
+    if (!selected?.id || !selected?.login) {
+      return res.status(400).json({ error: "twitch_required" });
+    }
+
+    const clash = await db("users")
+      .where(function () {
+        this.where({ twitch_id: String(selected.id) }).orWhereRaw(
+          "LOWER(twitch_login) = LOWER(?)",
+          [selected.login]
+        );
+      })
+      .whereNot({ discord_id: discordId })
+      .first();
+    if (clash) {
+      return res.status(409).json({ error: "twitch_already_linked" });
+    }
+
+    const existing = await db("users").where({ discord_id: discordId }).first();
+    if (!existing) {
+      return res.status(404).json({ error: "user_not_found" });
+    }
+
+    await db("users").where({ discord_id: discordId }).update({
+      twitch_id: String(selected.id),
+      twitch_login: String(selected.login)
+    });
+
+    if (guildId) {
+      try {
+        await recordAchievementEvent({
+          guildId,
+          userId: discordId,
+          eventKey: "twitch_authenticated",
+          increment: 1,
+          metadata: { source: "discord_connections_confirm" }
+        });
+      } catch {
+        // ignore
+      }
+    }
+
+    return res.json({
+      ok: true,
+      rejected: false,
+      twitchLogin: String(selected.login),
+      twitchId: String(selected.id)
+    });
+  } catch (error) {
+    console.error("[public/link/confirm]", error);
+    return res.status(400).json({ error: error?.message || "confirm_failed" });
+  }
+});
+
 publicRouter.get("/link/:slug", async (req, res) => {
   try {
     const slug = String(req.params.slug || "")
@@ -96,9 +189,9 @@ publicRouter.get("/link/:slug", async (req, res) => {
       /\/$/,
       ""
     );
-    const linkPath = twitchLogin
-      ? `/auth/discord/twitch-link?guildId=${encodeURIComponent(guild.discord_guild_id)}&twitchLogin=${encodeURIComponent(twitchLogin)}`
-      : null;
+    const linkPath = `/auth/discord/twitch-link?guildId=${encodeURIComponent(guild.discord_guild_id)}${
+      twitchLogin ? `&twitchLogin=${encodeURIComponent(twitchLogin)}` : ""
+    }`;
 
     return res.json({
       slug: guild.link_slug || slug,
@@ -108,7 +201,7 @@ publicRouter.get("/link/:slug", async (req, res) => {
       currency: String(economy?.name || "coins"),
       discordInvite,
       twitchLogin: twitchLogin || null,
-      linkUrl: linkPath ? (siteBase ? `${siteBase}${linkPath}` : linkPath) : null,
+      linkUrl: siteBase ? `${siteBase}${linkPath}` : linkPath,
       connectionsTutorialUrl:
         "https://support.discord.com/hc/fr/articles/212112068-FAQ-sur-l-int%C3%A9gration-de-Twitch"
     });
