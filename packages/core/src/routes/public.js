@@ -227,6 +227,17 @@ publicRouter.get("/link/:slug/status", async (req, res) => {
       return res.status(404).json({ error: "link_not_found" });
     }
 
+    // Promo short links are /link/{slug}/{streamerLogin}. That login is the channel,
+    // not the visitor — never treat "streamer is linked" as "visitor is linked".
+    const twitchSettings = await getTwitchSettings(guild.discord_guild_id);
+    const channelLogin = String(twitchSettings?.twitch_login || "")
+      .replace(/^@/, "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_]/g, "")
+      .slice(0, 25);
+    const isChannelAccount = Boolean(channelLogin && twitchLogin === channelLogin);
+
     const user = await db("users")
       .whereRaw("LOWER(twitch_login) = LOWER(?)", [twitchLogin])
       .first();
@@ -235,6 +246,7 @@ publicRouter.get("/link/:slug/status", async (req, res) => {
       return res.json({
         linked: false,
         inGuild: false,
+        isChannelAccount,
         discordId: null,
         guildId: String(guild.discord_guild_id),
         guildName: String(guild.name || "Serveur Discord")
@@ -250,6 +262,7 @@ publicRouter.get("/link/:slug/status", async (req, res) => {
       linked: true,
       inGuild: Boolean(membership.inGuild),
       membershipChecked: Boolean(membership.ok),
+      isChannelAccount,
       discordId: String(user.discord_id),
       guildId: String(guild.discord_guild_id),
       guildName: String(guild.name || "Serveur Discord")

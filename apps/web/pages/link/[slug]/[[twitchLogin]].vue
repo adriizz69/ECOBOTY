@@ -277,7 +277,23 @@ const markStep1Done = () => {
   }
 };
 
-const fetchStatus = async (login = twitchLogin.value || confirmedLogin.value) => {
+/** Viewer Twitch only — never the streamer hint from the promo URL alone. */
+const viewerStatusLogin = () => {
+  if (confirmedLogin.value) return confirmedLogin.value;
+  // After OAuth, URL is rewritten to the viewer's login + ?done=1 (or ?pending=…).
+  if (String(route.query.done || "") === "1" && twitchLogin.value) return twitchLogin.value;
+  const channel = String(info.value?.streamerLogin || "")
+    .replace(/^@/, "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_]/g, "")
+    .slice(0, 25);
+  // Promo links put the streamer login in the path — that must not drive "linked" status.
+  if (channel && twitchLogin.value && twitchLogin.value === channel) return "";
+  return twitchLogin.value || "";
+};
+
+const fetchStatus = async (login = viewerStatusLogin()) => {
   const safe = String(login || "")
     .trim()
     .toLowerCase()
@@ -291,24 +307,40 @@ const fetchStatus = async (login = twitchLogin.value || confirmedLogin.value) =>
   return res.json();
 };
 
+const applyStatusPayload = (data, { allowChannelAccount = false } = {}) => {
+  if (!data) return;
+  // Channel owner login in a promo URL ≠ this visitor being linked.
+  if (data.isChannelAccount && !allowChannelAccount && String(route.query.done || "") !== "1") {
+    linked.value = false;
+    inGuild.value = false;
+    return;
+  }
+  linked.value = Boolean(data.linked);
+  inGuild.value = Boolean(data.inGuild);
+  if (data.linked && !confirmedLogin.value) {
+    confirmedLogin.value = String(viewerStatusLogin() || twitchLogin.value || "");
+  }
+};
+
 const refreshStatus = async () => {
   statusChecking.value = true;
   statusHint.value = "";
   membershipHint.value = "";
   try {
-    const data = await fetchStatus();
+    const login = viewerStatusLogin();
+    if (!login) {
+      statusHint.value = "Compte pas encore lié. Clique sur « Lier mon Discord ».";
+      return;
+    }
+    const data = await fetchStatus(login);
     if (!data) {
       statusHint.value = "Impossible de vérifier pour le moment. Réessaie dans quelques secondes.";
       return;
     }
-    linked.value = Boolean(data.linked);
-    inGuild.value = Boolean(data.inGuild);
-    if (data.linked && !confirmedLogin.value) {
-      confirmedLogin.value = String(twitchLogin.value || "");
-    }
-    if (!data.linked) {
+    applyStatusPayload(data, { allowChannelAccount: String(route.query.done || "") === "1" });
+    if (!linked.value) {
       statusHint.value = "Compte pas encore lié. Clique sur « Lier mon Discord ».";
-    } else if (!data.inGuild) {
+    } else if (!inGuild.value) {
       membershipHint.value =
         data.membershipChecked === false
           ? "Liaison OK. Rejoins le Discord puis clique sur Vérifier."
@@ -323,17 +355,19 @@ const refreshStatus = async () => {
 
 const startPolling = () => {
   stopPolling();
+  if (!viewerStatusLogin()) return;
   pollTimer = setInterval(async () => {
     if (linked.value && inGuild.value) {
       stopPolling();
       return;
     }
     try {
-      const data = await fetchStatus();
+      const login = viewerStatusLogin();
+      if (!login) return;
+      const data = await fetchStatus(login);
       if (!data) return;
-      linked.value = Boolean(data.linked);
-      inGuild.value = Boolean(data.inGuild);
-      if (data.linked && data.inGuild) stopPolling();
+      applyStatusPayload(data, { allowChannelAccount: String(route.query.done || "") === "1" });
+      if (linked.value && inGuild.value) stopPolling();
     } catch {
       // ignore
     }
@@ -456,11 +490,16 @@ onMounted(async () => {
       return;
     }
 
-    if (twitchLogin.value || confirmedLogin.value) {
+    // Only check link status when we know THIS visitor's Twitch (after OAuth/confirm).
+    // Promo URLs use the streamer's login — checking that would mark every visitor "linked".
+    const done = String(route.query.done || "") === "1";
+    if (done || confirmedLogin.value || viewerStatusLogin()) {
       await refreshStatus();
-      if (String(route.query.done || "") === "1" || linked.value) {
+      if (done || linked.value) {
         step1Done.value = true;
-        if (linked.value) confirmedLogin.value = confirmedLogin.value || twitchLogin.value;
+        if (linked.value) {
+          confirmedLogin.value = confirmedLogin.value || viewerStatusLogin() || twitchLogin.value;
+        }
         startPolling();
       }
     }
