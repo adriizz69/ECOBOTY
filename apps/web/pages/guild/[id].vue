@@ -1105,47 +1105,6 @@
               <span class="muted">{{ $t("adminGuild.twitch.liveStarted") }}</span>
               <strong>{{ twitchStatus.live ? formatTwitchDateTime(twitchStatus.startedAt) : "—" }}</strong>
             </div>
-            <div class="twitch-detail-item twitch-detail-link">
-              <span class="muted">{{ $t("adminGuild.twitch.linkSlugLabel") }}</span>
-              <div class="twitch-slug-editor">
-                <div class="twitch-slug-input-row">
-                  <span class="twitch-slug-prefix">{{ twitchLinkUrlPrefix }}/</span>
-                  <input
-                    v-model="twitchLinkSlugDraft"
-                    type="text"
-                    maxlength="64"
-                    autocomplete="off"
-                    spellcheck="false"
-                    :placeholder="$t('adminGuild.twitch.linkSlugPlaceholder')"
-                    :class="{ 'is-invalid': Boolean(twitchLinkSlugClientError) }"
-                    @input="twitchLinkSlugSaveError = ''"
-                    @blur="onTwitchLinkSlugBlur"
-                  />
-                  <UButton
-                    size="sm"
-                    color="primary"
-                    :loading="twitchLinkSlugSaving"
-                    :disabled="!twitchLinkSlugCanSave"
-                    @click="saveTwitchLinkSlug"
-                  >
-                    {{ $t("common.save") }}
-                  </UButton>
-                </div>
-                <p v-if="twitchLinkSlugClientError" class="twitch-slug-error">
-                  {{ twitchLinkSlugClientError }}
-                </p>
-                <p v-else-if="twitchLinkSlugSaveError" class="twitch-slug-error">
-                  {{ twitchLinkSlugSaveError }}
-                </p>
-                <p class="muted" style="margin:6px 0 0;font-size:0.8rem;">
-                  {{ $t("adminGuild.twitch.linkSlugHelp") }}
-                </p>
-                <p v-if="twitchLinkBaseUrl" class="muted" style="margin:4px 0 0;font-size:0.8rem;">
-                  {{ $t("adminGuild.twitch.linkSlugPreview") }}
-                  <a :href="twitchLinkBaseUrl" target="_blank" rel="noreferrer">{{ twitchLinkBaseUrl }}</a>
-                </p>
-              </div>
-            </div>
           </div>
 
           <div class="twitch-field-grid">
@@ -1421,18 +1380,48 @@
 
             <div class="twitch-callout twitch-link-callout">
               <strong>{{ $t("adminGuild.twitch.linkSlugLabel") }}</strong>
-              <p>
-                <a
-                  v-if="twitchLinkBaseUrl"
-                  :href="twitchLinkBaseUrl"
-                  target="_blank"
-                  rel="noreferrer"
-                >{{ twitchLinkBaseUrl }}</a>
-                <span v-else class="muted">{{ $t("adminGuild.twitch.linkSlugMissing") }}</span>
-              </p>
-              <p class="muted" style="margin-top:6px;">
-                {{ $t("adminGuild.twitch.promoLinkHelp") }}
-              </p>
+              <div class="twitch-slug-editor" style="margin-top: 8px;">
+                <div class="twitch-slug-input-row">
+                  <span class="twitch-slug-prefix">{{ twitchLinkUrlPrefix }}/</span>
+                  <input
+                    v-model="twitchLinkSlugDraft"
+                    type="text"
+                    maxlength="64"
+                    autocomplete="off"
+                    spellcheck="false"
+                    :disabled="!twitchStatus.connected"
+                    :placeholder="$t('adminGuild.twitch.linkSlugPlaceholder')"
+                    :class="{ 'is-invalid': Boolean(twitchLinkSlugClientError) }"
+                    @input="twitchLinkSlugSaveError = ''"
+                    @blur="onTwitchLinkSlugBlur"
+                  />
+                  <UButton
+                    size="sm"
+                    color="primary"
+                    :loading="twitchLinkSlugSaving"
+                    :disabled="!twitchStatus.connected || !twitchLinkSlugCanSave"
+                    @click="saveTwitchLinkSlug"
+                  >
+                    {{ $t("common.save") }}
+                  </UButton>
+                </div>
+                <p v-if="twitchLinkSlugClientError" class="twitch-slug-error">
+                  {{ twitchLinkSlugClientError }}
+                </p>
+                <p v-else-if="twitchLinkSlugSaveError" class="twitch-slug-error">
+                  {{ twitchLinkSlugSaveError }}
+                </p>
+                <p class="muted" style="margin:6px 0 0;font-size:0.8rem;">
+                  {{ $t("adminGuild.twitch.linkSlugHelp") }}
+                </p>
+                <p class="muted" style="margin:4px 0 0;font-size:0.8rem;">
+                  {{ $t("adminGuild.twitch.promoLinkHelp") }}
+                </p>
+                <p v-if="twitchLinkBaseUrl" class="muted" style="margin:4px 0 0;font-size:0.8rem;">
+                  {{ $t("adminGuild.twitch.linkSlugPreview") }}
+                  <a :href="twitchLinkBaseUrl" target="_blank" rel="noreferrer">{{ twitchLinkBaseUrl }}</a>
+                </p>
+              </div>
             </div>
 
             <div class="twitch-toggle-list">

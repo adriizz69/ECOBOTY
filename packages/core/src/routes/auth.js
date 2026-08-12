@@ -172,6 +172,19 @@ authRouter.get("/discord/callback", async (req, res) => {
           .send(renderHtml("Lien Twitch invalide", "Aucun compte Twitch fourni."));
       }
       if (previousLogin && previousLogin === desiredLogin) {
+        try {
+          const { ensureGuildLinkSlug } = await import("../services/twitch.js");
+          const slug = state?.guildId ? await ensureGuildLinkSlug(String(state.guildId)) : "";
+          if (slug && desiredLogin) {
+            const qs = new URLSearchParams({ done: "1" });
+            return res.redirect(
+              302,
+              `/link/${encodeURIComponent(slug)}/${encodeURIComponent(desiredLogin)}?${qs}`
+            );
+          }
+        } catch {
+          // fall through
+        }
         return res.send(
           renderHtml(
             "Compte déjà lié",
@@ -188,7 +201,7 @@ authRouter.get("/discord/callback", async (req, res) => {
               `Ton Discord n’a pas de compte Twitch relié.<br><br>
               👉 Ouvre Discord &gt; Paramètres utilisateur &gt; Connexions, puis relie ton Twitch.<br>
               Une fois fait, relance la commande !daily dans le chat Twitch.<br><br>
-              Besoin d’aide ? <a href="https://support.discord.com/hc/en-us/articles/32330173689623-Account-Connections-on-Discord-FAQ" target="_blank" rel="noreferrer">Guide officiel Discord</a>.`
+              Besoin d’aide ? <a href="https://support.discord.com/hc/fr/articles/212112068-FAQ-sur-l-int%C3%A9gration-de-Twitch" target="_blank" rel="noreferrer">Guide officiel Discord</a>.`
             )
           );
       }
@@ -201,7 +214,7 @@ authRouter.get("/discord/callback", async (req, res) => {
               `Le compte Twitch relié à ton Discord ne correspond pas au compte qui parle dans le chat.<br><br>
               ✅ Connecte le bon Twitch dans Discord (Paramètres utilisateur &gt; Connexions), puis relance la commande !daily.<br>
               ℹ️ Tu peux avoir plusieurs comptes Twitch liés, mais le compte du chat doit faire partie de ces connexions.<br><br>
-              Besoin d’aide ? <a href="https://support.discord.com/hc/en-us/articles/32330173689623-Account-Connections-on-Discord-FAQ" target="_blank" rel="noreferrer">Guide officiel Discord</a>.`
+              Besoin d’aide ? <a href="https://support.discord.com/hc/fr/articles/212112068-FAQ-sur-l-int%C3%A9gration-de-Twitch" target="_blank" rel="noreferrer">Guide officiel Discord</a>.`
             )
           );
       }

@@ -181,7 +181,8 @@ const isStandaloneShellRoute = computed(() => {
   return (
     path === "/admin-v2" ||
     path.startsWith("/admin-v2/") ||
-    path.startsWith("/guild/")
+    path.startsWith("/guild/") ||
+    path.startsWith("/link/")
   );
 });
 const mobileNavOpen = ref(false);
@@ -234,7 +235,8 @@ const shouldLoadTawk = computed(
     consentCookie.value === "accepted" &&
     tawkToWidgetUrl.value.length > 0 &&
     isLoggedIn.value &&
-    Boolean(me.value?.discord_id)
+    Boolean(me.value?.discord_id) &&
+    !String(route.path || "").startsWith("/link/")
 );
 
 const colorMode = useColorMode();
