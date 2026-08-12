@@ -235,6 +235,7 @@ export const handleEventSubNotification = async (payload, meta = {}) => {
     await processTwitchCheerReward({
       guildId,
       twitchLogin: login,
+      twitchId: String(event?.user_id || "").trim(),
       bits,
       dedupeKey: messageId ? `eventsub-cheer:${messageId}` : `eventsub-cheer:${guildId}:${login}:${bits}`
     });
@@ -259,6 +260,7 @@ export const handleEventSubNotification = async (payload, meta = {}) => {
       await processTwitchSubReward({
         guildId,
         twitchLogin: gifter,
+        twitchId: String(event?.user_id || "").trim(),
         planOrTier: tier,
         source: "twitch_subgift",
         giftCount: total,
@@ -280,6 +282,7 @@ export const handleEventSubNotification = async (payload, meta = {}) => {
     await processTwitchSubReward({
       guildId,
       twitchLogin: login,
+      twitchId: String(event?.user_id || "").trim(),
       planOrTier: tier,
       source: "twitch_sub",
       dedupeKey: messageId

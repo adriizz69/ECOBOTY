@@ -92,13 +92,57 @@ const randomInt = (min, max) => {
   return Math.floor(Math.random() * range) + low;
 };
 
-const findLinkedDiscordUserByTwitchLogin = async (twitchLogin) => {
-  const login = String(twitchLogin || "").trim();
-  if (!login) return null;
-  return db("users")
-    .whereRaw("LOWER(twitch_login) = LOWER(?)", [login])
-    .first();
+const normalizeTwitchLoginKey = (twitchLogin) =>
+  String(twitchLogin || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_]/g, "")
+    .slice(0, 25);
+
+const normalizeTwitchIdKey = (twitchId) => String(twitchId || "").trim();
+
+/**
+ * Resolve EcoBoty user by stable Twitch user id first, then login.
+ * On rename, IRC/EventSub still send the same user-id — we sync twitch_login.
+ */
+const findLinkedDiscordUserByTwitch = async ({ twitchLogin = "", twitchId = "" } = {}) => {
+  const id = normalizeTwitchIdKey(twitchId);
+  const login = normalizeTwitchLoginKey(twitchLogin);
+  if (!id && !login) return null;
+
+  let user = null;
+  if (id) {
+    user = await db("users").where({ twitch_id: id }).first();
+  }
+  if (!user && login) {
+    user = await db("users")
+      .whereRaw("LOWER(twitch_login) = LOWER(?)", [login])
+      .first();
+  }
+  if (!user) return null;
+
+  const updates = {};
+  if (login && normalizeTwitchLoginKey(user.twitch_login) !== login) {
+    updates.twitch_login = login;
+  }
+  if (id && !String(user.twitch_id || "").trim()) {
+    updates.twitch_id = id;
+  }
+  if (Object.keys(updates).length) {
+    await db("users").where({ discord_id: user.discord_id }).update(updates);
+    user = { ...user, ...updates };
+    debugLog("twitch-identity-synced", {
+      discordId: user.discord_id,
+      twitchId: id || user.twitch_id || null,
+      twitchLogin: login || user.twitch_login || null,
+      updates
+    });
+  }
+  return user;
 };
+
+const findLinkedDiscordUserByTwitchLogin = async (twitchLogin, twitchId = "") =>
+  findLinkedDiscordUserByTwitch({ twitchLogin, twitchId });
 
 const trackTwitchAchievementByDiscordUser = async ({
   guildId,
@@ -140,6 +184,7 @@ const trackTwitchAchievementByDiscordUser = async ({
 const trackTwitchAchievementByLogin = async ({
   guildId,
   twitchLogin,
+  twitchId = "",
   eventKey,
   increment = 1,
   metadata = {}
@@ -149,7 +194,7 @@ const trackTwitchAchievementByLogin = async ({
     return { ok: false, reason: "invalid_increment" };
   }
   try {
-    const user = await findLinkedDiscordUserByTwitchLogin(twitchLogin);
+    const user = await findLinkedDiscordUserByTwitch({ twitchLogin, twitchId });
     if (!user?.discord_id) return { ok: false, reason: "not_linked" };
     return trackTwitchAchievementByDiscordUser({
       guildId: String(guildId),
@@ -661,8 +706,14 @@ export const saveTwitchPromoSettings = async (guildId, data = {}, trx = db) => {
   return getTwitchPromoSettings(guildId, trx);
 };
 
-const findLinkedUserByTwitchLogin = async (twitchLogin, trx = db) => {
-  const login = String(twitchLogin || "").trim();
+const findLinkedUserByTwitchLogin = async (twitchLogin, trx = db, twitchId = "") => {
+  const id = normalizeTwitchIdKey(twitchId);
+  const login = normalizeTwitchLoginKey(twitchLogin);
+  if (!id && !login) return null;
+  if (id) {
+    const byId = await trx("users").where({ twitch_id: id }).first();
+    if (byId) return byId;
+  }
   if (!login) return null;
   return trx("users").whereRaw("LOWER(twitch_login) = LOWER(?)", [login]).first();
 };
@@ -1639,7 +1690,7 @@ const maybeSetSubTierFromBadges = async ({ guildId, twitchLogin, badges }) => {
   await updateSubTier({ guildId, twitchLogin, tier: isPrime ? "prime" : "1000" });
 };
 
-const awardMessageGain = async ({ guildId, twitchLogin }) => {
+const awardMessageGain = async ({ guildId, twitchLogin, twitchId = "" }) => {
   const liveOnly = await isLiveOnlyEnabled(guildId);
   if (liveOnly) {
     const isLive = await isLiveCached(guildId);
@@ -1659,9 +1710,9 @@ const awardMessageGain = async ({ guildId, twitchLogin }) => {
     return;
   }
 
-  const user = await findLinkedDiscordUserByTwitchLogin(twitchLogin);
+  const user = await findLinkedDiscordUserByTwitch({ twitchLogin, twitchId });
   if (!user) {
-    debugLog("message-skip", { guildId, twitchLogin, reason: "not_linked" });
+    debugLog("message-skip", { guildId, twitchLogin, twitchId: twitchId || null, reason: "not_linked" });
     return { ok: false, reason: "not_linked" };
   }
 
@@ -1711,6 +1762,7 @@ const awardMessageGain = async ({ guildId, twitchLogin }) => {
 const awardWatchGain = async ({
   guildId,
   twitchLogin,
+  twitchId = "",
   trackedMinutes = 0,
   streamIsLive
 }) => {
@@ -1719,7 +1771,7 @@ const awardWatchGain = async ({
   const config = await getCachedConfig(guildId);
   const rule = config.rules?.watch;
 
-  const user = await findLinkedDiscordUserByTwitchLogin(twitchLogin);
+  const user = await findLinkedDiscordUserByTwitch({ twitchLogin, twitchId });
   if (!user) return { ok: false, reason: "not_linked" };
 
   const watchMinutes = Math.max(1, Math.floor(Number(trackedMinutes || 0)));
@@ -1777,7 +1829,7 @@ const awardWatchGain = async ({
   return gainResult;
 };
 
-const awardSubEvent = async ({ guildId, twitchLogin, tier, source, amount }) => {
+const awardSubEvent = async ({ guildId, twitchLogin, twitchId = "", tier, source, amount }) => {
   const policy = await getTwitchPremiumPolicy(guildId);
   if (!policy.integrationEnabled || !policy.eventsAdvancedEnabled) {
     debugLog("award-sub-blocked", { guildId, twitchLogin, reason: "premium_feature_disabled" });
@@ -1787,9 +1839,17 @@ const awardSubEvent = async ({ guildId, twitchLogin, tier, source, amount }) => 
     debugLog("award-sub-blocked", { guildId, twitchLogin, reason: "amount_zero", source, tier });
     return { ok: false, reason: "amount_zero" };
   }
-  const user = await findLinkedDiscordUserByTwitchLogin(twitchLogin);
+  const user = await findLinkedDiscordUserByTwitch({ twitchLogin, twitchId });
   if (!user) {
-    debugLog("award-sub-blocked", { guildId, twitchLogin, reason: "not_linked", source, tier, amount });
+    debugLog("award-sub-blocked", {
+      guildId,
+      twitchLogin,
+      twitchId: twitchId || null,
+      reason: "not_linked",
+      source,
+      tier,
+      amount
+    });
     return { ok: false, reason: "not_linked" };
   }
   await updateSubTier({ guildId, twitchLogin, tier });
@@ -1823,7 +1883,7 @@ const awardSubEvent = async ({ guildId, twitchLogin, tier, source, amount }) => 
   return gainResult;
 };
 
-const awardBitsEvent = async ({ guildId, twitchLogin, bits, amountPerBit }) => {
+const awardBitsEvent = async ({ guildId, twitchLogin, twitchId = "", bits, amountPerBit }) => {
   const policy = await getTwitchPremiumPolicy(guildId);
   if (!policy.integrationEnabled || !policy.eventsAdvancedEnabled) {
     debugLog("award-bits-blocked", { guildId, twitchLogin, reason: "premium_feature_disabled" });
@@ -1844,11 +1904,12 @@ const awardBitsEvent = async ({ guildId, twitchLogin, bits, amountPerBit }) => {
     });
     return { ok: false, reason: "amount_zero" };
   }
-  const user = await findLinkedDiscordUserByTwitchLogin(twitchLogin);
+  const user = await findLinkedDiscordUserByTwitch({ twitchLogin, twitchId });
   if (!user) {
     debugLog("award-bits-blocked", {
       guildId,
       twitchLogin,
+      twitchId: twitchId || null,
       reason: "not_linked",
       bits: bitsValue,
       amount
@@ -1885,10 +1946,12 @@ const awardBitsEvent = async ({ guildId, twitchLogin, bits, amountPerBit }) => {
 export const processTwitchCheerReward = async ({
   guildId,
   twitchLogin,
+  twitchId = "",
   bits,
   dedupeKey = ""
 } = {}) => {
   const login = String(twitchLogin || "").trim();
+  const id = normalizeTwitchIdKey(twitchId);
   const bitsValue = Math.max(0, Math.floor(Number(bits || 0)));
   if (!guildId || !login || bitsValue <= 0) {
     return { ok: false, reason: "invalid_payload" };
@@ -1910,6 +1973,7 @@ export const processTwitchCheerReward = async ({
   await trackTwitchAchievementByLogin({
     guildId,
     twitchLogin: login,
+    twitchId: id,
     eventKey: "twitch_bits_sent",
     increment: bitsValue,
     metadata: { source: "twitch_reward", event: "cheer" }
@@ -1917,6 +1981,7 @@ export const processTwitchCheerReward = async ({
   return awardBitsEvent({
     guildId,
     twitchLogin: login,
+    twitchId: id,
     bits: bitsValue,
     amountPerBit
   });
@@ -1925,6 +1990,7 @@ export const processTwitchCheerReward = async ({
 export const processTwitchSubReward = async ({
   guildId,
   twitchLogin,
+  twitchId = "",
   planOrTier,
   source = "twitch_sub",
   giftCount = 1,
@@ -1932,6 +1998,7 @@ export const processTwitchSubReward = async ({
   recipientLogin = ""
 } = {}) => {
   const login = String(twitchLogin || "").trim();
+  const id = normalizeTwitchIdKey(twitchId);
   const tier = normalizeSubTier(planOrTier);
   const eventTier = eventRuleTierKey(tier);
   const count = Math.max(1, Math.floor(Number(giftCount || 1)));
@@ -1961,6 +2028,7 @@ export const processTwitchSubReward = async ({
     await trackTwitchAchievementByLogin({
       guildId,
       twitchLogin: login,
+      twitchId: id,
       eventKey: "twitch_sub_count",
       increment: 1,
       metadata: { source: "twitch_reward", tier: tier || null, event: "subscription" }
@@ -1969,6 +2037,7 @@ export const processTwitchSubReward = async ({
     await trackTwitchAchievementByLogin({
       guildId,
       twitchLogin: login,
+      twitchId: id,
       eventKey: "twitch_subgift_count",
       increment: count,
       metadata: { source: "twitch_reward", tier: tier || null, event: "subgift" }
@@ -1988,6 +2057,7 @@ export const processTwitchSubReward = async ({
   return awardSubEvent({
     guildId,
     twitchLogin: login,
+    twitchId: id,
     tier,
     source,
     amount
@@ -2070,12 +2140,10 @@ const tTwitch = (lang, key, vars = {}) => {
   return text;
 };
 
-const handleDailyCommand = async ({ guildId, twitchLogin, client, channel }) => {
+const handleDailyCommand = async ({ guildId, twitchLogin, twitchId = "", client, channel }) => {
   const lang = await getBotLanguage(guildId);
   try {
-    const user = await db("users")
-      .whereRaw("LOWER(twitch_login) = LOWER(?)", [String(twitchLogin)])
-      .first();
+    const user = await findLinkedDiscordUserByTwitch({ twitchLogin, twitchId });
     if (!user) {
       const link = await buildTwitchLinkUrl(guildId, twitchLogin);
       await client.say(channel, tTwitch(lang, "link", { link }));
@@ -2242,6 +2310,7 @@ export const startTwitchListener = async (guildId) => {
         }
         const username = tags?.username;
         if (!username) return;
+        const twitchUserId = String(tags?.["user-id"] || "").trim();
 
         debugLog("message-received", { guildId: guildKey, username, message: String(message || "") });
 
@@ -2257,7 +2326,13 @@ export const startTwitchListener = async (guildId) => {
           return;
         }
         if (lower.startsWith("!daily")) {
-          await handleDailyCommand({ guildId: guildKey, twitchLogin: username, client, channel: _channel });
+          await handleDailyCommand({
+            guildId: guildKey,
+            twitchLogin: username,
+            twitchId: twitchUserId,
+            client,
+            channel: _channel
+          });
         }
 
         await handleTwitchPromoOnChat({
@@ -2270,7 +2345,11 @@ export const startTwitchListener = async (guildId) => {
         });
 
         await maybeSetSubTierFromBadges({ guildId: guildKey, twitchLogin: username, badges: tags?.badges });
-        await awardMessageGain({ guildId: guildKey, twitchLogin: username });
+        await awardMessageGain({
+          guildId: guildKey,
+          twitchLogin: username,
+          twitchId: twitchUserId
+        });
       } catch (error) {
         debugLog("message-handler-failed", {
           guildId: guildKey,
@@ -2286,10 +2365,12 @@ export const startTwitchListener = async (guildId) => {
       try {
         const plan = userstate?.["msg-param-sub-plan"];
         const msgId = String(userstate?.id || "").trim();
+        const twitchUserId = String(userstate?.["user-id"] || "").trim();
         debugLog("sub-event", { guildId: guildKey, username, plan, message: String(message || "") });
         await processTwitchSubReward({
           guildId: guildKey,
           twitchLogin: username,
+          twitchId: twitchUserId,
           planOrTier: plan,
           source: "twitch_sub",
           dedupeKey: msgId ? `irc-sub:${msgId}` : ""
@@ -2307,10 +2388,12 @@ export const startTwitchListener = async (guildId) => {
       try {
         const plan = userstate?.["msg-param-sub-plan"];
         const msgId = String(userstate?.id || "").trim();
+        const twitchUserId = String(userstate?.["user-id"] || "").trim();
         debugLog("resub-event", { guildId: guildKey, username, plan, message: String(message || "") });
         await processTwitchSubReward({
           guildId: guildKey,
           twitchLogin: username,
+          twitchId: twitchUserId,
           planOrTier: plan,
           source: "twitch_sub",
           dedupeKey: msgId ? `irc-resub:${msgId}` : ""
@@ -2328,10 +2411,12 @@ export const startTwitchListener = async (guildId) => {
       try {
         const plan = userstate?.["msg-param-sub-plan"];
         const msgId = String(userstate?.id || "").trim();
+        const twitchUserId = String(userstate?.["user-id"] || "").trim();
         debugLog("subgift-event", { guildId: guildKey, username, recipient, plan });
         await processTwitchSubReward({
           guildId: guildKey,
           twitchLogin: username,
+          twitchId: twitchUserId,
           planOrTier: plan,
           source: "twitch_subgift",
           giftCount: 1,
@@ -2352,11 +2437,13 @@ export const startTwitchListener = async (guildId) => {
       try {
         const plan = userstate?.["msg-param-sub-plan"];
         const msgId = String(userstate?.id || "").trim();
+        const twitchUserId = String(userstate?.["user-id"] || "").trim();
         const count = Number(numOfSubs || 0);
         debugLog("submysterygift-event", { guildId: guildKey, username, plan, count });
         await processTwitchSubReward({
           guildId: guildKey,
           twitchLogin: username,
+          twitchId: twitchUserId,
           planOrTier: plan,
           source: "twitch_subgift",
           giftCount: count > 0 ? count : 1,
@@ -2376,6 +2463,7 @@ export const startTwitchListener = async (guildId) => {
         const username = userstate?.username || userstate?.login;
         const bits = Number(userstate?.bits || 0);
         const msgId = String(userstate?.id || "").trim();
+        const twitchUserId = String(userstate?.["user-id"] || "").trim();
         debugLog("bits-event", {
           guildId: guildKey,
           username,
@@ -2386,6 +2474,7 @@ export const startTwitchListener = async (guildId) => {
         await processTwitchCheerReward({
           guildId: guildKey,
           twitchLogin: username,
+          twitchId: twitchUserId,
           bits,
           dedupeKey: msgId ? `irc-cheer:${msgId}` : ""
         });
@@ -2452,6 +2541,7 @@ const ensureWatchInterval = (guildKey) => {
         await awardWatchGain({
           guildId: guildKey,
           twitchLogin: login,
+          twitchId: String(chatter?.user_id || "").trim(),
           trackedMinutes: watchStepMinutes,
           streamIsLive
         });
