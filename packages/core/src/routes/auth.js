@@ -347,6 +347,19 @@ authRouter.get("/discord/callback", async (req, res) => {
         guildsCount: guildCount,
         guildsError: userGuildsError || null
       });
+
+      // Redirect to the step-by-step onboarding page for the right streamer/guild.
+      try {
+        const { ensureGuildLinkSlug } = await import("../services/twitch.js");
+        const slug = state?.guildId ? await ensureGuildLinkSlug(String(state.guildId)) : "";
+        const loginForUrl = String(desiredLogin || twitchLogin || "").toLowerCase();
+        if (slug && loginForUrl) {
+          const qs = new URLSearchParams({ done: "1" });
+          return res.redirect(302, `/link/${encodeURIComponent(slug)}/${encodeURIComponent(loginForUrl)}?${qs}`);
+        }
+      } catch {
+        // fall through to HTML
+      }
       return res.send(renderHtml("Compte lié", message));
     }
 

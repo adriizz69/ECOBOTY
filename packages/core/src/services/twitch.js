@@ -332,7 +332,18 @@ export const updateTwitchLiveMode = async (guildId, liveOnly, trx = db) => {
 };
 
 const DEFAULT_PROMO_TEMPLATE =
-  "@{user} Rejoins le Discord : {discord} pour gagner des {currency} et débloquer plein d'avantages ! Tape !daily dans le chat pour lier ton Discord, ou passe par ce lien : {link} — à chaque sub, bits ou subgift tu pourras gagner des {currency}.";
+  "Hey @{user} ! Rejoins le Discord {discord} pour gagner des {currency} et plein d'avantages. Lie ton compte ici : {link} — puis tape !daily dans le tchat. Subs, bits et subgifts = des {currency} ! {stop}";
+
+const PROMO_STOP_PHRASE =
+  "Plus intéressé ? Tape !stop pour ne plus recevoir ce message.";
+
+/** MySQL returns TINYINT 0/1 — never use `!== false` (0 !== false is true). */
+const asBool = (value, fallback = false) => {
+  if (value === true || value === 1 || value === "1") return true;
+  if (value === false || value === 0 || value === "0" || value === "false") return false;
+  if (value == null) return fallback;
+  return Boolean(value);
+};
 
 const clampTwitchChatMessage = (text) => {
   const value = String(text || "").replace(/\s+/g, " ").trim();
@@ -343,13 +354,68 @@ const clampTwitchChatMessage = (text) => {
 const normalizePromoSettings = (row = {}) => {
   const template = String(row.promo_template || "").trim() || DEFAULT_PROMO_TEMPLATE;
   return {
-    enabled: Boolean(row.promo_enabled),
+    enabled: asBool(row.promo_enabled, false),
     template,
     discordUrl: String(row.promo_discord_url || "").trim(),
-    onFollow: row.promo_on_follow !== false,
-    onFirstMessage: row.promo_on_first_message !== false,
-    remindUnlinked: row.promo_remind_unlinked !== false
+    onFollow: asBool(row.promo_on_follow, true),
+    onFirstMessage: asBool(row.promo_on_first_message, true),
+    remindUnlinked: asBool(row.promo_remind_unlinked, true),
+    stopEnabled: asBool(row.promo_stop_enabled, true)
   };
+};
+
+/** Shared Chat: ignore messages that originated in another channel. */
+export const isForeignSharedChatMessage = (tags = {}) => {
+  const sourceRoomId = String(tags?.["source-room-id"] || "").trim();
+  if (!sourceRoomId) return false;
+  const roomId = String(tags?.["room-id"] || "").trim();
+  if (!roomId) return false;
+  return sourceRoomId !== roomId;
+};
+
+export const slugifyGuildName = (name) => {
+  const base = String(name || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+  return base || "serveur";
+};
+
+export const ensureGuildLinkSlug = async (guildId, trx = db) => {
+  const guild = await ensureGuild(guildId, trx);
+  const existingSlug = String(guild.link_slug || "").trim();
+  if (existingSlug) return existingSlug;
+
+  const hasColumn = await trx.schema.hasColumn("guilds", "link_slug");
+  if (!hasColumn) return String(guild.discord_guild_id || guildId);
+
+  let base = slugifyGuildName(guild.name);
+  let slug = base;
+  let n = 0;
+  for (;;) {
+    const clash = await trx("guilds").where({ link_slug: slug }).whereNot({ id: guild.id }).first();
+    if (!clash) break;
+    n += 1;
+    slug = `${base}-${n}`.slice(0, 64);
+  }
+  await trx("guilds").where({ id: guild.id }).update({ link_slug: slug });
+  guild.link_slug = slug;
+  return slug;
+};
+
+export const resolveGuildByLinkSlug = async (slug, trx = db) => {
+  const safe = String(slug || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, "")
+    .slice(0, 64);
+  if (!safe) return null;
+  const hasColumn = await trx.schema.hasColumn("guilds", "link_slug");
+  if (!hasColumn) return null;
+  return trx("guilds").where({ link_slug: safe }).first();
 };
 
 export const getTwitchPromoSettings = async (guildId, trx = db) => {
@@ -365,10 +431,12 @@ export const getTwitchPromoSettings = async (guildId, trx = db) => {
         { tag: "{invite}", label: "Identique à {discord}" },
         { tag: "{currency}", label: "Nom de la monnaie du serveur" },
         { tag: "{money}", label: "Identique à {currency}" },
-        { tag: "{link}", label: "Lien court de liaison Discord ↔ Twitch" },
-        { tag: "{channel}", label: "Pseudo de la chaîne Twitch connectée" }
+        { tag: "{link}", label: "Lien court d’onboarding EcoBoty (/link/serveur/pseudo)" },
+        { tag: "{channel}", label: "Pseudo de la chaîne Twitch connectée" },
+        { tag: "{stop}", label: "Phrase !stop (vide si l’option est désactivée)" }
       ],
-      defaultTemplate: DEFAULT_PROMO_TEMPLATE
+      defaultTemplate: DEFAULT_PROMO_TEMPLATE,
+      stopPhrase: PROMO_STOP_PHRASE
     };
   }
   return {
@@ -381,10 +449,12 @@ export const getTwitchPromoSettings = async (guildId, trx = db) => {
       { tag: "{invite}", label: "Identique à {discord}" },
       { tag: "{currency}", label: "Nom de la monnaie du serveur" },
       { tag: "{money}", label: "Identique à {currency}" },
-      { tag: "{link}", label: "Lien court de liaison Discord ↔ Twitch" },
-      { tag: "{channel}", label: "Pseudo de la chaîne Twitch connectée" }
+      { tag: "{link}", label: "Lien court d’onboarding EcoBoty (/link/serveur/pseudo)" },
+      { tag: "{channel}", label: "Pseudo de la chaîne Twitch connectée" },
+      { tag: "{stop}", label: "Phrase !stop (vide si l’option est désactivée)" }
     ],
-    defaultTemplate: DEFAULT_PROMO_TEMPLATE
+    defaultTemplate: DEFAULT_PROMO_TEMPLATE,
+    stopPhrase: PROMO_STOP_PHRASE
   };
 };
 
@@ -403,23 +473,31 @@ export const saveTwitchPromoSettings = async (guildId, data = {}, trx = db) => {
     ? String(data.discordUrl || "").trim().slice(0, 500)
     : String(existing.promo_discord_url || "").trim();
 
+  const hasStopCol = await trx.schema.hasColumn("twitch_settings", "promo_stop_enabled");
   await trx("twitch_settings")
     .where({ guild_id: guild.id })
     .update({
       promo_enabled: Object.prototype.hasOwnProperty.call(data, "enabled")
         ? Boolean(data.enabled)
-        : Boolean(existing.promo_enabled),
+        : asBool(existing.promo_enabled, false),
       promo_template: templateRaw || null,
       promo_discord_url: discordUrl || null,
       promo_on_follow: Object.prototype.hasOwnProperty.call(data, "onFollow")
         ? Boolean(data.onFollow)
-        : existing.promo_on_follow !== false,
+        : asBool(existing.promo_on_follow, true),
       promo_on_first_message: Object.prototype.hasOwnProperty.call(data, "onFirstMessage")
         ? Boolean(data.onFirstMessage)
-        : existing.promo_on_first_message !== false,
+        : asBool(existing.promo_on_first_message, true),
       promo_remind_unlinked: Object.prototype.hasOwnProperty.call(data, "remindUnlinked")
         ? Boolean(data.remindUnlinked)
-        : existing.promo_remind_unlinked !== false,
+        : asBool(existing.promo_remind_unlinked, true),
+      ...(hasStopCol
+        ? {
+            promo_stop_enabled: Object.prototype.hasOwnProperty.call(data, "stopEnabled")
+              ? Boolean(data.stopEnabled)
+              : asBool(existing.promo_stop_enabled, true)
+          }
+        : {}),
       updated_at: new Date()
     });
 
@@ -433,14 +511,25 @@ const findLinkedUserByTwitchLogin = async (twitchLogin, trx = db) => {
   return trx("users").whereRaw("LOWER(twitch_login) = LOWER(?)", [login]).first();
 };
 
-const buildTwitchLinkUrl = (guildId, twitchLogin) => {
+const buildTwitchLinkUrl = async (guildId, twitchLogin) => {
   const base = String(getPublicSiteBase() || "").replace(/\/$/, "");
-  const safeGuild = String(guildId || "").replace(/\D/g, "");
   const safeLogin = String(twitchLogin || "")
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9_]/g, "")
     .slice(0, 25);
+  try {
+    const slug = await ensureGuildLinkSlug(guildId);
+    if (slug && safeLogin) {
+      return `${base}/link/${encodeURIComponent(slug)}/${encodeURIComponent(safeLogin)}`;
+    }
+    if (slug) {
+      return `${base}/link/${encodeURIComponent(slug)}`;
+    }
+  } catch {
+    // fall through to legacy
+  }
+  const safeGuild = String(guildId || "").replace(/\D/g, "");
   if (!safeGuild || !safeLogin) {
     return `${base}/auth/discord/twitch-link`;
   }
@@ -464,7 +553,8 @@ export const renderTwitchPromoMessage = async ({
     "https://discord.gg/";
   const twitchName = String(twitchLogin || displayName || "viewer").replace(/^@/, "");
   const channelName = String(currentSettings.twitch_login || "").replace(/^@/, "");
-  const link = buildTwitchLinkUrl(guildId, twitchLogin);
+  const link = await buildTwitchLinkUrl(guildId, twitchLogin);
+  const stopText = promo.stopEnabled ? PROMO_STOP_PHRASE : "";
   const vars = {
     user: twitchName,
     pseudo: twitchName,
@@ -473,12 +563,19 @@ export const renderTwitchPromoMessage = async ({
     currency: currencyName,
     money: currencyName,
     link,
-    channel: channelName
+    channel: channelName,
+    stop: stopText
   };
   let text = String(promo.template || DEFAULT_PROMO_TEMPLATE);
   Object.entries(vars).forEach(([name, value]) => {
     text = text.replace(new RegExp(`\\{${name}\\}`, "gi"), String(value));
   });
+  // If stop is enabled but template has no {stop}, append the phrase once.
+  if (promo.stopEnabled && !/\{stop\}/i.test(String(promo.template || "")) && !/!stop/i.test(text)) {
+    text = `${text} ${PROMO_STOP_PHRASE}`.trim();
+  }
+  // Clean leftover spaces when {stop} was emptied.
+  text = text.replace(/\s{2,}/g, " ").trim();
   return clampTwitchChatMessage(text);
 };
 
@@ -511,6 +608,9 @@ const markPromoActivity = async (activityId, patch = {}) => {
     });
 };
 
+/** In-memory EventSub follow promo dedupe (retries / duplicate deliveries). */
+const recentFollowPromoKeys = new Map();
+
 let promoActivityColumnsReady = null;
 const ensurePromoActivityColumns = async () => {
   if (promoActivityColumnsReady !== null) return promoActivityColumnsReady;
@@ -518,10 +618,65 @@ const ensurePromoActivityColumns = async () => {
   return promoActivityColumnsReady;
 };
 
+let promoOptOutColumnReady = null;
+const ensurePromoOptOutColumn = async () => {
+  if (promoOptOutColumnReady !== null) return promoOptOutColumnReady;
+  promoOptOutColumnReady = await db.schema.hasColumn("twitch_activity", "promo_opted_out");
+  return promoOptOutColumnReady;
+};
+
+const isPromoOptedOut = async (guildId, twitchLogin) => {
+  if (!(await ensurePromoOptOutColumn())) return false;
+  const activity = await getOrCreateTwitchActivity(guildId, twitchLogin);
+  return asBool(activity.promo_opted_out, false);
+};
+
+export const handleTwitchPromoStopCommand = async ({
+  guildId,
+  twitchLogin,
+  client = null,
+  channel = ""
+} = {}) => {
+  try {
+    const login = String(twitchLogin || "").trim();
+    if (!login) return false;
+    const settings = await getTwitchSettings(guildId);
+    if (!settings) return false;
+    const promo = normalizePromoSettings(settings);
+    if (!promo.enabled || !promo.stopEnabled) return false;
+
+    if (!(await ensurePromoOptOutColumn())) return false;
+    const activity = await getOrCreateTwitchActivity(guildId, login);
+    if (asBool(activity.promo_opted_out, false)) {
+      const lang = await getBotLanguage(guildId);
+      const text = tTwitch(lang, "promoStopAlready");
+      if (client && channel) await client.say(channel, text);
+      else await sayTwitchChat(guildId, text, { channel });
+      return true;
+    }
+
+    await markPromoActivity(activity.id, { promo_opted_out: true });
+    const lang = await getBotLanguage(guildId);
+    const text = tTwitch(lang, "promoStopOk");
+    if (client && channel) await client.say(channel, text);
+    else await sayTwitchChat(guildId, text, { channel });
+    debugLog("promo-stop", { guildId, login });
+    return true;
+  } catch (error) {
+    debugLog("promo-stop-failed", {
+      guildId,
+      twitchLogin,
+      error: error?.message || String(error)
+    });
+    return false;
+  }
+};
+
 export const handleTwitchPromoOnFollow = async ({
   guildId,
   twitchLogin,
-  displayName = ""
+  displayName = "",
+  dedupeKey = ""
 } = {}) => {
   try {
     const login = String(twitchLogin || "").trim();
@@ -534,6 +689,24 @@ export const handleTwitchPromoOnFollow = async ({
 
     const linked = await findLinkedUserByTwitchLogin(login);
     if (linked) return false;
+
+    if (await isPromoOptedOut(guildId, login)) {
+      debugLog("promo-follow-skipped-optout", { guildId, login });
+      return false;
+    }
+
+    const key = String(dedupeKey || `${guildId}:${login}`).trim();
+    if (key) {
+      const now = Date.now();
+      for (const [k, ts] of recentFollowPromoKeys) {
+        if (now - ts > 15 * 60 * 1000) recentFollowPromoKeys.delete(k);
+      }
+      if (recentFollowPromoKeys.has(key)) {
+        debugLog("promo-follow-deduped", { guildId, login, key });
+        return false;
+      }
+      recentFollowPromoKeys.set(key, now);
+    }
 
     const text = await renderTwitchPromoMessage({
       guildId,
@@ -560,9 +733,15 @@ export const handleTwitchPromoOnChat = async ({
   twitchLogin,
   displayName = "",
   client = null,
-  channel = ""
+  channel = "",
+  tags = null
 } = {}) => {
   try {
+    if (isForeignSharedChatMessage(tags)) {
+      debugLog("promo-chat-skip-shared", { guildId, twitchLogin });
+      return false;
+    }
+
     const login = String(twitchLogin || "").trim();
     if (!login) return false;
     const settings = await getTwitchSettings(guildId);
@@ -575,29 +754,55 @@ export const handleTwitchPromoOnChat = async ({
     const linked = await findLinkedUserByTwitchLogin(login);
     if (linked) return false;
 
+    if (await isPromoOptedOut(guildId, login)) {
+      debugLog("promo-chat-skipped-optout", { guildId, login });
+      return false;
+    }
+
     if (!(await ensurePromoActivityColumns())) return false;
 
     const activity = await getOrCreateTwitchActivity(guildId, login);
-    const patch = {};
+    const claimed = {};
     let shouldSend = false;
 
-    if (promo.onFirstMessage && !activity.promo_first_message_sent) {
-      shouldSend = true;
-      patch.promo_first_message_sent = true;
+    // Claim flags BEFORE sending to prevent race duplicates on rapid messages.
+    if (promo.onFirstMessage && !asBool(activity.promo_first_message_sent, false)) {
+      const updated = await db("twitch_activity")
+        .where({ id: activity.id })
+        .andWhere((qb) => {
+          qb.where("promo_first_message_sent", false)
+            .orWhere("promo_first_message_sent", 0)
+            .orWhereNull("promo_first_message_sent");
+        })
+        .update({
+          promo_first_message_sent: true,
+          updated_at: new Date()
+        });
+      if (updated) {
+        shouldSend = true;
+        claimed.firstMessage = true;
+        activity.promo_first_message_sent = true;
+      }
     }
 
     if (promo.remindUnlinked) {
       const liveInfo = await getLiveStreamInfoCached(guildId);
       const streamId = liveInfo.streamId || null;
-      if (
-        liveInfo.live &&
-        streamId &&
-        String(activity.promo_remind_stream_id || "") !== String(streamId)
-      ) {
-        shouldSend = true;
-        patch.promo_remind_stream_id = String(streamId);
-      } else if (shouldSend && liveInfo.live && streamId) {
-        patch.promo_remind_stream_id = String(streamId);
+      if (liveInfo.live && streamId && String(activity.promo_remind_stream_id || "") !== String(streamId)) {
+        const updated = await db("twitch_activity")
+          .where({ id: activity.id })
+          .andWhere((qb) => {
+            qb.whereNot("promo_remind_stream_id", String(streamId)).orWhereNull("promo_remind_stream_id");
+          })
+          .update({
+            promo_remind_stream_id: String(streamId),
+            updated_at: new Date()
+          });
+        if (updated) {
+          shouldSend = true;
+          claimed.remind = true;
+          activity.promo_remind_stream_id = String(streamId);
+        }
       }
     }
 
@@ -618,8 +823,7 @@ export const handleTwitchPromoOnChat = async ({
       if (!ok) return false;
     }
 
-    await markPromoActivity(activity.id, patch);
-    debugLog("promo-chat", { guildId, login, patch });
+    debugLog("promo-chat", { guildId, login, claimed });
     return true;
   } catch (error) {
     debugLog("promo-chat-failed", {
@@ -1263,23 +1467,23 @@ const awardSubEvent = async ({ guildId, twitchLogin, tier, source, amount }) => 
   return gainResult;
 };
 
-const awardBitsEvent = async ({ guildId, twitchLogin, bits, amountPer100 }) => {
+const awardBitsEvent = async ({ guildId, twitchLogin, bits, amountPerBit }) => {
   const policy = await getTwitchPremiumPolicy(guildId);
   if (!policy.integrationEnabled || !policy.eventsAdvancedEnabled) {
     debugLog("award-bits-blocked", { guildId, twitchLogin, reason: "premium_feature_disabled" });
     return { ok: false, reason: "premium_feature_disabled" };
   }
   const bitsValue = Math.max(0, Math.floor(Number(bits || 0)));
-  const perHundred = Number(amountPer100 || 0);
-  // Proportional: 50 bits with 100/100 => 50 coins (previously floor(bits/100) ignored <100).
-  const amount = perHundred > 0 ? Math.floor((bitsValue * perHundred) / 100) : 0;
+  const perBit = Math.max(0, Number(amountPerBit || 0));
+  // coins = bits × coins_per_bit (supports fractional per-bit via floor at the end)
+  const amount = perBit > 0 ? Math.floor(bitsValue * perBit) : 0;
   if (bitsValue <= 0 || amount <= 0) {
     debugLog("award-bits-blocked", {
       guildId,
       twitchLogin,
       reason: "amount_zero",
       bits: bitsValue,
-      amountPer100: perHundred,
+      amountPerBit: perBit,
       amount
     });
     return { ok: false, reason: "amount_zero" };
@@ -1300,7 +1504,7 @@ const awardBitsEvent = async ({ guildId, twitchLogin, bits, amountPer100 }) => {
     userId: user.discord_id,
     amount,
     source: "twitch_bits",
-    data: { bits: bitsValue, amount_per_100: perHundred }
+    data: { bits: bitsValue, amount_per_bit: perBit }
   });
   if (gainResult?.ok) {
     await trackTwitchAchievementByDiscordUser({
@@ -1334,18 +1538,19 @@ export const processTwitchCheerReward = async ({
     return { ok: false, reason: "invalid_payload" };
   }
   const transportKey = String(dedupeKey || "").trim();
-  const semanticKey = `bits:${guildId}:${login.toLowerCase()}:${bitsValue}`;
-  // Transport id avoids true duplicates; short semantic window collapses IRC + EventSub races.
+  // Prefer EventSub/IRC message id for true duplicates.
   if (transportKey && !claimTwitchAwardOnce(transportKey, 120000)) {
     debugLog("award-bits-duplicate", { guildId, twitchLogin: login, bits: bitsValue, key: transportKey });
     return { ok: false, reason: "duplicate" };
   }
-  if (!claimTwitchAwardOnce(semanticKey, 10000)) {
-    debugLog("award-bits-duplicate", { guildId, twitchLogin: login, bits: bitsValue, key: semanticKey });
+  // Collapse IRC + EventSub for the same cheer (different message ids, same size, few seconds apart).
+  const crossKey = `bits-cross:${guildId}:${login.toLowerCase()}:${bitsValue}`;
+  if (!claimTwitchAwardOnce(crossKey, 8000)) {
+    debugLog("award-bits-duplicate", { guildId, twitchLogin: login, bits: bitsValue, key: crossKey });
     return { ok: false, reason: "duplicate" };
   }
   const config = await getCachedConfig(guildId);
-  const amountPer100 = config.events?.bits?.enabled ? Number(config.events?.bits?.amount || 0) : 0;
+  const amountPerBit = config.events?.bits?.enabled ? Number(config.events?.bits?.amount || 0) : 0;
   await trackTwitchAchievementByLogin({
     guildId,
     twitchLogin: login,
@@ -1357,7 +1562,7 @@ export const processTwitchCheerReward = async ({
     guildId,
     twitchLogin: login,
     bits: bitsValue,
-    amountPer100
+    amountPerBit
   });
 };
 
@@ -1467,7 +1672,9 @@ const twitchI18n = {
     alreadyWithRemaining: "Daily déjà récupéré. Reviens dans {remaining}.",
     alreadyToday: "Daily déjà récupéré aujourd'hui.",
     error: "Erreur daily.",
-    success: "Daily Twitch reçu: +{amount} {currency}{bonusText} | Streak {streak} | Balance {balance}"
+    success: "Daily Twitch reçu: +{amount} {currency}{bonusText} | Streak {streak} | Balance {balance}",
+    promoStopOk: "OK — tu ne recevras plus les messages promo EcoBoty sur ce live. Tu pourras toujours lier ton compte plus tard via !daily.",
+    promoStopAlready: "Tu as déjà désactivé les messages promo. Tape !daily si tu changes d'avis pour lier ton compte."
   },
   en: {
     link: "To link your Discord and Twitch, connect here: {link}",
@@ -1475,7 +1682,9 @@ const twitchI18n = {
     alreadyWithRemaining: "Daily already claimed. Come back in {remaining}.",
     alreadyToday: "Daily already claimed today.",
     error: "Daily error.",
-    success: "Twitch daily received: +{amount} {currency}{bonusText} | Streak {streak} | Balance {balance}"
+    success: "Twitch daily received: +{amount} {currency}{bonusText} | Streak {streak} | Balance {balance}",
+    promoStopOk: "OK — you won't get EcoBoty promo messages on this channel anymore. You can still link later with !daily.",
+    promoStopAlready: "Promo messages are already disabled for you. Use !daily if you change your mind and want to link."
   },
   es: {
     link: "Para vincular tu Discord y Twitch, conéctate aquí: {link}",
@@ -1483,7 +1692,9 @@ const twitchI18n = {
     alreadyWithRemaining: "Daily ya reclamado. Vuelve en {remaining}.",
     alreadyToday: "Daily ya reclamado hoy.",
     error: "Error de daily.",
-    success: "Daily de Twitch recibido: +{amount} {currency}{bonusText} | Racha {streak} | Saldo {balance}"
+    success: "Daily de Twitch recibido: +{amount} {currency}{bonusText} | Racha {streak} | Saldo {balance}",
+    promoStopOk: "OK — ya no recibirás mensajes promo de EcoBoty en este canal. Puedes vincular más tarde con !daily.",
+    promoStopAlready: "Ya desactivaste los mensajes promo. Usa !daily si cambias de opinión para vincular tu cuenta."
   }
 };
 
@@ -1510,7 +1721,7 @@ const handleDailyCommand = async ({ guildId, twitchLogin, client, channel }) => 
       .whereRaw("LOWER(twitch_login) = LOWER(?)", [String(twitchLogin)])
       .first();
     if (!user) {
-      const link = buildTwitchLinkUrl(guildId, twitchLogin);
+      const link = await buildTwitchLinkUrl(guildId, twitchLogin);
       await client.say(channel, tTwitch(lang, "link", { link }));
       return;
     }
@@ -1663,13 +1874,33 @@ export const startTwitchListener = async (guildId) => {
     client.on("message", async (_channel, tags, message, self) => {
       try {
         if (self) return;
+        // Shared Chat: only react to messages that originated in THIS channel.
+        if (isForeignSharedChatMessage(tags)) {
+          debugLog("message-skip-shared-chat", {
+            guildId: guildKey,
+            username: tags?.username,
+            sourceRoomId: tags?.["source-room-id"],
+            roomId: tags?.["room-id"]
+          });
+          return;
+        }
         const username = tags?.username;
         if (!username) return;
 
         debugLog("message-received", { guildId: guildKey, username, message: String(message || "") });
 
         const trimmed = String(message || "").trim();
-        if (trimmed.toLowerCase().startsWith("!daily")) {
+        const lower = trimmed.toLowerCase();
+        if (lower === "!stop" || lower.startsWith("!stop ")) {
+          await handleTwitchPromoStopCommand({
+            guildId: guildKey,
+            twitchLogin: username,
+            client,
+            channel: _channel
+          });
+          return;
+        }
+        if (lower.startsWith("!daily")) {
           await handleDailyCommand({ guildId: guildKey, twitchLogin: username, client, channel: _channel });
         }
 
@@ -1678,7 +1909,8 @@ export const startTwitchListener = async (guildId) => {
           twitchLogin: username,
           displayName: tags?.["display-name"] || username,
           client,
-          channel: _channel
+          channel: _channel,
+          tags
         });
 
         await maybeSetSubTierFromBadges({ guildId: guildKey, twitchLogin: username, badges: tags?.badges });

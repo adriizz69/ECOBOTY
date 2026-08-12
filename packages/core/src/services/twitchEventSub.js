@@ -222,7 +222,8 @@ export const handleEventSubNotification = async (payload, meta = {}) => {
     await handleTwitchPromoOnFollow({
       guildId,
       twitchLogin: login,
-      displayName: event?.user_name || login
+      displayName: event?.user_name || login,
+      dedupeKey: messageId ? `eventsub-follow:${messageId}` : `eventsub-follow:${guildId}:${login}`
     });
     return;
   }

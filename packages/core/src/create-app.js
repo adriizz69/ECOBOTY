@@ -69,8 +69,9 @@ export const createApp = ({ corsOrigins } = {}) => {
     });
   });
 
-  // Short Twitch↔Discord link for chat messages: /l/:guildId/:twitchLogin
-  app.get("/l/:guildId/:twitchLogin", (req, res) => {
+  // Short Twitch↔Discord link for chat messages: /l/:guildId/:twitchLogin (legacy)
+  // and pretty /link/:slug/:twitchLogin
+  app.get("/l/:guildId/:twitchLogin", async (req, res) => {
     const guildId = String(req.params.guildId || "").replace(/\D/g, "");
     const twitchLogin = String(req.params.twitchLogin || "")
       .trim()
@@ -79,6 +80,15 @@ export const createApp = ({ corsOrigins } = {}) => {
       .slice(0, 25);
     if (!guildId || !twitchLogin) {
       return res.status(400).send("Lien invalide");
+    }
+    try {
+      const { ensureGuildLinkSlug } = await import("./services/twitch.js");
+      const slug = await ensureGuildLinkSlug(guildId);
+      if (slug) {
+        return res.redirect(302, `/link/${encodeURIComponent(slug)}/${encodeURIComponent(twitchLogin)}`);
+      }
+    } catch {
+      // fall through
     }
     const qs = new URLSearchParams({ guildId, twitchLogin });
     return res.redirect(302, `/auth/discord/twitch-link?${qs.toString()}`);

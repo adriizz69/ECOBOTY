@@ -995,11 +995,34 @@
             <h3>{{ $t("adminGuild.twitch.title") }}</h3>
             <p class="muted">{{ $t("adminGuild.twitch.subtitle") }}</p>
           </div>
-          <UButton color="primary" @click="saveTwitchAutomation">{{ $t("adminGuild.twitch.saveAutomation") }}</UButton>
+          <UButton
+            v-if="twitchSubTab === 'gains' || twitchSubTab === 'rewards'"
+            color="primary"
+            @click="saveTwitchAutomation"
+          >
+            {{ $t("adminGuild.twitch.saveAutomation") }}
+          </UButton>
         </div>
 
-        <div class="sub-card">
-          <h4>{{ $t("adminGuild.twitch.connectionTitle") }}</h4>
+        <div class="tabs" style="margin-bottom: 14px; flex-wrap: wrap;">
+          <button
+            v-for="tab in twitchSubTabs"
+            :key="tab.id"
+            type="button"
+            :class="['tab-pill', twitchSubTab === tab.id && 'active']"
+            @click="twitchSubTab = tab.id"
+          >
+            {{ $t(tab.labelKey) }}
+          </button>
+        </div>
+
+        <div v-show="twitchSubTab === 'connection'" class="sub-card">
+          <div class="inline" style="align-items:center;gap:8px;margin-bottom:8px;">
+            <h4 style="margin:0;">{{ $t("adminGuild.twitch.connectionTitle") }}</h4>
+            <UTooltip :text="$t('adminGuild.twitch.tips.connection')">
+              <UIcon name="i-lucide-circle-help" class="muted" style="width:16px;height:16px;" />
+            </UTooltip>
+          </div>
           <div class="list">
             <div class="list-row">
               <span>{{ $t("adminGuild.twitch.account") }}</span>
@@ -1057,8 +1080,13 @@
           </div>
         </div>
 
-        <div class="sub-card">
-          <h4>{{ $t("adminGuild.twitch.automationTitle") }}</h4>
+        <div v-show="twitchSubTab === 'gains'" class="sub-card">
+          <div class="inline" style="align-items:center;gap:8px;margin-bottom:8px;">
+            <h4 style="margin:0;">{{ $t("adminGuild.twitch.automationTitle") }}</h4>
+            <UTooltip :text="$t('adminGuild.twitch.tips.messages')">
+              <UIcon name="i-lucide-circle-help" class="muted" style="width:16px;height:16px;" />
+            </UTooltip>
+          </div>
           <p class="muted">
             {{ twitchLiveOnly ? $t("adminGuild.twitch.automationLiveOnly") : $t("adminGuild.twitch.automationAlways") }}
           </p>
@@ -1090,8 +1118,13 @@
           feature-key="twitch_module"
           :benefits="twitchGateUnlockItems"
         >
-        <div class="sub-card">
-          <h4>{{ $t("adminGuild.twitch.watchTitle") }}</h4>
+          <div v-show="twitchSubTab === 'gains'" class="sub-card">
+          <div class="inline" style="align-items:center;gap:8px;margin-bottom:8px;">
+            <h4 style="margin:0;">{{ $t("adminGuild.twitch.watchTitle") }}</h4>
+            <UTooltip :text="$t('adminGuild.twitch.tips.watch')">
+              <UIcon name="i-lucide-circle-help" class="muted" style="width:16px;height:16px;" />
+            </UTooltip>
+          </div>
           <div class="grid">
             <div class="switch-field">
               <span>{{ $t("adminGuild.twitch.watchEnabled") }}</span>
@@ -1115,8 +1148,13 @@
           </div>
         </div>
 
-        <div class="sub-card">
-          <h4>{{ $t("adminGuild.twitch.subMultipliersTitle") }}</h4>
+        <div v-show="twitchSubTab === 'rewards'" class="sub-card">
+          <div class="inline" style="align-items:center;gap:8px;margin-bottom:8px;">
+            <h4 style="margin:0;">{{ $t("adminGuild.twitch.subMultipliersTitle") }}</h4>
+            <UTooltip :text="$t('adminGuild.twitch.tips.subMultipliers')">
+              <UIcon name="i-lucide-circle-help" class="muted" style="width:16px;height:16px;" />
+            </UTooltip>
+          </div>
           <div class="inline" style="justify-content: space-between; align-items: center; margin-bottom: 6px;">
             <p class="muted">{{ $t("adminGuild.twitch.subMultipliersHelp") }}</p>
             <UButton color="neutral" variant="outline" @click="syncTwitchSubs">
@@ -1183,8 +1221,13 @@
           </div>
         </div>
 
-        <div class="sub-card">
-          <h4>{{ $t("adminGuild.twitch.eventsTitle") }}</h4>
+        <div v-show="twitchSubTab === 'rewards'" class="sub-card">
+          <div class="inline" style="align-items:center;gap:8px;margin-bottom:8px;">
+            <h4 style="margin:0;">{{ $t("adminGuild.twitch.eventsTitle") }}</h4>
+            <UTooltip :text="$t('adminGuild.twitch.tips.events')">
+              <UIcon name="i-lucide-circle-help" class="muted" style="width:16px;height:16px;" />
+            </UTooltip>
+          </div>
           <p class="muted">{{ $t("adminGuild.twitch.eventsHelp") }}</p>
           <div style="display:grid; gap: 20px;">
             <div>
@@ -1284,9 +1327,12 @@
             <div class="sub-card" style="margin:0;">
               <div class="item-title">{{ $t("adminGuild.twitch.eventsBits") }}</div>
               <label>
-                {{ $t("adminGuild.twitch.amount") }}
-                <input v-model.number="twitchAutomation.events.bits.amount" type="number" />
+                {{ $t("adminGuild.twitch.eventsBitsAmount") }}
+                <input v-model.number="twitchAutomation.events.bits.amount" type="number" min="0" step="1" />
               </label>
+              <p class="muted" style="margin:6px 0 0;font-size:0.85rem;">
+                {{ $t("adminGuild.twitch.eventsBitsHelp") }}
+              </p>
               <div class="switch-field compact">
                 <span>{{ $t("common.active") }}</span>
                 <label class="switch">
@@ -1298,9 +1344,14 @@
           </div>
         </div>
 
-        <div class="sub-card">
+        <div v-show="twitchSubTab === 'promo'" class="sub-card">
           <div class="card-head" style="margin-bottom: 12px;">
-            <h4>{{ $t("adminGuild.twitch.promoTitle") }}</h4>
+            <div class="inline" style="align-items:center;gap:8px;">
+              <h4 style="margin:0;">{{ $t("adminGuild.twitch.promoTitle") }}</h4>
+              <UTooltip :text="$t('adminGuild.twitch.tips.promo')">
+                <UIcon name="i-lucide-circle-help" class="muted" style="width:16px;height:16px;" />
+              </UTooltip>
+            </div>
             <UButton
               color="primary"
               :disabled="!twitchStatus.connected"
@@ -1321,23 +1372,50 @@
               </label>
             </div>
             <div class="switch-field">
-              <span>{{ $t("adminGuild.twitch.promoOnFollow") }}</span>
+              <span class="inline" style="align-items:center;gap:6px;">
+                {{ $t("adminGuild.twitch.promoOnFollow") }}
+                <UTooltip :text="$t('adminGuild.twitch.tips.promoOnFollow')">
+                  <UIcon name="i-lucide-circle-help" class="muted" style="width:14px;height:14px;" />
+                </UTooltip>
+              </span>
               <label class="switch">
-                <input v-model="twitchPromo.onFollow" type="checkbox" :disabled="!twitchStatus.connected || !twitchPromo.enabled" />
+                <input v-model="twitchPromo.onFollow" type="checkbox" :disabled="!twitchStatus.connected" />
                 <span class="slider"></span>
               </label>
             </div>
             <div class="switch-field">
-              <span>{{ $t("adminGuild.twitch.promoOnFirstMessage") }}</span>
+              <span class="inline" style="align-items:center;gap:6px;">
+                {{ $t("adminGuild.twitch.promoOnFirstMessage") }}
+                <UTooltip :text="$t('adminGuild.twitch.tips.promoOnFirstMessage')">
+                  <UIcon name="i-lucide-circle-help" class="muted" style="width:14px;height:14px;" />
+                </UTooltip>
+              </span>
               <label class="switch">
-                <input v-model="twitchPromo.onFirstMessage" type="checkbox" :disabled="!twitchStatus.connected || !twitchPromo.enabled" />
+                <input v-model="twitchPromo.onFirstMessage" type="checkbox" :disabled="!twitchStatus.connected" />
                 <span class="slider"></span>
               </label>
             </div>
             <div class="switch-field">
-              <span>{{ $t("adminGuild.twitch.promoRemindUnlinked") }}</span>
+              <span class="inline" style="align-items:center;gap:6px;">
+                {{ $t("adminGuild.twitch.promoRemindUnlinked") }}
+                <UTooltip :text="$t('adminGuild.twitch.tips.promoRemindUnlinked')">
+                  <UIcon name="i-lucide-circle-help" class="muted" style="width:14px;height:14px;" />
+                </UTooltip>
+              </span>
               <label class="switch">
-                <input v-model="twitchPromo.remindUnlinked" type="checkbox" :disabled="!twitchStatus.connected || !twitchPromo.enabled" />
+                <input v-model="twitchPromo.remindUnlinked" type="checkbox" :disabled="!twitchStatus.connected" />
+                <span class="slider"></span>
+              </label>
+            </div>
+            <div class="switch-field">
+              <span class="inline" style="align-items:center;gap:6px;">
+                {{ $t("adminGuild.twitch.promoStopEnabled") }}
+                <UTooltip :text="$t('adminGuild.twitch.tips.promoStopEnabled')">
+                  <UIcon name="i-lucide-circle-help" class="muted" style="width:14px;height:14px;" />
+                </UTooltip>
+              </span>
+              <label class="switch">
+                <input v-model="twitchPromo.stopEnabled" type="checkbox" :disabled="!twitchStatus.connected" />
                 <span class="slider"></span>
               </label>
             </div>
@@ -1411,9 +1489,14 @@
           </p>
         </div>
 
-        <div class="sub-card">
+        <div v-show="twitchSubTab === 'daily'" class="sub-card">
           <div class="card-head" style="margin-bottom: 12px;">
-            <h4>{{ $t("adminGuild.twitch.dailyTitle") }}</h4>
+            <div class="inline" style="align-items:center;gap:8px;">
+              <h4 style="margin:0;">{{ $t("adminGuild.twitch.dailyTitle") }}</h4>
+              <UTooltip :text="$t('adminGuild.twitch.tips.daily')">
+                <UIcon name="i-lucide-circle-help" class="muted" style="width:16px;height:16px;" />
+              </UTooltip>
+            </div>
             <UButton color="primary" @click="saveTwitchDailySettings">{{ $t("common.save") }}</UButton>
           </div>
           <p class="muted" style="margin-bottom: 10px;">
@@ -1446,7 +1529,7 @@
           </div>
         </div>
 
-        <div class="sub-card">
+        <div v-show="twitchSubTab === 'daily'" class="sub-card">
           <h4>{{ $t("adminGuild.twitch.commandTitle") }}</h4>
           <p class="muted">
             {{ $t("adminGuild.twitch.commandHelp") }}
@@ -4071,6 +4154,20 @@ const leaveLogs = ref([]);
 const twitchStatus = ref({ connected: false, login: "", live: false });
 const generatingDiscordInvite = ref(false);
 const twitchLiveOnly = ref(true);
+const twitchSubTab = ref("connection");
+const twitchSubTabs = [
+  { id: "connection", labelKey: "adminGuild.twitch.tabs.connection" },
+  { id: "gains", labelKey: "adminGuild.twitch.tabs.gains" },
+  { id: "rewards", labelKey: "adminGuild.twitch.tabs.rewards" },
+  { id: "promo", labelKey: "adminGuild.twitch.tabs.promo" },
+  { id: "daily", labelKey: "adminGuild.twitch.tabs.daily" }
+];
+const asTwitchBool = (value, fallback = false) => {
+  if (value === true || value === 1 || value === "1") return true;
+  if (value === false || value === 0 || value === "0" || value === "false") return false;
+  if (value == null) return fallback;
+  return Boolean(value);
+};
 const twitchPromo = reactive({
   enabled: false,
   template: "",
@@ -4078,7 +4175,9 @@ const twitchPromo = reactive({
   onFollow: true,
   onFirstMessage: true,
   remindUnlinked: true,
+  stopEnabled: true,
   defaultTemplate: "",
+  stopPhrase: "Plus intéressé ? Tape !stop pour ne plus recevoir ce message.",
   placeholders: [
     { tag: "{user}", label: "Pseudo Twitch de la personne concernée (login, pas Discord)" },
     { tag: "{pseudo}", label: "Identique à {user}" },
@@ -4086,8 +4185,9 @@ const twitchPromo = reactive({
     { tag: "{invite}", label: "Identique à {discord}" },
     { tag: "{currency}", label: "Nom de la monnaie du serveur" },
     { tag: "{money}", label: "Identique à {currency}" },
-    { tag: "{link}", label: "Lien court de liaison Discord ↔ Twitch" },
-    { tag: "{channel}", label: "Pseudo de la chaîne Twitch connectée" }
+    { tag: "{link}", label: "Lien court d’onboarding EcoBoty (/link/serveur/pseudo)" },
+    { tag: "{channel}", label: "Pseudo de la chaîne Twitch connectée" },
+    { tag: "{stop}", label: "Phrase !stop (vide si l’option est désactivée)" }
   ]
 });
 const twitchPromoPlaceholders = computed(() => {
@@ -4201,7 +4301,17 @@ const twitchPromoPreview = computed(() => {
   const user = "Viewer";
   const discord = String(twitchPromo.discordUrl || "https://discord.gg/votre-serveur").trim();
   const siteBase = String(config.public.baseUrl || config.public.apiBase || "https://ecoboty.eu").replace(/\/$/, "");
-  const link = `${siteBase}/l/${id}/${String(user).toLowerCase()}`;
+  const slugGuess = String(currentGuildDiscordName.value || "serveur")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48) || "serveur";
+  const link = `${siteBase}/link/${slugGuess}/viewer`;
+  const stopText = twitchPromo.stopEnabled
+    ? String(twitchPromo.stopPhrase || "Plus intéressé ? Tape !stop pour ne plus recevoir ce message.")
+    : "";
   let text = String(twitchPromo.template || twitchPromo.defaultTemplate || "");
   const vars = {
     user,
@@ -4211,12 +4321,20 @@ const twitchPromoPreview = computed(() => {
     currency,
     money: currency,
     link,
-    channel: login
+    channel: login,
+    stop: stopText
   };
   Object.entries(vars).forEach(([name, value]) => {
     text = text.replace(new RegExp(`\\{${name}\\}`, "gi"), String(value));
   });
-  return text || "—";
+  if (
+    twitchPromo.stopEnabled &&
+    !/\{stop\}/i.test(String(twitchPromo.template || twitchPromo.defaultTemplate || "")) &&
+    !/!stop/i.test(text)
+  ) {
+    text = `${text} ${stopText}`.trim();
+  }
+  return text.replace(/\s{2,}/g, " ").trim() || "—";
 });
 const showTwitchConnectedModal = ref(false);
 const twitchConnectedAccount = ref("");
@@ -6820,13 +6938,15 @@ const loadTwitchPromoSettings = async () => {
   if (!res.ok) return;
   const data = await parseJsonSafe(res, {});
   const settings = data.settings || {};
-  twitchPromo.enabled = Boolean(settings.enabled);
+  twitchPromo.enabled = asTwitchBool(settings.enabled, false);
   twitchPromo.template = String(settings.template || settings.defaultTemplate || "");
   twitchPromo.discordUrl = String(settings.discordUrl || "");
-  twitchPromo.onFollow = settings.onFollow !== false;
-  twitchPromo.onFirstMessage = settings.onFirstMessage !== false;
-  twitchPromo.remindUnlinked = settings.remindUnlinked !== false;
+  twitchPromo.onFollow = asTwitchBool(settings.onFollow, true);
+  twitchPromo.onFirstMessage = asTwitchBool(settings.onFirstMessage, true);
+  twitchPromo.remindUnlinked = asTwitchBool(settings.remindUnlinked, true);
+  twitchPromo.stopEnabled = asTwitchBool(settings.stopEnabled, true);
   twitchPromo.defaultTemplate = String(settings.defaultTemplate || "");
+  twitchPromo.stopPhrase = String(settings.stopPhrase || twitchPromo.stopPhrase || "");
   twitchPromo.placeholders = Array.isArray(settings.placeholders)
     ? settings.placeholders
     : twitchPromo.placeholders;
@@ -7083,7 +7203,8 @@ const saveTwitchPromoSettings = async ({ notify = true } = {}) => {
       discordUrl: String(twitchPromo.discordUrl || ""),
       onFollow: Boolean(twitchPromo.onFollow),
       onFirstMessage: Boolean(twitchPromo.onFirstMessage),
-      remindUnlinked: Boolean(twitchPromo.remindUnlinked)
+      remindUnlinked: Boolean(twitchPromo.remindUnlinked),
+      stopEnabled: Boolean(twitchPromo.stopEnabled)
     })
   });
   if (await handleActionFailure(res, {
