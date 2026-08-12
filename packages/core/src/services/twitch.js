@@ -331,11 +331,32 @@ export const updateTwitchLiveMode = async (guildId, liveOnly, trx = db) => {
   return trx("twitch_settings").where({ guild_id: guild.id }).first();
 };
 
+const TWITCH_CHAT_MAX_CHARS = 500;
+
 const DEFAULT_PROMO_TEMPLATE =
-  "Hey @{user} ! Rejoins le Discord {discord} pour gagner des {currency} et plein d'avantages. Lie ton compte ici : {link} — puis tape !daily dans le tchat. Subs, bits et subgifts = des {currency} ! {stop}";
+  "Hey @{user} ! Rejoins le Discord : {discord} pour gagner des {currency} et plein d'avantages. Un seul lien pour lier ton compte : {link} — puis tape !daily dans le tchat. Subs, bits et subgifts = des {currency} ! {stop}";
 
 const PROMO_STOP_PHRASE =
   "Plus intéressé ? Tape !stop pour ne plus recevoir ce message.";
+
+/** Older defaults still stored in DB — replace with the one-link template. */
+const LEGACY_PROMO_TEMPLATES = [
+  "@{user} Rejoins le Discord : {discord} pour gagner des {currency} et débloquer plein d'avantages ! Tape !daily dans le chat pour lier ton Discord, ou passe par ce lien : {link} — à chaque sub, bits ou subgift tu pourras gagner des {currency}.",
+  "@{user} Rejoins le Discord : {discord} pour gagner des {currency} et débloquer plein d'avantages ! Tape !daily dans le chat pour lier ton Discord, ou passe par ce lien : {link} — à chaque sub, bits ou subgift tu pourras gagner des {currency}. {stop}",
+  "Hey @{user} ! Rejoins le Discord {discord} pour gagner des {currency} et plein d'avantages. Lie ton compte ici : {link} — puis tape !daily dans le tchat. Subs, bits et subgifts = des {currency} !",
+  "Hey @{user} ! Rejoins le Discord {discord} pour gagner des {currency} et plein d'avantages. Lie ton compte ici : {link} — puis tape !daily dans le tchat. Subs, bits et subgifts = des {currency} ! {stop}"
+];
+
+const normalizePromoTemplateText = (raw) => String(raw || "").replace(/\s+/g, " ").trim();
+
+const resolvePromoTemplate = (raw) => {
+  const template = normalizePromoTemplateText(raw);
+  if (!template) return DEFAULT_PROMO_TEMPLATE;
+  const legacy = LEGACY_PROMO_TEMPLATES.some(
+    (item) => normalizePromoTemplateText(item) === template
+  );
+  return legacy ? DEFAULT_PROMO_TEMPLATE : template;
+};
 
 /** MySQL returns TINYINT 0/1 — never use `!== false` (0 !== false is true). */
 const asBool = (value, fallback = false) => {
@@ -347,12 +368,12 @@ const asBool = (value, fallback = false) => {
 
 const clampTwitchChatMessage = (text) => {
   const value = String(text || "").replace(/\s+/g, " ").trim();
-  if (value.length <= 500) return value;
-  return `${value.slice(0, 497).trim()}...`;
+  if (value.length <= TWITCH_CHAT_MAX_CHARS) return value;
+  return `${value.slice(0, TWITCH_CHAT_MAX_CHARS - 3).trim()}...`;
 };
 
 const normalizePromoSettings = (row = {}) => {
-  const template = String(row.promo_template || "").trim() || DEFAULT_PROMO_TEMPLATE;
+  const template = resolvePromoTemplate(row.promo_template);
   return {
     enabled: asBool(row.promo_enabled, false),
     template,
@@ -360,7 +381,8 @@ const normalizePromoSettings = (row = {}) => {
     onFollow: asBool(row.promo_on_follow, true),
     onFirstMessage: asBool(row.promo_on_first_message, true),
     remindUnlinked: asBool(row.promo_remind_unlinked, true),
-    stopEnabled: asBool(row.promo_stop_enabled, true)
+    stopEnabled: asBool(row.promo_stop_enabled, true),
+    maxChars: TWITCH_CHAT_MAX_CHARS
   };
 };
 
@@ -473,14 +495,60 @@ export const saveTwitchPromoSettings = async (guildId, data = {}, trx = db) => {
     ? String(data.discordUrl || "").trim().slice(0, 500)
     : String(existing.promo_discord_url || "").trim();
 
+  // Reject oversized rendered messages so chat never truncates mid-sentence.
+  if (Object.prototype.hasOwnProperty.call(data, "template")) {
+    const previewSettings = {
+      ...existing,
+      promo_template: templateRaw || DEFAULT_PROMO_TEMPLATE,
+      promo_discord_url: discordUrl,
+      promo_stop_enabled: Object.prototype.hasOwnProperty.call(data, "stopEnabled")
+        ? Boolean(data.stopEnabled)
+        : existing.promo_stop_enabled
+    };
+    const promo = normalizePromoSettings(previewSettings);
+    const economy = await getOrCreateSettings(guildId, trx);
+    const currencyName = String(economy?.name || "Economy").trim() || "Economy";
+    const discord =
+      promo.discordUrl ||
+      String(process.env.DISCORD_INVITE_URL || process.env.PUBLIC_DISCORD_INVITE || "").trim() ||
+      "https://discord.gg/";
+    const link = await buildTwitchLinkUrl(guildId, "viewer");
+    const stopText = promo.stopEnabled ? PROMO_STOP_PHRASE : "";
+    let check = String(promo.template || DEFAULT_PROMO_TEMPLATE);
+    const vars = {
+      user: "Viewer",
+      pseudo: "Viewer",
+      discord,
+      invite: discord,
+      currency: currencyName,
+      money: currencyName,
+      link,
+      channel: String(existing.twitch_login || "channel").replace(/^@/, ""),
+      stop: stopText
+    };
+    Object.entries(vars).forEach(([name, value]) => {
+      check = check.replace(new RegExp(`\\{${name}\\}`, "gi"), String(value));
+    });
+    if (promo.stopEnabled && !/\{stop\}/i.test(String(promo.template || "")) && !/!stop/i.test(check)) {
+      check = `${check} ${PROMO_STOP_PHRASE}`.trim();
+    }
+    check = check.replace(/\s{2,}/g, " ").trim();
+    if (check.length > TWITCH_CHAT_MAX_CHARS) {
+      const error = new Error(`promo_template_too_long:${check.length}/${TWITCH_CHAT_MAX_CHARS}`);
+      error.status = 400;
+      throw error;
+    }
+  }
+
   const hasStopCol = await trx.schema.hasColumn("twitch_settings", "promo_stop_enabled");
+  const templateToStore = resolvePromoTemplate(templateRaw);
   await trx("twitch_settings")
     .where({ guild_id: guild.id })
     .update({
       promo_enabled: Object.prototype.hasOwnProperty.call(data, "enabled")
         ? Boolean(data.enabled)
         : asBool(existing.promo_enabled, false),
-      promo_template: templateRaw || null,
+      promo_template: templateToStore || null,
       promo_discord_url: discordUrl || null,
       promo_on_follow: Object.prototype.hasOwnProperty.call(data, "onFollow")
         ? Boolean(data.onFollow)

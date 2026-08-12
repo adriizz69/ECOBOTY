@@ -1584,7 +1584,9 @@
       "promoTemplate": "Mensaje (etiquetas)",
       "promoPlaceholders": "Etiquetas:",
       "promoResetTemplate": "Restablecer plantilla",
-      "promoPreviewLabel": "Vista previa:",
+      "promoPreviewLabel": "Vista previa del mensaje",
+      "promoCharHelp": "Límite de Twitch del mensaje final (tras etiquetas).",
+      "promoCharOverLimit": "Mensaje demasiado largo: acórtalo para poder guardar.",
       "tabs": {
         "connection": "Conexión",
         "gains": "Ganancias",

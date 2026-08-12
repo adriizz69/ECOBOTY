@@ -1591,7 +1591,9 @@
       "promoTemplate": "Message (balises)",
       "promoPlaceholders": "Balises :",
       "promoResetTemplate": "Réinitialiser le modèle",
-      "promoPreviewLabel": "Aperçu :",
+      "promoPreviewLabel": "Aperçu du message",
+      "promoCharHelp": "Limite Twitch du message final (après balises).",
+      "promoCharOverLimit": "Message trop long : raccourcis le texte pour pouvoir enregistrer.",
       "tabs": {
         "connection": "Connexion",
         "gains": "Gains",

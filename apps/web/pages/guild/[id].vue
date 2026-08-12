@@ -988,89 +988,103 @@
         <div v-if="communityMessageStatus" class="muted">{{ communityMessageStatus }}</div>
       </UCard>
 
-      <div v-show="activeTab === 'twitch'">
-      <UCard class="card">
-        <div class="card-head">
+      <div v-show="activeTab === 'twitch'" class="twitch-panel">
+      <UCard class="card twitch-card">
+        <div class="card-head twitch-card-head">
           <div>
             <h3>{{ $t("adminGuild.twitch.title") }}</h3>
             <p class="muted">{{ $t("adminGuild.twitch.subtitle") }}</p>
+            <div class="twitch-status-row">
+              <span :class="['twitch-chip', twitchStatus.connected ? 'is-on' : 'is-off']">
+                <UIcon :name="twitchStatus.connected ? 'i-lucide-circle-check' : 'i-lucide-unplug'" />
+                {{
+                  twitchStatus.connected
+                    ? $t("adminGuild.twitch.accountConnected", { login: twitchStatus.login })
+                    : $t("adminGuild.twitch.accountDisconnected")
+                }}
+              </span>
+              <span
+                v-if="twitchStatus.connected"
+                :class="['twitch-chip', twitchStatus.live ? 'is-live' : 'is-off']"
+              >
+                <span class="twitch-live-dot" />
+                {{ twitchStatus.live ? $t("adminGuild.twitch.liveOn") : $t("adminGuild.twitch.liveOff") }}
+              </span>
+            </div>
           </div>
           <UButton
-            v-if="twitchSubTab === 'gains' || twitchSubTab === 'rewards'"
+            v-if="twitchHeaderSaveAction"
             color="primary"
-            @click="saveTwitchAutomation"
+            :disabled="Boolean(twitchHeaderSaveAction.disabled)"
+            @click="twitchHeaderSaveAction.run()"
           >
-            {{ $t("adminGuild.twitch.saveAutomation") }}
+            {{ $t(twitchHeaderSaveAction.labelKey) }}
           </UButton>
         </div>
 
-        <div class="tabs" style="margin-bottom: 14px; flex-wrap: wrap;">
+        <nav class="twitch-tabs" aria-label="Twitch sections">
           <button
             v-for="tab in twitchSubTabs"
             :key="tab.id"
             type="button"
-            :class="['tab-pill', twitchSubTab === tab.id && 'active']"
+            :class="['twitch-tab', twitchSubTab === tab.id && 'active']"
             @click="twitchSubTab = tab.id"
           >
-            {{ $t(tab.labelKey) }}
+            <UIcon :name="tab.icon" class="twitch-tab-icon" />
+            <span>{{ $t(tab.labelKey) }}</span>
           </button>
-        </div>
+        </nav>
 
-        <div v-show="twitchSubTab === 'connection'" class="sub-card">
-          <div class="inline" style="align-items:center;gap:8px;margin-bottom:8px;">
-            <h4 style="margin:0;">{{ $t("adminGuild.twitch.connectionTitle") }}</h4>
-            <UTooltip :text="$t('adminGuild.twitch.tips.connection')">
-              <UIcon name="i-lucide-circle-help" class="muted" style="width:16px;height:16px;" />
-            </UTooltip>
-          </div>
-          <div class="list">
-            <div class="list-row">
-              <span>{{ $t("adminGuild.twitch.account") }}</span>
-              <span>
-                <strong v-if="twitchStatus.connected">{{ $t("adminGuild.twitch.accountConnected", { login: twitchStatus.login }) }}</strong>
-                <span v-else>{{ $t("adminGuild.twitch.accountDisconnected") }}</span>
-              </span>
-            </div>
-            <div class="list-row">
-              <span>{{ $t("adminGuild.twitch.live") }}</span>
-              <span>
-                <strong v-if="twitchStatus.live" style="color:#34d399;">{{ $t("adminGuild.twitch.liveOn") }}</strong>
-                <span v-else class="muted">{{ $t("adminGuild.twitch.liveOff") }}</span>
-              </span>
-            </div>
-            <div class="list-row">
-              <span>{{ $t("adminGuild.twitch.activityMode") }}</span>
-              <span>
-                <strong v-if="twitchLiveOnly">{{ $t("adminGuild.twitch.liveOnly") }}</strong>
-                <span v-else class="muted">{{ $t("adminGuild.twitch.liveAndOffline") }}</span>
-              </span>
+        <div v-show="twitchSubTab === 'connection'" class="twitch-section">
+          <div class="twitch-section-head">
+            <div>
+              <h4>{{ $t("adminGuild.twitch.connectionTitle") }}</h4>
+              <p class="muted">{{ $t("adminGuild.twitch.tips.connection") }}</p>
             </div>
           </div>
-          <div class="actions" style="justify-content: flex-start;">
-            <UButton
-              v-if="!twitchStatus.connected"
-              color="primary"
-              :to="twitchConnectUrl"
-              external
-            >
-              {{ $t("adminGuild.twitch.connect") }}
-            </UButton>
-            <UButton v-else color="neutral" variant="outline" @click="disconnectTwitch">
-              {{ $t("adminGuild.twitch.disconnect") }}
-            </UButton>
+          <div class="twitch-connect-card">
+            <div class="twitch-connect-main">
+              <div class="twitch-connect-badge">
+                <UIcon name="i-lucide-twitch" />
+              </div>
+              <div>
+                <strong v-if="twitchStatus.connected">@{{ twitchStatus.login }}</strong>
+                <strong v-else>{{ $t("adminGuild.twitch.accountDisconnected") }}</strong>
+                <p class="muted" style="margin:4px 0 0;">
+                  {{
+                    twitchLiveOnly
+                      ? $t("adminGuild.twitch.liveOnly")
+                      : $t("adminGuild.twitch.liveAndOffline")
+                  }}
+                </p>
+              </div>
+            </div>
+            <div class="twitch-connect-actions">
+              <UButton
+                v-if="!twitchStatus.connected"
+                color="primary"
+                :to="twitchConnectUrl"
+                external
+              >
+                {{ $t("adminGuild.twitch.connect") }}
+              </UButton>
+              <UButton v-else color="neutral" variant="outline" @click="disconnectTwitch">
+                {{ $t("adminGuild.twitch.disconnect") }}
+              </UButton>
+            </div>
           </div>
-          <div class="grid" style="margin-top: 10px;">
-            <div class="switch-field">
+          <div class="twitch-field-grid">
+            <div class="twitch-field switch-field">
               <span>{{ $t("adminGuild.twitch.liveOnly") }}</span>
               <label class="switch">
                 <input v-model="twitchLiveOnly" type="checkbox" :disabled="!twitchStatus.connected" />
                 <span class="slider"></span>
               </label>
             </div>
-            <div class="actions" style="justify-content: flex-start;">
+            <div class="twitch-field-actions">
               <UButton
                 color="neutral"
-                variant="solid"
+                variant="soft"
                 :disabled="!twitchStatus.connected"
                 @click="saveTwitchLiveMode"
               >
@@ -1080,257 +1094,170 @@
           </div>
         </div>
 
-        <div v-show="twitchSubTab === 'gains'" class="sub-card">
-          <div class="inline" style="align-items:center;gap:8px;margin-bottom:8px;">
-            <h4 style="margin:0;">{{ $t("adminGuild.twitch.automationTitle") }}</h4>
-            <UTooltip :text="$t('adminGuild.twitch.tips.messages')">
-              <UIcon name="i-lucide-circle-help" class="muted" style="width:16px;height:16px;" />
-            </UTooltip>
-          </div>
-          <p class="muted">
-            {{ twitchLiveOnly ? $t("adminGuild.twitch.automationLiveOnly") : $t("adminGuild.twitch.automationAlways") }}
-          </p>
-          <div class="grid">
-            <div class="switch-field">
-              <span>{{ $t("adminGuild.twitch.messagesEnabled") }}</span>
-              <label class="switch">
-                <input v-model="twitchAutomation.message.enabled" type="checkbox" />
-                <span class="slider"></span>
-              </label>
+        <div v-show="twitchSubTab === 'gains'" class="twitch-section">
+          <div class="twitch-split">
+            <div class="twitch-tile">
+              <div class="twitch-tile-head">
+                <h4>{{ $t("adminGuild.twitch.automationTitle") }}</h4>
+                <UTooltip :text="$t('adminGuild.twitch.tips.messages')">
+                  <UIcon name="i-lucide-circle-help" class="twitch-help" />
+                </UTooltip>
+              </div>
+              <p class="muted twitch-tile-help">
+                {{ twitchLiveOnly ? $t("adminGuild.twitch.automationLiveOnly") : $t("adminGuild.twitch.automationAlways") }}
+              </p>
+              <div class="twitch-field-grid">
+                <div class="twitch-field switch-field">
+                  <span>{{ $t("adminGuild.twitch.messagesEnabled") }}</span>
+                  <label class="switch">
+                    <input v-model="twitchAutomation.message.enabled" type="checkbox" />
+                    <span class="slider"></span>
+                  </label>
+                </div>
+                <label class="twitch-field">
+                  {{ $t("adminGuild.twitch.minGain") }}
+                  <input v-model.number="twitchAutomation.message.min_gain" type="number" />
+                </label>
+                <label class="twitch-field">
+                  {{ $t("adminGuild.twitch.maxGain") }}
+                  <input v-model.number="twitchAutomation.message.max_gain" type="number" />
+                </label>
+                <label class="twitch-field">
+                  {{ $t("adminGuild.twitch.everyMessages") }}
+                  <input v-model.number="twitchAutomation.message.interval" type="number" />
+                </label>
+              </div>
             </div>
-            <label>
-              {{ $t("adminGuild.twitch.minGain") }}
-              <input v-model.number="twitchAutomation.message.min_gain" type="number" />
-            </label>
-            <label>
-              {{ $t("adminGuild.twitch.maxGain") }}
-              <input v-model.number="twitchAutomation.message.max_gain" type="number" />
-            </label>
-            <label>
-              {{ $t("adminGuild.twitch.everyMessages") }}
-              <input v-model.number="twitchAutomation.message.interval" type="number" />
-            </label>
+
+            <BillingPremiumGate
+              :locked="!hasBillingFeature('twitch_module')"
+              feature-key="twitch_module"
+              :benefits="twitchGateUnlockItems"
+            >
+              <div class="twitch-tile">
+                <div class="twitch-tile-head">
+                  <h4>{{ $t("adminGuild.twitch.watchTitle") }}</h4>
+                  <UTooltip :text="$t('adminGuild.twitch.tips.watch')">
+                    <UIcon name="i-lucide-circle-help" class="twitch-help" />
+                  </UTooltip>
+                </div>
+                <p class="muted twitch-tile-help">{{ $t("adminGuild.twitch.tips.watch") }}</p>
+                <div class="twitch-field-grid">
+                  <div class="twitch-field switch-field">
+                    <span>{{ $t("adminGuild.twitch.watchEnabled") }}</span>
+                    <label class="switch">
+                      <input v-model="twitchAutomation.watch.enabled" type="checkbox" />
+                      <span class="slider"></span>
+                    </label>
+                  </div>
+                  <label class="twitch-field">
+                    {{ $t("adminGuild.twitch.minGain") }}
+                    <input v-model.number="twitchAutomation.watch.min_gain" type="number" />
+                  </label>
+                  <label class="twitch-field">
+                    {{ $t("adminGuild.twitch.maxGain") }}
+                    <input v-model.number="twitchAutomation.watch.max_gain" type="number" />
+                  </label>
+                  <label class="twitch-field">
+                    {{ $t("adminGuild.twitch.everyMinutes") }}
+                    <input v-model.number="twitchAutomation.watch.interval" type="number" />
+                  </label>
+                </div>
+              </div>
+            </BillingPremiumGate>
           </div>
         </div>
 
         <BillingPremiumGate
+          v-if="twitchSubTab === 'rewards' || twitchSubTab === 'promo' || twitchSubTab === 'daily'"
           :locked="!hasBillingFeature('twitch_module')"
           feature-key="twitch_module"
           :benefits="twitchGateUnlockItems"
         >
-          <div v-show="twitchSubTab === 'gains'" class="sub-card">
-          <div class="inline" style="align-items:center;gap:8px;margin-bottom:8px;">
-            <h4 style="margin:0;">{{ $t("adminGuild.twitch.watchTitle") }}</h4>
-            <UTooltip :text="$t('adminGuild.twitch.tips.watch')">
-              <UIcon name="i-lucide-circle-help" class="muted" style="width:16px;height:16px;" />
-            </UTooltip>
-          </div>
-          <div class="grid">
-            <div class="switch-field">
-              <span>{{ $t("adminGuild.twitch.watchEnabled") }}</span>
-              <label class="switch">
-                <input v-model="twitchAutomation.watch.enabled" type="checkbox" />
-                <span class="slider"></span>
-              </label>
+          <div v-show="twitchSubTab === 'rewards'" class="twitch-section">
+            <div class="twitch-section-head">
+              <div>
+                <h4>{{ $t("adminGuild.twitch.subMultipliersTitle") }}</h4>
+                <p class="muted">{{ $t("adminGuild.twitch.subMultipliersHelp") }}</p>
+              </div>
+              <UButton color="neutral" variant="soft" size="sm" @click="syncTwitchSubs">
+                {{ $t("adminGuild.twitch.syncSubs") }}
+              </UButton>
             </div>
-            <label>
-              {{ $t("adminGuild.twitch.minGain") }}
-              <input v-model.number="twitchAutomation.watch.min_gain" type="number" />
-            </label>
-            <label>
-              {{ $t("adminGuild.twitch.maxGain") }}
-              <input v-model.number="twitchAutomation.watch.max_gain" type="number" />
-            </label>
-            <label>
-              {{ $t("adminGuild.twitch.everyMinutes") }}
-              <input v-model.number="twitchAutomation.watch.interval" type="number" />
-            </label>
-          </div>
-        </div>
+            <div class="twitch-mini-grid">
+              <div v-for="tier in ['prime', 't1', 't2', 't3']" :key="tier" class="twitch-mini-card">
+                <div class="item-title">
+                  {{
+                    tier === "prime"
+                      ? $t("adminGuild.twitch.subPrime")
+                      : tier === "t1"
+                        ? $t("adminGuild.twitch.subT1")
+                        : tier === "t2"
+                          ? $t("adminGuild.twitch.subT2")
+                          : $t("adminGuild.twitch.subT3")
+                  }}
+                </div>
+                <label class="twitch-field">
+                  {{ $t("adminGuild.twitch.multiplier") }}
+                  <input v-model.number="twitchAutomation.multipliers[tier].value" type="number" step="0.1" />
+                </label>
+                <div class="switch-field compact">
+                  <span>{{ $t("common.active") }}</span>
+                  <label class="switch">
+                    <input v-model="twitchAutomation.multipliers[tier].enabled" type="checkbox" />
+                    <span class="slider"></span>
+                  </label>
+                </div>
+              </div>
+            </div>
 
-        <div v-show="twitchSubTab === 'rewards'" class="sub-card">
-          <div class="inline" style="align-items:center;gap:8px;margin-bottom:8px;">
-            <h4 style="margin:0;">{{ $t("adminGuild.twitch.subMultipliersTitle") }}</h4>
-            <UTooltip :text="$t('adminGuild.twitch.tips.subMultipliers')">
-              <UIcon name="i-lucide-circle-help" class="muted" style="width:16px;height:16px;" />
-            </UTooltip>
-          </div>
-          <div class="inline" style="justify-content: space-between; align-items: center; margin-bottom: 6px;">
-            <p class="muted">{{ $t("adminGuild.twitch.subMultipliersHelp") }}</p>
-            <UButton color="neutral" variant="outline" @click="syncTwitchSubs">
-              {{ $t("adminGuild.twitch.syncSubs") }}
-            </UButton>
-          </div>
-          <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px;">
-            <div class="sub-card" style="margin:0;">
-              <div class="item-title">{{ $t("adminGuild.twitch.subPrime") }}</div>
-              <label>
-                {{ $t("adminGuild.twitch.multiplier") }}
-                <input v-model.number="twitchAutomation.multipliers.prime.value" type="number" step="0.1" />
-              </label>
-              <div class="switch-field compact">
-                <span>{{ $t("common.active") }}</span>
-                <label class="switch">
-                  <input v-model="twitchAutomation.multipliers.prime.enabled" type="checkbox" />
-                  <span class="slider"></span>
+            <div class="twitch-section-head" style="margin-top: 18px;">
+              <div>
+                <h4>{{ $t("adminGuild.twitch.eventsTitle") }}</h4>
+                <p class="muted">{{ $t("adminGuild.twitch.eventsHelp") }}</p>
+              </div>
+            </div>
+            <p class="twitch-group-label">{{ $t("adminGuild.twitch.eventsSubs") }}</p>
+            <div class="twitch-mini-grid">
+              <div v-for="tier in ['sub_t1', 'sub_t2', 'sub_t3']" :key="tier" class="twitch-mini-card">
+                <div class="item-title">{{ tier.replace("sub_", "Sub ").toUpperCase() }}</div>
+                <label class="twitch-field">
+                  {{ $t("adminGuild.twitch.amount") }}
+                  <input v-model.number="twitchAutomation.events[tier].amount" type="number" />
                 </label>
+                <div class="switch-field compact">
+                  <span>{{ $t("common.active") }}</span>
+                  <label class="switch">
+                    <input v-model="twitchAutomation.events[tier].enabled" type="checkbox" />
+                    <span class="slider"></span>
+                  </label>
+                </div>
               </div>
             </div>
-            <div class="sub-card" style="margin:0;">
-              <div class="item-title">{{ $t("adminGuild.twitch.subT1") }}</div>
-              <label>
-                {{ $t("adminGuild.twitch.multiplier") }}
-                <input v-model.number="twitchAutomation.multipliers.t1.value" type="number" step="0.1" />
-              </label>
-              <div class="switch-field compact">
-                <span>{{ $t("common.active") }}</span>
-                <label class="switch">
-                  <input v-model="twitchAutomation.multipliers.t1.enabled" type="checkbox" />
-                  <span class="slider"></span>
+            <p class="twitch-group-label">{{ $t("adminGuild.twitch.eventsSubgifts") }}</p>
+            <div class="twitch-mini-grid">
+              <div v-for="tier in ['subgift_t1', 'subgift_t2', 'subgift_t3']" :key="tier" class="twitch-mini-card">
+                <div class="item-title">{{ tier.replace("subgift_", "Subgift ").toUpperCase() }}</div>
+                <label class="twitch-field">
+                  {{ $t("adminGuild.twitch.amount") }}
+                  <input v-model.number="twitchAutomation.events[tier].amount" type="number" />
                 </label>
-              </div>
-            </div>
-            <div class="sub-card" style="margin:0;">
-              <div class="item-title">{{ $t("adminGuild.twitch.subT2") }}</div>
-              <label>
-                {{ $t("adminGuild.twitch.multiplier") }}
-                <input v-model.number="twitchAutomation.multipliers.t2.value" type="number" step="0.1" />
-              </label>
-              <div class="switch-field compact">
-                <span>{{ $t("common.active") }}</span>
-                <label class="switch">
-                  <input v-model="twitchAutomation.multipliers.t2.enabled" type="checkbox" />
-                  <span class="slider"></span>
-                </label>
-              </div>
-            </div>
-            <div class="sub-card" style="margin:0;">
-              <div class="item-title">{{ $t("adminGuild.twitch.subT3") }}</div>
-              <label>
-                {{ $t("adminGuild.twitch.multiplier") }}
-                <input v-model.number="twitchAutomation.multipliers.t3.value" type="number" step="0.1" />
-              </label>
-              <div class="switch-field compact">
-                <span>{{ $t("common.active") }}</span>
-                <label class="switch">
-                  <input v-model="twitchAutomation.multipliers.t3.enabled" type="checkbox" />
-                  <span class="slider"></span>
-                </label>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div v-show="twitchSubTab === 'rewards'" class="sub-card">
-          <div class="inline" style="align-items:center;gap:8px;margin-bottom:8px;">
-            <h4 style="margin:0;">{{ $t("adminGuild.twitch.eventsTitle") }}</h4>
-            <UTooltip :text="$t('adminGuild.twitch.tips.events')">
-              <UIcon name="i-lucide-circle-help" class="muted" style="width:16px;height:16px;" />
-            </UTooltip>
-          </div>
-          <p class="muted">{{ $t("adminGuild.twitch.eventsHelp") }}</p>
-          <div style="display:grid; gap: 20px;">
-            <div>
-              <div class="item-title" style="margin-bottom:8px;">{{ $t("adminGuild.twitch.eventsSubs") }}</div>
-              <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px;">
-                <div class="sub-card" style="margin:0;">
-                  <div class="item-title">Sub T1</div>
-                  <label>
-                    {{ $t("adminGuild.twitch.amount") }}
-                    <input v-model.number="twitchAutomation.events.sub_t1.amount" type="number" />
+                <div class="switch-field compact">
+                  <span>{{ $t("common.active") }}</span>
+                  <label class="switch">
+                    <input v-model="twitchAutomation.events[tier].enabled" type="checkbox" />
+                    <span class="slider"></span>
                   </label>
-                  <div class="switch-field compact">
-                    <span>{{ $t("common.active") }}</span>
-                    <label class="switch">
-                      <input v-model="twitchAutomation.events.sub_t1.enabled" type="checkbox" />
-                      <span class="slider"></span>
-                    </label>
-                  </div>
-                </div>
-                <div class="sub-card" style="margin:0;">
-                  <div class="item-title">Sub T2</div>
-                  <label>
-                    {{ $t("adminGuild.twitch.amount") }}
-                    <input v-model.number="twitchAutomation.events.sub_t2.amount" type="number" />
-                  </label>
-                  <div class="switch-field compact">
-                    <span>{{ $t("common.active") }}</span>
-                    <label class="switch">
-                      <input v-model="twitchAutomation.events.sub_t2.enabled" type="checkbox" />
-                      <span class="slider"></span>
-                    </label>
-                  </div>
-                </div>
-                <div class="sub-card" style="margin:0;">
-                  <div class="item-title">Sub T3</div>
-                  <label>
-                    {{ $t("adminGuild.twitch.amount") }}
-                    <input v-model.number="twitchAutomation.events.sub_t3.amount" type="number" />
-                  </label>
-                  <div class="switch-field compact">
-                    <span>{{ $t("common.active") }}</span>
-                    <label class="switch">
-                      <input v-model="twitchAutomation.events.sub_t3.enabled" type="checkbox" />
-                      <span class="slider"></span>
-                    </label>
-                  </div>
                 </div>
               </div>
             </div>
-            <div>
-              <div class="item-title" style="margin-bottom:8px;">{{ $t("adminGuild.twitch.eventsSubgifts") }}</div>
-              <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px;">
-                <div class="sub-card" style="margin:0;">
-                  <div class="item-title">Subgift T1</div>
-                  <label>
-                    {{ $t("adminGuild.twitch.amount") }}
-                    <input v-model.number="twitchAutomation.events.subgift_t1.amount" type="number" />
-                  </label>
-                  <div class="switch-field compact">
-                    <span>{{ $t("common.active") }}</span>
-                    <label class="switch">
-                      <input v-model="twitchAutomation.events.subgift_t1.enabled" type="checkbox" />
-                      <span class="slider"></span>
-                    </label>
-                  </div>
-                </div>
-                <div class="sub-card" style="margin:0;">
-                  <div class="item-title">Subgift T2</div>
-                  <label>
-                    {{ $t("adminGuild.twitch.amount") }}
-                    <input v-model.number="twitchAutomation.events.subgift_t2.amount" type="number" />
-                  </label>
-                  <div class="switch-field compact">
-                    <span>{{ $t("common.active") }}</span>
-                    <label class="switch">
-                      <input v-model="twitchAutomation.events.subgift_t2.enabled" type="checkbox" />
-                      <span class="slider"></span>
-                    </label>
-                  </div>
-                </div>
-                <div class="sub-card" style="margin:0;">
-                  <div class="item-title">Subgift T3</div>
-                  <label>
-                    {{ $t("adminGuild.twitch.amount") }}
-                    <input v-model.number="twitchAutomation.events.subgift_t3.amount" type="number" />
-                  </label>
-                  <div class="switch-field compact">
-                    <span>{{ $t("common.active") }}</span>
-                    <label class="switch">
-                      <input v-model="twitchAutomation.events.subgift_t3.enabled" type="checkbox" />
-                      <span class="slider"></span>
-                    </label>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div class="sub-card" style="margin:0;">
+            <div class="twitch-mini-card twitch-bits-card">
               <div class="item-title">{{ $t("adminGuild.twitch.eventsBits") }}</div>
-              <label>
+              <label class="twitch-field">
                 {{ $t("adminGuild.twitch.eventsBitsAmount") }}
                 <input v-model.number="twitchAutomation.events.bits.amount" type="number" min="0" step="1" />
               </label>
-              <p class="muted" style="margin:6px 0 0;font-size:0.85rem;">
+              <p class="muted" style="margin:6px 0 10px;font-size:0.85rem;">
                 {{ $t("adminGuild.twitch.eventsBitsHelp") }}
               </p>
               <div class="switch-field compact">
@@ -1342,86 +1269,78 @@
               </div>
             </div>
           </div>
-        </div>
 
-        <div v-show="twitchSubTab === 'promo'" class="sub-card">
-          <div class="card-head" style="margin-bottom: 12px;">
-            <div class="inline" style="align-items:center;gap:8px;">
-              <h4 style="margin:0;">{{ $t("adminGuild.twitch.promoTitle") }}</h4>
-              <UTooltip :text="$t('adminGuild.twitch.tips.promo')">
-                <UIcon name="i-lucide-circle-help" class="muted" style="width:16px;height:16px;" />
-              </UTooltip>
+          <div v-show="twitchSubTab === 'promo'" class="twitch-section">
+            <div class="twitch-section-head">
+              <div>
+                <h4>{{ $t("adminGuild.twitch.promoTitle") }}</h4>
+                <p class="muted">{{ $t("adminGuild.twitch.promoHelp") }}</p>
+              </div>
             </div>
-            <UButton
-              color="primary"
-              :disabled="!twitchStatus.connected"
-              @click="saveTwitchPromoSettings"
-            >
-              {{ $t("common.save") }}
-            </UButton>
-          </div>
-          <p class="muted" style="margin-bottom: 10px;">
-            {{ $t("adminGuild.twitch.promoHelp") }}
-          </p>
-          <div class="grid">
-            <div class="switch-field">
-              <span>{{ $t("adminGuild.twitch.promoEnabled") }}</span>
-              <label class="switch">
-                <input v-model="twitchPromo.enabled" type="checkbox" :disabled="!twitchStatus.connected" />
-                <span class="slider"></span>
-              </label>
+
+            <div class="twitch-toggle-list">
+              <div class="twitch-toggle-row">
+                <div>
+                  <strong>{{ $t("adminGuild.twitch.promoEnabled") }}</strong>
+                </div>
+                <label class="switch">
+                  <input v-model="twitchPromo.enabled" type="checkbox" :disabled="!twitchStatus.connected" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="twitch-toggle-row">
+                <div class="inline" style="align-items:center;gap:6px;">
+                  <strong>{{ $t("adminGuild.twitch.promoOnFollow") }}</strong>
+                  <UTooltip :text="$t('adminGuild.twitch.tips.promoOnFollow')">
+                    <UIcon name="i-lucide-circle-help" class="twitch-help" />
+                  </UTooltip>
+                </div>
+                <label class="switch">
+                  <input v-model="twitchPromo.onFollow" type="checkbox" :disabled="!twitchStatus.connected" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="twitch-toggle-row">
+                <div class="inline" style="align-items:center;gap:6px;">
+                  <strong>{{ $t("adminGuild.twitch.promoOnFirstMessage") }}</strong>
+                  <UTooltip :text="$t('adminGuild.twitch.tips.promoOnFirstMessage')">
+                    <UIcon name="i-lucide-circle-help" class="twitch-help" />
+                  </UTooltip>
+                </div>
+                <label class="switch">
+                  <input v-model="twitchPromo.onFirstMessage" type="checkbox" :disabled="!twitchStatus.connected" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="twitch-toggle-row">
+                <div class="inline" style="align-items:center;gap:6px;">
+                  <strong>{{ $t("adminGuild.twitch.promoRemindUnlinked") }}</strong>
+                  <UTooltip :text="$t('adminGuild.twitch.tips.promoRemindUnlinked')">
+                    <UIcon name="i-lucide-circle-help" class="twitch-help" />
+                  </UTooltip>
+                </div>
+                <label class="switch">
+                  <input v-model="twitchPromo.remindUnlinked" type="checkbox" :disabled="!twitchStatus.connected" />
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="twitch-toggle-row">
+                <div class="inline" style="align-items:center;gap:6px;">
+                  <strong>{{ $t("adminGuild.twitch.promoStopEnabled") }}</strong>
+                  <UTooltip :text="$t('adminGuild.twitch.tips.promoStopEnabled')">
+                    <UIcon name="i-lucide-circle-help" class="twitch-help" />
+                  </UTooltip>
+                </div>
+                <label class="switch">
+                  <input v-model="twitchPromo.stopEnabled" type="checkbox" :disabled="!twitchStatus.connected" />
+                  <span class="slider"></span>
+                </label>
+              </div>
             </div>
-            <div class="switch-field">
-              <span class="inline" style="align-items:center;gap:6px;">
-                {{ $t("adminGuild.twitch.promoOnFollow") }}
-                <UTooltip :text="$t('adminGuild.twitch.tips.promoOnFollow')">
-                  <UIcon name="i-lucide-circle-help" class="muted" style="width:14px;height:14px;" />
-                </UTooltip>
-              </span>
-              <label class="switch">
-                <input v-model="twitchPromo.onFollow" type="checkbox" :disabled="!twitchStatus.connected" />
-                <span class="slider"></span>
-              </label>
-            </div>
-            <div class="switch-field">
-              <span class="inline" style="align-items:center;gap:6px;">
-                {{ $t("adminGuild.twitch.promoOnFirstMessage") }}
-                <UTooltip :text="$t('adminGuild.twitch.tips.promoOnFirstMessage')">
-                  <UIcon name="i-lucide-circle-help" class="muted" style="width:14px;height:14px;" />
-                </UTooltip>
-              </span>
-              <label class="switch">
-                <input v-model="twitchPromo.onFirstMessage" type="checkbox" :disabled="!twitchStatus.connected" />
-                <span class="slider"></span>
-              </label>
-            </div>
-            <div class="switch-field">
-              <span class="inline" style="align-items:center;gap:6px;">
-                {{ $t("adminGuild.twitch.promoRemindUnlinked") }}
-                <UTooltip :text="$t('adminGuild.twitch.tips.promoRemindUnlinked')">
-                  <UIcon name="i-lucide-circle-help" class="muted" style="width:14px;height:14px;" />
-                </UTooltip>
-              </span>
-              <label class="switch">
-                <input v-model="twitchPromo.remindUnlinked" type="checkbox" :disabled="!twitchStatus.connected" />
-                <span class="slider"></span>
-              </label>
-            </div>
-            <div class="switch-field">
-              <span class="inline" style="align-items:center;gap:6px;">
-                {{ $t("adminGuild.twitch.promoStopEnabled") }}
-                <UTooltip :text="$t('adminGuild.twitch.tips.promoStopEnabled')">
-                  <UIcon name="i-lucide-circle-help" class="muted" style="width:14px;height:14px;" />
-                </UTooltip>
-              </span>
-              <label class="switch">
-                <input v-model="twitchPromo.stopEnabled" type="checkbox" :disabled="!twitchStatus.connected" />
-                <span class="slider"></span>
-              </label>
-            </div>
-            <label style="grid-column: 1 / -1;">
+
+            <label class="twitch-field" style="display:block;margin-top:14px;">
               {{ $t("adminGuild.twitch.promoDiscordUrl") }}
-              <div class="inline" style="flex-wrap: wrap; gap: 8px; align-items: center;">
+              <div class="inline" style="flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 6px;">
                 <input
                   v-model="twitchPromo.discordUrl"
                   type="url"
@@ -1444,103 +1363,109 @@
                 {{ $t("adminGuild.twitch.promoDiscordGenerateHelp") }}
               </p>
             </label>
-            <label style="grid-column: 1 / -1;">
+
+            <label class="twitch-field" style="display:block;margin-top:14px;">
               {{ $t("adminGuild.twitch.promoTemplate") }}
               <textarea
                 v-model="twitchPromo.template"
                 rows="4"
                 :disabled="!twitchStatus.connected || !twitchPromo.enabled"
-                style="width:100%;resize:vertical;min-height:96px;"
+                :class="{ 'promo-template-over': twitchPromoPreviewOverLimit }"
+                style="width:100%;resize:vertical;min-height:96px;margin-top:6px;"
               />
+              <div class="twitch-char-row">
+                <span class="muted">{{ $t("adminGuild.twitch.promoCharHelp") }}</span>
+                <strong :class="{ 'is-over': twitchPromoPreviewOverLimit }">
+                  {{ twitchPromoPreviewLength }} / {{ twitchPromoMaxChars }}
+                </strong>
+              </div>
+              <p v-if="twitchPromoPreviewOverLimit" class="twitch-char-error">
+                {{ $t("adminGuild.twitch.promoCharOverLimit") }}
+              </p>
             </label>
-          </div>
-          <div class="inline" style="flex-wrap: wrap; gap: 8px; margin-top: 10px;">
-            <span class="muted">{{ $t("adminGuild.twitch.promoPlaceholders") }}</span>
-            <UButton
-              v-for="item in twitchPromoPlaceholders"
-              :key="item.tag"
-              size="xs"
-              color="neutral"
-              variant="soft"
-              :title="item.label"
-              :disabled="!twitchStatus.connected || !twitchPromo.enabled"
-              @click="insertTwitchPromoTag(item.tag)"
-            >
-              {{ item.tag }}
-            </UButton>
-            <UButton
-              size="xs"
-              color="neutral"
-              variant="outline"
-              :disabled="!twitchStatus.connected || !twitchPromo.enabled"
-              @click="resetTwitchPromoTemplate"
-            >
-              {{ $t("adminGuild.twitch.promoResetTemplate") }}
-            </UButton>
-          </div>
-          <ul class="muted" style="margin: 8px 0 0; padding-left: 18px; font-size: 0.85rem;">
-            <li v-for="item in twitchPromoPlaceholders" :key="`hint-${item.tag}`">
-              <strong>{{ item.tag }}</strong> — {{ item.label }}
-            </li>
-          </ul>
-          <p class="muted" style="margin-top: 8px;">
-            {{ $t("adminGuild.twitch.promoPreviewLabel") }}
-            <strong>{{ twitchPromoPreview }}</strong>
-          </p>
-        </div>
 
-        <div v-show="twitchSubTab === 'daily'" class="sub-card">
-          <div class="card-head" style="margin-bottom: 12px;">
-            <div class="inline" style="align-items:center;gap:8px;">
-              <h4 style="margin:0;">{{ $t("adminGuild.twitch.dailyTitle") }}</h4>
-              <UTooltip :text="$t('adminGuild.twitch.tips.daily')">
-                <UIcon name="i-lucide-circle-help" class="muted" style="width:16px;height:16px;" />
-              </UTooltip>
+            <div class="twitch-tags-row">
+              <span class="muted">{{ $t("adminGuild.twitch.promoPlaceholders") }}</span>
+              <UButton
+                v-for="item in twitchPromoPlaceholders"
+                :key="item.tag"
+                size="xs"
+                color="neutral"
+                variant="soft"
+                :title="item.label"
+                :disabled="!twitchStatus.connected || !twitchPromo.enabled || twitchPromoPreviewOverLimit"
+                @click="insertTwitchPromoTag(item.tag)"
+              >
+                {{ item.tag }}
+              </UButton>
+              <UButton
+                size="xs"
+                color="neutral"
+                variant="outline"
+                :disabled="!twitchStatus.connected || !twitchPromo.enabled"
+                @click="resetTwitchPromoTemplate"
+              >
+                {{ $t("adminGuild.twitch.promoResetTemplate") }}
+              </UButton>
             </div>
-            <UButton color="primary" @click="saveTwitchDailySettings">{{ $t("common.save") }}</UButton>
-          </div>
-          <p class="muted" style="margin-bottom: 10px;">
-            {{ $t("adminGuild.twitch.dailyHelp") }}
-          </p>
-          <div class="grid">
-            <div class="switch-field">
-              <span>{{ $t("common.enabled") }}</span>
-              <label class="switch">
-                <input v-model="twitchDaily.enabled" type="checkbox" />
-                <span class="slider"></span>
-              </label>
-            </div>
-            <label>
-              {{ $t("adminGuild.twitch.dailyBase") }}
-              <input v-model.number="twitchDaily.dailyAmount" type="number" />
-            </label>
-            <label>
-              {{ $t("adminGuild.twitch.dailyBonus7") }}
-              <input v-model.number="twitchDaily.streak7" type="number" />
-            </label>
-            <label>
-              {{ $t("adminGuild.twitch.dailyBonus14") }}
-              <input v-model.number="twitchDaily.streak14" type="number" />
-            </label>
-            <label>
-              {{ $t("adminGuild.twitch.dailyBonus30") }}
-              <input v-model.number="twitchDaily.streak30" type="number" />
-            </label>
-          </div>
-        </div>
 
-        <div v-show="twitchSubTab === 'daily'" class="sub-card">
-          <h4>{{ $t("adminGuild.twitch.commandTitle") }}</h4>
-          <p class="muted">
-            {{ $t("adminGuild.twitch.commandHelp") }}
-          </p>
-          <div class="list">
-            <div class="list-row">
-              <span><strong>{{ $t("adminGuild.twitch.important") }}</strong></span>
-              <span>{{ $t("adminGuild.twitch.commandImportant") }}</span>
+            <div class="twitch-preview-box">
+              <div class="twitch-preview-label">
+                <UIcon name="i-lucide-message-square-text" />
+                {{ $t("adminGuild.twitch.promoPreviewLabel") }}
+              </div>
+              <div class="twitch-preview-bubble">
+                {{ twitchPromoPreview }}
+              </div>
             </div>
           </div>
-        </div>
+
+          <div v-show="twitchSubTab === 'daily'" class="twitch-section">
+            <div class="twitch-split">
+              <div class="twitch-tile">
+                <div class="twitch-tile-head">
+                  <h4>{{ $t("adminGuild.twitch.dailyTitle") }}</h4>
+                  <UTooltip :text="$t('adminGuild.twitch.tips.daily')">
+                    <UIcon name="i-lucide-circle-help" class="twitch-help" />
+                  </UTooltip>
+                </div>
+                <p class="muted twitch-tile-help">{{ $t("adminGuild.twitch.dailyHelp") }}</p>
+                <div class="twitch-field-grid">
+                  <div class="twitch-field switch-field">
+                    <span>{{ $t("common.enabled") }}</span>
+                    <label class="switch">
+                      <input v-model="twitchDaily.enabled" type="checkbox" />
+                      <span class="slider"></span>
+                    </label>
+                  </div>
+                  <label class="twitch-field">
+                    {{ $t("adminGuild.twitch.dailyBase") }}
+                    <input v-model.number="twitchDaily.dailyAmount" type="number" />
+                  </label>
+                  <label class="twitch-field">
+                    {{ $t("adminGuild.twitch.dailyBonus7") }}
+                    <input v-model.number="twitchDaily.streak7" type="number" />
+                  </label>
+                  <label class="twitch-field">
+                    {{ $t("adminGuild.twitch.dailyBonus14") }}
+                    <input v-model.number="twitchDaily.streak14" type="number" />
+                  </label>
+                  <label class="twitch-field">
+                    {{ $t("adminGuild.twitch.dailyBonus30") }}
+                    <input v-model.number="twitchDaily.streak30" type="number" />
+                  </label>
+                </div>
+              </div>
+              <div class="twitch-tile twitch-info-tile">
+                <h4>{{ $t("adminGuild.twitch.commandTitle") }}</h4>
+                <p class="muted">{{ $t("adminGuild.twitch.commandHelp") }}</p>
+                <div class="twitch-callout">
+                  <strong>{{ $t("adminGuild.twitch.important") }}</strong>
+                  <p>{{ $t("adminGuild.twitch.commandImportant") }}</p>
+                </div>
+              </div>
+            </div>
+          </div>
         </BillingPremiumGate>
       </UCard>
       </div>
@@ -4156,12 +4081,28 @@ const generatingDiscordInvite = ref(false);
 const twitchLiveOnly = ref(true);
 const twitchSubTab = ref("connection");
 const twitchSubTabs = [
-  { id: "connection", labelKey: "adminGuild.twitch.tabs.connection" },
-  { id: "gains", labelKey: "adminGuild.twitch.tabs.gains" },
-  { id: "rewards", labelKey: "adminGuild.twitch.tabs.rewards" },
-  { id: "promo", labelKey: "adminGuild.twitch.tabs.promo" },
-  { id: "daily", labelKey: "adminGuild.twitch.tabs.daily" }
+  { id: "connection", labelKey: "adminGuild.twitch.tabs.connection", icon: "i-lucide-plug" },
+  { id: "gains", labelKey: "adminGuild.twitch.tabs.gains", icon: "i-lucide-coins" },
+  { id: "rewards", labelKey: "adminGuild.twitch.tabs.rewards", icon: "i-lucide-gift" },
+  { id: "promo", labelKey: "adminGuild.twitch.tabs.promo", icon: "i-lucide-megaphone" },
+  { id: "daily", labelKey: "adminGuild.twitch.tabs.daily", icon: "i-lucide-calendar-check" }
 ];
+const twitchHeaderSaveAction = computed(() => {
+  if (twitchSubTab.value === "gains" || twitchSubTab.value === "rewards") {
+    return { labelKey: "adminGuild.twitch.saveAutomation", run: () => saveTwitchAutomation() };
+  }
+  if (twitchSubTab.value === "promo") {
+    return {
+      labelKey: "common.save",
+      run: () => saveTwitchPromoSettings(),
+      disabled: !twitchStatus.value.connected || twitchPromoPreviewOverLimit.value
+    };
+  }
+  if (twitchSubTab.value === "daily") {
+    return { labelKey: "common.save", run: () => saveTwitchDailySettings() };
+  }
+  return null;
+});
 const asTwitchBool = (value, fallback = false) => {
   if (value === true || value === 1 || value === "1") return true;
   if (value === false || value === 0 || value === "0" || value === "false") return false;
@@ -4178,6 +4119,7 @@ const twitchPromo = reactive({
   stopEnabled: true,
   defaultTemplate: "",
   stopPhrase: "Plus intéressé ? Tape !stop pour ne plus recevoir ce message.",
+  maxChars: 500,
   placeholders: [
     { tag: "{user}", label: "Pseudo Twitch de la personne concernée (login, pas Discord)" },
     { tag: "{pseudo}", label: "Identique à {user}" },
@@ -4336,6 +4278,14 @@ const twitchPromoPreview = computed(() => {
   }
   return text.replace(/\s{2,}/g, " ").trim() || "—";
 });
+const twitchPromoMaxChars = computed(() => Number(twitchPromo.maxChars || 500));
+const twitchPromoPreviewLength = computed(() => {
+  const text = String(twitchPromoPreview.value || "").trim();
+  return text === "—" ? 0 : text.length;
+});
+const twitchPromoPreviewOverLimit = computed(
+  () => twitchPromoPreviewLength.value > twitchPromoMaxChars.value
+);
 const showTwitchConnectedModal = ref(false);
 const twitchConnectedAccount = ref("");
 const logsCategoryTab = ref("gains");
@@ -6947,6 +6897,7 @@ const loadTwitchPromoSettings = async () => {
   twitchPromo.stopEnabled = asTwitchBool(settings.stopEnabled, true);
   twitchPromo.defaultTemplate = String(settings.defaultTemplate || "");
   twitchPromo.stopPhrase = String(settings.stopPhrase || twitchPromo.stopPhrase || "");
+  twitchPromo.maxChars = Number(settings.maxChars || 500);
   twitchPromo.placeholders = Array.isArray(settings.placeholders)
     ? settings.placeholders
     : twitchPromo.placeholders;
@@ -7193,6 +7144,13 @@ const saveTwitchDailySettings = async ({ notify = true } = {}) => {
 };
 
 const saveTwitchPromoSettings = async ({ notify = true } = {}) => {
+  if (twitchPromoPreviewOverLimit.value) {
+    alert(
+      t("adminGuild.twitch.promoCharOverLimit") ||
+        `Message trop long (${twitchPromoPreviewLength.value}/${twitchPromoMaxChars.value}).`
+    );
+    return false;
+  }
   const token = getToken();
   const res = await fetch(`${config.public.apiBase}/api/guilds/${id}/twitch/promo`, {
     method: "POST",
@@ -9052,6 +9010,11 @@ onBeforeUnmount(() => {
   align-items: center;
 }
 
+.promo-template-over {
+  border-color: #f87171 !important;
+  box-shadow: 0 0 0 1px rgba(248, 113, 113, 0.35);
+}
+
 .sub-card,
 .form-section,
 .shop-card,
@@ -9281,6 +9244,344 @@ label {
 
 .leaderboard-search-input {
   min-width: min(320px, 100%);
+}
+
+
+/* ——— Twitch panel ——— */
+.twitch-panel {
+  --twitch: #9146ff;
+  --twitch-soft: rgba(145, 70, 255, 0.14);
+}
+
+.twitch-card-head {
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.twitch-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.twitch-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-soft);
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.twitch-chip.is-on {
+  border-color: rgba(52, 211, 153, 0.4);
+  background: rgba(52, 211, 153, 0.12);
+  color: #6ee7b7;
+}
+
+.twitch-chip.is-live {
+  border-color: rgba(239, 68, 68, 0.45);
+  background: rgba(239, 68, 68, 0.12);
+  color: #fca5a5;
+}
+
+.twitch-chip.is-off {
+  opacity: 0.85;
+}
+
+.twitch-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #ef4444;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.25);
+}
+
+.twitch-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 16px;
+  padding: 6px;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid var(--border);
+}
+
+.twitch-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-soft);
+  font-size: 0.82rem;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.twitch-tab:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+}
+
+.twitch-tab.active {
+  background: var(--twitch-soft);
+  border-color: rgba(145, 70, 255, 0.35);
+  color: #c4b5fd;
+}
+
+.twitch-tab-icon {
+  width: 15px;
+  height: 15px;
+}
+
+.twitch-section {
+  display: grid;
+  gap: 14px;
+}
+
+.twitch-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.twitch-section-head h4,
+.twitch-tile-head h4,
+.twitch-info-tile h4 {
+  margin: 0 0 4px;
+}
+
+.twitch-connect-card {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(145, 70, 255, 0.28);
+  background: linear-gradient(135deg, rgba(145, 70, 255, 0.12), rgba(0, 0, 0, 0.15));
+}
+
+.twitch-connect-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.twitch-connect-badge {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: rgba(145, 70, 255, 0.2);
+  color: #c4b5fd;
+  font-size: 1.2rem;
+}
+
+.twitch-split {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+.twitch-tile,
+.twitch-mini-card {
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.twitch-tile-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.twitch-tile-help {
+  margin: 0 0 12px;
+  font-size: 0.85rem;
+}
+
+.twitch-help {
+  width: 15px;
+  height: 15px;
+  color: var(--text-soft);
+  opacity: 0.85;
+}
+
+.twitch-field-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.twitch-field {
+  display: grid;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--text-soft);
+}
+
+.twitch-field input,
+.twitch-field textarea {
+  width: 100%;
+}
+
+.twitch-field-actions {
+  display: flex;
+  align-items: end;
+}
+
+.twitch-mini-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.twitch-group-label {
+  margin: 14px 0 8px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+}
+
+.twitch-bits-card {
+  margin-top: 12px;
+  max-width: 360px;
+}
+
+.twitch-toggle-list {
+  display: grid;
+  gap: 8px;
+}
+
+.twitch-toggle-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.twitch-char-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+  font-size: 0.85rem;
+}
+
+.twitch-char-row .is-over,
+.twitch-char-error {
+  color: #f87171;
+}
+
+.twitch-char-error {
+  margin: 6px 0 0;
+  font-size: 0.85rem;
+}
+
+.twitch-tags-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.twitch-preview-box {
+  margin-top: 14px;
+  max-width: 520px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(145, 70, 255, 0.3);
+  background: rgba(145, 70, 255, 0.08);
+}
+
+.twitch-preview-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #c4b5fd;
+}
+
+.twitch-preview-label :deep(svg) {
+  width: 14px;
+  height: 14px;
+}
+
+.twitch-preview-bubble {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.28);
+  color: var(--text);
+  font-size: 0.9rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.twitch-callout {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  background: rgba(251, 191, 36, 0.08);
+}
+
+.twitch-callout p {
+  margin: 6px 0 0;
+  color: var(--text-soft);
+  font-size: 0.88rem;
+}
+
+.twitch-info-tile {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+@media (max-width: 720px) {
+  .twitch-connect-card,
+  .twitch-section-head,
+  .twitch-toggle-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .twitch-tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+  }
+
+  .twitch-tab {
+    white-space: nowrap;
+  }
 }
 
 /* ——— Tabs / chips / pills ——— */

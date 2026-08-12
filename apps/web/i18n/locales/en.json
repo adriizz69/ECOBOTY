@@ -1584,7 +1584,9 @@
       "promoTemplate": "Message (placeholders)",
       "promoPlaceholders": "Placeholders:",
       "promoResetTemplate": "Reset template",
-      "promoPreviewLabel": "Preview:",
+      "promoPreviewLabel": "Message preview",
+      "promoCharHelp": "Twitch limit for the final message (after placeholders).",
+      "promoCharOverLimit": "Message too long: shorten it to save.",
       "tabs": {
         "connection": "Connection",
         "gains": "Gains",
