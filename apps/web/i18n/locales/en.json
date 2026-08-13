@@ -1305,7 +1305,7 @@
       "alreadySent": "Message already sent in {count} part(s). Use “Update message” to refresh it.",
       "includeShopDiscounts": "Show shop discounts",
       "includeGameChances": "Show game chances",
-      "addUserShopCommand": "/shop @member",
+      "addUserShopCommand": "/shop {'@'}member",
       "userShopCommandHelp": "Adds the member shop command in the Commands section.",
       "sectionsTitle": "Message sections",
       "sections": {

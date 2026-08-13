@@ -1305,7 +1305,7 @@
       "alreadySent": "Mensaje ya enviado en {count} parte(s). Usa « Actualizar el mensaje » para refrescarlo.",
       "includeShopDiscounts": "Mostrar descuentos de tiendas",
       "includeGameChances": "Mostrar probabilidades de juegos",
-      "addUserShopCommand": "/tienda @miembro",
+      "addUserShopCommand": "/tienda {'@'}miembro",
       "userShopCommandHelp": "Añade el comando de tienda de miembro en la sección Comandos.",
       "sectionsTitle": "Secciones del mensaje",
       "sections": {
