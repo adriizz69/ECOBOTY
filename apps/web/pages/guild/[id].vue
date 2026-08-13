@@ -914,6 +914,16 @@
               <span class="slider"></span>
             </label>
           </div>
+          <div class="community-command-actions">
+            <span class="muted small">{{ $t("adminGuild.communityMessage.everyonePingHelp") }}</span>
+            <button
+              type="button"
+              :class="['tab-pill', communityMessageIncludeEveryonePing && 'active']"
+              @click="communityMessageIncludeEveryonePing = !communityMessageIncludeEveryonePing"
+            >
+              {{ $t("adminGuild.communityMessage.everyonePing") }}
+            </button>
+          </div>
           <div v-if="communityUserShopsAvailable" class="community-command-actions">
             <span class="muted small">{{ $t("adminGuild.communityMessage.userShopCommandHelp") }}</span>
             <button
@@ -4554,6 +4564,7 @@ const communityMessageShopIds = ref([]);
 const communityMessageIncludeGameChances = ref(false);
 const communityMessageIncludeShopDiscounts = ref(true);
 const communityMessageIncludeUserShopCommand = ref(false);
+const communityMessageIncludeEveryonePing = ref(true);
 const communityMessageMessageId = ref(null);
 const communityMessageMessageIds = ref([]);
 const communityMessagePreview = ref("");
@@ -6255,7 +6266,8 @@ const buildCommunityMessagePayload = () => ({
   include_game_chances: Boolean(communityMessageIncludeGameChances.value),
   include_shop_discounts: communityMessageIncludeShopDiscounts.value !== false,
   include_user_shop_command:
-    communityUserShopsAvailable.value && Boolean(communityMessageIncludeUserShopCommand.value)
+    communityUserShopsAvailable.value && Boolean(communityMessageIncludeUserShopCommand.value),
+  include_everyone_ping: communityMessageIncludeEveryonePing.value !== false
 });
 
 const applyCommunityMessageSettings = (settings = {}, { missingDetected = false } = {}) => {
@@ -6268,6 +6280,7 @@ const applyCommunityMessageSettings = (settings = {}, { missingDetected = false 
   communityMessageIncludeGameChances.value = Boolean(settings.include_game_chances);
   communityMessageIncludeShopDiscounts.value = settings.include_shop_discounts !== false;
   communityMessageIncludeUserShopCommand.value = Boolean(settings.include_user_shop_command);
+  communityMessageIncludeEveryonePing.value = settings.include_everyone_ping !== false;
   const messageIds = Array.isArray(settings.message_ids)
     ? settings.message_ids.map(String).filter(Boolean)
     : settings.message_id
@@ -6464,7 +6477,8 @@ watch(
     communityMessageShopIds,
     communityMessageIncludeGameChances,
     communityMessageIncludeShopDiscounts,
-    communityMessageIncludeUserShopCommand
+    communityMessageIncludeUserShopCommand,
+    communityMessageIncludeEveryonePing
   ],
   () => {
     scheduleCommunityPreview();

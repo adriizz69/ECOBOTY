@@ -1306,6 +1306,8 @@
       "includeShopDiscounts": "Mostrar descuentos de tiendas",
       "includeGameChances": "Mostrar probabilidades de juegos",
       "addUserShopCommand": "/tienda {'@'}miembro",
+      "everyonePing": "{'@'}everyone",
+      "everyonePingHelp": "Menciona a todo el servidor al inicio del mensaje.",
       "userShopCommandHelp": "Añade el comando de tienda de miembro en la sección Comandos.",
       "sectionsTitle": "Secciones del mensaje",
       "sections": {

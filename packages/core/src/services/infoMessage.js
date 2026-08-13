@@ -271,7 +271,8 @@ export const getInfoMessageSettings = async (guildId) => {
       shop_ids: [],
       include_game_chances: false,
       include_shop_discounts: true,
-      include_user_shop_command: false
+      include_user_shop_command: false,
+      include_everyone_ping: true
     };
   }
   const messageIds = normalizeMessageIds(parseJsonField(row.message_ids, []), row.message_id);
@@ -283,7 +284,8 @@ export const getInfoMessageSettings = async (guildId) => {
     shop_ids: normalizeShopIds(parseJsonField(row.shop_ids, [])),
     include_game_chances: row.include_game_chances === true,
     include_shop_discounts: row.include_shop_discounts !== false,
-    include_user_shop_command: row.include_user_shop_command === true
+    include_user_shop_command: row.include_user_shop_command === true,
+    include_everyone_ping: row.include_everyone_ping !== false
   };
 };
 
@@ -300,6 +302,7 @@ export const saveInfoMessageSettings = async (guildId, data = {}) => {
     include_game_chances: Boolean(data.include_game_chances),
     include_shop_discounts: data.include_shop_discounts !== false,
     include_user_shop_command: Boolean(data.include_user_shop_command),
+    include_everyone_ping: data.include_everyone_ping !== false,
     updated_at: new Date()
   };
   if (payload.message_ids === undefined) delete payload.message_ids;
@@ -343,6 +346,7 @@ export const updateInfoMessageMessageIds = async (guildId, messageIds = []) => {
       include_game_chances: false,
       include_shop_discounts: true,
       include_user_shop_command: false,
+      include_everyone_ping: true,
       created_at: new Date(),
       ...payload
     });
@@ -541,7 +545,7 @@ export const buildInfoMessage = async ({ guildId, settings, allowLong = false })
 
   const parts = [];
   const headerTitle = dict.headerTitle.replace("{currency}", currencyName);
-  parts.push(`${headerTitle} @everyone`);
+  parts.push(settings.include_everyone_ping !== false ? `${headerTitle} @everyone` : headerTitle);
   parts.push(dict.overview.replace("{guild}", guild?.name || "Serveur"));
   parts.push(dict.overviewLine1.replace("{currency}", currencyName).replace("{symbol}", currencyEmoji));
   parts.push(dict.overviewLine2);

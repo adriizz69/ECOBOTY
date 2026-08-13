@@ -1306,6 +1306,8 @@
       "includeShopDiscounts": "Show shop discounts",
       "includeGameChances": "Show game chances",
       "addUserShopCommand": "/shop {'@'}member",
+      "everyonePing": "{'@'}everyone",
+      "everyonePingHelp": "Ping the whole server at the top of the message.",
       "userShopCommandHelp": "Adds the member shop command in the Commands section.",
       "sectionsTitle": "Message sections",
       "sections": {

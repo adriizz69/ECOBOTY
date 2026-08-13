@@ -1306,6 +1306,8 @@
       "includeShopDiscounts": "Afficher les remises des boutiques",
       "includeGameChances": "Afficher les chances des jeux",
       "addUserShopCommand": "/boutique {'@'}membre",
+      "everyonePing": "{'@'}everyone",
+      "everyonePingHelp": "Ping tout le serveur en tête du message.",
       "userShopCommandHelp": "Ajoute la commande boutique membre dans la section Commandes.",
       "sectionsTitle": "Sections du message",
       "sections": {
