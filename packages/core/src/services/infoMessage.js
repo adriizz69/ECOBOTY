@@ -208,6 +208,13 @@ const i18n = {
 
 const resolveLang = (lang) => (i18n[lang] ? lang : "fr");
 
+const asBool = (value, fallback = false) => {
+  if (value === true || value === 1 || value === "1") return true;
+  if (value === false || value === 0 || value === "0" || value === "false") return false;
+  if (value == null) return fallback;
+  return Boolean(value);
+};
+
 const parseJsonField = (value, fallback) => {
   if (value == null) return fallback;
   if (typeof value === "object") return value;
@@ -282,10 +289,10 @@ export const getInfoMessageSettings = async (guildId) => {
     message_ids: messageIds,
     sections: normalizeSections(parseJsonField(row.sections, DEFAULT_SECTIONS)),
     shop_ids: normalizeShopIds(parseJsonField(row.shop_ids, [])),
-    include_game_chances: row.include_game_chances === true,
-    include_shop_discounts: row.include_shop_discounts !== false,
-    include_user_shop_command: row.include_user_shop_command === true,
-    include_everyone_ping: row.include_everyone_ping !== false
+    include_game_chances: asBool(row.include_game_chances, false),
+    include_shop_discounts: asBool(row.include_shop_discounts, true),
+    include_user_shop_command: asBool(row.include_user_shop_command, false),
+    include_everyone_ping: asBool(row.include_everyone_ping, true)
   };
 };
 
@@ -299,10 +306,10 @@ export const saveInfoMessageSettings = async (guildId, data = {}) => {
     message_ids: data.message_ids ? JSON.stringify(data.message_ids) : undefined,
     sections: JSON.stringify(sections),
     shop_ids: JSON.stringify(normalizeShopIds(data.shop_ids)),
-    include_game_chances: Boolean(data.include_game_chances),
-    include_shop_discounts: data.include_shop_discounts !== false,
-    include_user_shop_command: Boolean(data.include_user_shop_command),
-    include_everyone_ping: data.include_everyone_ping !== false,
+    include_game_chances: asBool(data.include_game_chances, false),
+    include_shop_discounts: asBool(data.include_shop_discounts, true),
+    include_user_shop_command: asBool(data.include_user_shop_command, false),
+    include_everyone_ping: asBool(data.include_everyone_ping, true),
     updated_at: new Date()
   };
   if (payload.message_ids === undefined) delete payload.message_ids;
@@ -545,7 +552,7 @@ export const buildInfoMessage = async ({ guildId, settings, allowLong = false })
 
   const parts = [];
   const headerTitle = dict.headerTitle.replace("{currency}", currencyName);
-  parts.push(settings.include_everyone_ping !== false ? `${headerTitle} @everyone` : headerTitle);
+  parts.push(asBool(settings.include_everyone_ping, true) ? `${headerTitle} @everyone` : headerTitle);
   parts.push(dict.overview.replace("{guild}", guild?.name || "Serveur"));
   parts.push(dict.overviewLine1.replace("{currency}", currencyName).replace("{symbol}", currencyEmoji));
   parts.push(dict.overviewLine2);
@@ -620,7 +627,7 @@ export const buildInfoMessage = async ({ guildId, settings, allowLong = false })
     const userShopsEnabled = await isGuildFeatureEnabled(guildId, "economy_user_shops");
     const userShopSettings = userShopsEnabled ? await getUserShopsSettings(guildId).catch(() => null) : null;
     if (
-      settings.include_user_shop_command === true &&
+      settings.include_user_shop_command &&
       userShopsEnabled &&
       userShopSettings?.enabled
     ) {
@@ -634,7 +641,7 @@ export const buildInfoMessage = async ({ guildId, settings, allowLong = false })
     parts.push(dict.titleUnderline);
     parts.push(`:point_right: **\`${dict.cmdShop}\`**`);
     parts.push(`${dict.shopList} :`);
-    const lines = buildShopsList(dict, shops, shopIds, settings.include_shop_discounts !== false);
+    const lines = buildShopsList(dict, shops, shopIds, asBool(settings.include_shop_discounts, true));
     parts.push(lines.join("\n"));
     parts.push(`:arrow_right: **Tout se passe via \`${dict.cmdShop}\` !**`);
     parts.push(dict.separator);

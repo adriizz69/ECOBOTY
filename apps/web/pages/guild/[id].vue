@@ -4587,7 +4587,11 @@ const communitySectionOptions = computed(() => [
   { key: "rules", label: t("adminGuild.communityMessage.sections.rules") },
   { key: "summary", label: t("adminGuild.communityMessage.sections.summary") }
 ]);
-const communityMessagePreviewHtml = computed(() => formatCommunityPreview(communityMessagePreview.value));
+const communityMessagePreviewHtml = computed(() =>
+  formatCommunityPreview(communityMessagePreview.value, {
+    includeEveryonePing: communityMessageIncludeEveryonePing.value
+  })
+);
 const communityUserShopsAvailable = computed(
   () => Boolean(userShopsSettings.enabled && hasBillingFeature("economy_user_shops"))
 );
@@ -6521,9 +6525,12 @@ const emojiMap = {
   Utilityligne: "━━━━━━━━━━━━━━━━━━━━"
 };
 
-const formatCommunityPreview = (raw) => {
+const formatCommunityPreview = (raw, { includeEveryonePing = true } = {}) => {
   const fallback = t("adminGuild.communityMessage.previewEmpty");
-  const content = String(raw || "").trim();
+  let content = String(raw || "").trim();
+  if (!includeEveryonePing) {
+    content = content.replace(/(?:^|\s)@everyone\b/g, "").replace(/[ \t]+$/gm, "").trim();
+  }
   if (!content) return "";
   return renderDiscordMarkdown(content, {
     roleName,
