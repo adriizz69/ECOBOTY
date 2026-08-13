@@ -300,10 +300,10 @@ export const saveInfoMessageSettings = async (guildId, data = {}) => {
   const guild = await ensureGuild(guildId, db);
   const canCustomizeSections = await isGuildFeatureEnabled(guildId, "community_message_sections");
   const sections = canCustomizeSections ? normalizeSections(data.sections) : [...DEFAULT_SECTIONS];
+  const existing = await db("guild_info_message_settings").where({ guild_id: guild.id }).first();
   const payload = {
     guild_id: guild.id,
-    channel_id: data.channel_id ? String(data.channel_id) : null,
-    message_ids: data.message_ids ? JSON.stringify(data.message_ids) : undefined,
+    channel_id: data.channel_id ? String(data.channel_id) : existing?.channel_id || null,
     sections: JSON.stringify(sections),
     shop_ids: JSON.stringify(normalizeShopIds(data.shop_ids)),
     include_game_chances: asBool(data.include_game_chances, false),
@@ -312,7 +312,10 @@ export const saveInfoMessageSettings = async (guildId, data = {}) => {
     include_everyone_ping: asBool(data.include_everyone_ping, true),
     updated_at: new Date()
   };
-  if (payload.message_ids === undefined) delete payload.message_ids;
+  if (Object.prototype.hasOwnProperty.call(data, "message_ids")) {
+    payload.message_ids = JSON.stringify(normalizeMessageIds(data.message_ids));
+    payload.message_id = normalizeMessageIds(data.message_ids)[0] || null;
+  }
   await db("guild_info_message_settings")
     .insert({
       ...payload,
@@ -363,7 +366,7 @@ export const updateInfoMessageMessageIds = async (guildId, messageIds = []) => {
 const discordFetchMessage = async (channelId, messageId) => {
   const botToken = process.env.DISCORD_BOT_TOKEN;
   if (!botToken || !channelId || !messageId) {
-    return { exists: false, definitive: true, status: 0 };
+    return { exists: false, definitive: false, status: 0 };
   }
   try {
     const res = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages/${messageId}`, {
@@ -374,29 +377,25 @@ const discordFetchMessage = async (channelId, messageId) => {
       }
     });
     const body = await res.json().catch(() => ({}));
-    if (res.status === 404 || Number(body?.code) === 10008 || Number(body?.code) === 10003) {
+    const discordCode = Number(body?.code || 0);
+    // Only treat "unknown message/channel" as a real deletion.
+    if (res.status === 404 || discordCode === 10008 || discordCode === 10003) {
       return { exists: false, definitive: true, status: res.status };
-    }
-    if (res.status === 401 || res.status === 403) {
-      return { exists: false, definitive: true, status: res.status };
-    }
-    if (res.status === 429 || res.status >= 500) {
-      return { exists: false, definitive: false, status: res.status };
     }
     if (!res.ok) {
-      return { exists: false, definitive: true, status: res.status };
+      return { exists: false, definitive: false, status: res.status };
     }
     if (body?.id && String(body.id) === String(messageId)) {
       return { exists: true, definitive: true, status: res.status };
     }
-    return { exists: false, definitive: true, status: res.status };
+    return { exists: false, definitive: false, status: res.status };
   } catch {
     return { exists: false, definitive: false, status: 0 };
   }
 };
 
 /** Drop message IDs that no longer exist on Discord (manual delete, purge, etc.). */
-export const syncInfoMessagePresence = async (guildId) => {
+export const syncInfoMessagePresence = async (guildId, { persist = true } = {}) => {
   const settings = await getInfoMessageSettings(guildId);
   const ids = normalizeMessageIds(settings.message_ids, settings.message_id);
 
@@ -405,13 +404,12 @@ export const syncInfoMessagePresence = async (guildId) => {
   }
 
   if (!settings.channel_id) {
-    await updateInfoMessageMessageIds(guildId, []);
-    const refreshed = await getInfoMessageSettings(guildId);
-    return { settings: refreshed, missingDetected: true };
+    return { settings, missingDetected: false };
   }
 
   const alive = [];
   let definitiveMisses = 0;
+  let transientMisses = 0;
   for (const messageId of ids) {
     const check = await discordFetchMessage(settings.channel_id, messageId);
     if (check.exists) {
@@ -421,18 +419,26 @@ export const syncInfoMessagePresence = async (guildId) => {
     if (check.definitive) {
       definitiveMisses += 1;
     } else {
-      // Keep on transient Discord errors
+      transientMisses += 1;
       alive.push(messageId);
     }
   }
 
-  const missingDetected = definitiveMisses > 0;
-  if (missingDetected || alive.length !== ids.length) {
+  const missingDetected = definitiveMisses > 0 && transientMisses === 0;
+  if (persist && definitiveMisses > 0 && alive.length !== ids.length && transientMisses === 0) {
     await updateInfoMessageMessageIds(guildId, alive);
+    const refreshed = await getInfoMessageSettings(guildId);
+    return { settings: refreshed, missingDetected };
   }
 
-  const refreshed = await getInfoMessageSettings(guildId);
-  return { settings: refreshed, missingDetected };
+  return {
+    settings: {
+      ...settings,
+      message_ids: ids,
+      message_id: ids[0] || null
+    },
+    missingDetected: false
+  };
 };
 
 /** Clear stored Discord message refs without deleting Discord messages. */

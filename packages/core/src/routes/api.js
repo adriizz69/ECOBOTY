@@ -52,7 +52,6 @@ import {
   updateInfoMessage,
   updateInfoMessageMessageId,
   updateInfoMessageMessageIds,
-  syncInfoMessagePresence,
   clearInfoMessageRefs
 } from "../services/infoMessage.js";
 import {
@@ -1735,8 +1734,8 @@ apiRouter.get("/economy/gains", async (req, res) => {
 
 apiRouter.get("/guilds/:id/community-message", async (req, res) => {
   try {
-    const { settings, missingDetected } = await syncInfoMessagePresence(req.params.id);
-    return res.json({ settings, missingDetected: Boolean(missingDetected) });
+    const settings = await getInfoMessageSettings(req.params.id);
+    return res.json({ settings, missingDetected: false });
   } catch (error) {
     return res.status(400).json({ error: error.message || "community_message_failed" });
   }
@@ -1775,7 +1774,7 @@ apiRouter.post("/guilds/:id/community-message/send", async (req, res) => {
   if (!botToken) return res.status(500).json({ error: "bot_token_missing" });
   try {
     await saveInfoMessageSettings(req.params.id, req.body || {});
-    const { settings } = await syncInfoMessagePresence(req.params.id);
+    const settings = await getInfoMessageSettings(req.params.id);
     if (!settings.channel_id) return res.status(400).json({ error: "missing_channel" });
     if (settings.message_id || (Array.isArray(settings.message_ids) && settings.message_ids.length)) {
       return res.status(400).json({ error: "message_already_sent" });
@@ -1807,7 +1806,7 @@ apiRouter.post("/guilds/:id/community-message/update", async (req, res) => {
   if (!botToken) return res.status(500).json({ error: "bot_token_missing" });
   try {
     await saveInfoMessageSettings(req.params.id, req.body || {});
-    const { settings } = await syncInfoMessagePresence(req.params.id);
+    const settings = await getInfoMessageSettings(req.params.id);
     if (!settings.channel_id) return res.status(400).json({ error: "missing_channel" });
     const existingIds =
       Array.isArray(settings.message_ids) && settings.message_ids.length
