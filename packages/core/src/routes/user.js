@@ -19,6 +19,7 @@ import {
   updateUserShop,
   deleteUserShop,
   createUserShopItem,
+  updateUserShopItem,
   deleteUserShopItem
 } from "../services/shop.js";
 import { getGamesSettings, playGame } from "../services/games.js";
@@ -31,8 +32,18 @@ import {
 } from "../services/billing-checkout.js";
 import { resolveLogsPolicyWindow, getGuildEntitlements, FREE_GAME_MODE_IDS } from "../services/billing-entitlements.js";
 import { isPlatformAdminId } from "../services/platform-admin.js";
+import { maybeRefreshTwitchLinkFromSession } from "../services/twitch-link-sync.js";
 
 export const userRouter = Router();
+
+userRouter.use(async (req, _res, next) => {
+  try {
+    await maybeRefreshTwitchLinkFromSession(req);
+  } catch {
+    // never block user UI on background Twitch link sync
+  }
+  next();
+});
 
 const getActiveUser = (req) => req.user?.impersonated || req.user?.discord_id;
 const getViewerDiscordId = (req) => req.user?.discord_id || req.user?.id || null;
@@ -614,8 +625,26 @@ userRouter.post("/guilds/:id/user-shops/mine/items", async (req, res) => {
   }
 });
 
-userRouter.put("/guilds/:id/user-shops/mine/items/:itemId", async (_req, res) => {
-  return res.status(403).json({ error: "user_shop_item_readonly" });
+userRouter.put("/guilds/:id/user-shops/mine/items/:itemId", async (req, res) => {
+  const userId = getActiveUser(req);
+  const guildId = req.params.id;
+  const itemId = req.params.itemId;
+  if (!userId || !guildId || !itemId) return res.status(401).json({ error: "missing_params" });
+  try {
+    await ensureUserGuildAccess({ guildId, userId });
+    const existing = await getUserShopByOwner(guildId, userId);
+    if (!existing) return res.status(404).json({ error: "shop_not_found" });
+    const item = await updateUserShopItem({
+      guildId,
+      ownerDiscordId: userId,
+      shopId: existing.id,
+      itemId,
+      data: req.body || {}
+    });
+    return res.json({ item });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "my_shop_item_update_failed" });
+  }
 });
 
 userRouter.delete("/guilds/:id/user-shops/mine/items/:itemId", async (req, res) => {

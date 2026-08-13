@@ -13,6 +13,7 @@ import { userRouter } from "./routes/user.js";
 import { twitchEventSubRouter } from "./routes/twitch-eventsub.js";
 import { topggWebhookRouter } from "./routes/topgg-webhook.js";
 import { stripeWebhookRouter } from "./routes/stripe-webhook.js";
+import { discordWebhookRouter } from "./routes/discord-webhook.js";
 import { publicRouter } from "./routes/public.js";
 
 export const createApp = ({ corsOrigins } = {}) => {
@@ -96,6 +97,7 @@ export const createApp = ({ corsOrigins } = {}) => {
 
   app.use("/webhooks/topgg", topggWebhookRouter);
   app.use("/webhooks/stripe", stripeWebhookRouter);
+  app.use("/webhooks/discord", discordWebhookRouter);
   app.use("/twitch", twitchEventSubRouter);
   app.use("/auth", authRouter);
   app.use("/public", publicRouter);

@@ -355,8 +355,10 @@
         <UCard v-if="userShopsEntitled && myShop" class="card">
           <div class="card-head">
             <div>
-              <h3>{{ $t("userGuild.myShop.itemsTitle") }}</h3>
-              <p class="muted helper">{{ $t("userGuild.myShop.itemsHelp") }}</p>
+              <h3>{{ editingMyShopItemId ? $t("userGuild.myShop.editItemTitle") : $t("userGuild.myShop.itemsTitle") }}</h3>
+              <p class="muted helper">
+                {{ editingMyShopItemId ? $t("userGuild.myShop.editItemHelp") : $t("userGuild.myShop.itemsHelp") }}
+              </p>
             </div>
           </div>
           <div class="grid my-shop-form" style="margin-bottom: 12px;">
@@ -395,10 +397,17 @@
               <input v-model="myItemForm.image_url" placeholder="https://..." />
             </label>
           </div>
-          <p class="muted small" style="margin-bottom: 12px;">{{ $t("userGuild.myShop.itemsReadonlyNote") }}</p>
-          <UButton color="primary" variant="outline" @click="addMyShopItem">
-            {{ $t("userGuild.myShop.addItem") }}
-          </UButton>
+          <div class="actions">
+            <UButton v-if="editingMyShopItemId" color="primary" @click="saveMyShopItem">
+              {{ $t("userGuild.myShop.saveItem") }}
+            </UButton>
+            <UButton v-else color="primary" variant="outline" @click="addMyShopItem">
+              {{ $t("userGuild.myShop.addItem") }}
+            </UButton>
+            <UButton v-if="editingMyShopItemId" color="neutral" variant="outline" @click="cancelEditMyShopItem">
+              {{ $t("common.cancel") }}
+            </UButton>
+          </div>
           <div v-if="!myShopItems.length" class="muted" style="margin-top: 14px;">
             {{ $t("userGuild.myShop.emptyItems") }}
           </div>
@@ -424,9 +433,14 @@
                   {{ $t("userGuild.myShop.stock", { count: item.stock }) }}
                 </div>
               </div>
-              <UButton color="error" variant="outline" size="sm" @click="removeMyShopItem(item)">
-                {{ $t("userGuild.myShop.deleteItem") }}
-              </UButton>
+              <div class="item-actions">
+                <UButton color="primary" variant="outline" size="sm" @click="startEditMyShopItem(item)">
+                  {{ $t("userGuild.myShop.editItem") }}
+                </UButton>
+                <UButton color="error" variant="outline" size="sm" @click="removeMyShopItem(item)">
+                  {{ $t("userGuild.myShop.deleteItem") }}
+                </UButton>
+              </div>
             </div>
           </div>
         </UCard>
@@ -1047,6 +1061,26 @@ const myItemForm = reactive({
   stock: "",
   description: "",
   image_url: ""
+});
+const editingMyShopItemId = ref(null);
+
+const resetMyItemForm = () => {
+  myItemForm.name = "";
+  myItemForm.type = myShopAllowedTypes.value[0] || "inventory";
+  myItemForm.price = 1;
+  myItemForm.stock = "";
+  myItemForm.description = "";
+  myItemForm.image_url = "";
+  editingMyShopItemId.value = null;
+};
+
+const buildMyShopItemPayload = () => ({
+  name: myItemForm.name,
+  type: myItemForm.type,
+  price: Number(myItemForm.price || 0),
+  stock: myItemForm.stock === "" || myItemForm.stock === null ? null : Number(myItemForm.stock),
+  description: myItemForm.description || null,
+  image_url: String(myItemForm.image_url || "").trim() || null
 });
 
 const userShopsEntitled = computed(() => {
@@ -1684,33 +1718,58 @@ const deleteMyShop = async () => {
 
 const addMyShopItem = async () => {
   myShopStatus.value = "";
-  const data = {
-    name: myItemForm.name,
-    type: myItemForm.type,
-    price: Number(myItemForm.price || 0),
-    stock: myItemForm.stock === "" || myItemForm.stock === null ? null : Number(myItemForm.stock),
-    description: myItemForm.description || null,
-    image_url: String(myItemForm.image_url || "").trim() || null
-  };
   const res = await fetchJson(`${config.public.apiBase}/api/user/guilds/${guildId}/user-shops/mine/items`, {
     method: "POST",
-    body: JSON.stringify(data)
+    body: JSON.stringify(buildMyShopItemPayload())
   });
   if (!res?.ok) {
     myShopStatus.value = t("userGuild.myShop.statusError");
     return;
   }
-  myItemForm.name = "";
-  myItemForm.price = 1;
-  myItemForm.stock = "";
-  myItemForm.description = "";
-  myItemForm.image_url = "";
+  resetMyItemForm();
+  myShopStatus.value = t("userGuild.myShop.statusOk");
+  await loadMyShop();
+};
+
+const startEditMyShopItem = (item) => {
+  if (!item?.id) return;
+  editingMyShopItemId.value = String(item.id);
+  myItemForm.name = item.name || "";
+  myItemForm.type = myShopAllowedTypes.value.includes(item.type) ? item.type : myShopAllowedTypes.value[0] || "inventory";
+  myItemForm.price = Number(item.price || 1);
+  myItemForm.stock = item.stock === null || item.stock === undefined ? "" : Number(item.stock);
+  myItemForm.description = item.description || "";
+  myItemForm.image_url = item.image_url || "";
+};
+
+const cancelEditMyShopItem = () => {
+  resetMyItemForm();
+};
+
+const saveMyShopItem = async () => {
+  if (!editingMyShopItemId.value) return;
+  myShopStatus.value = "";
+  const res = await fetchJson(
+    `${config.public.apiBase}/api/user/guilds/${guildId}/user-shops/mine/items/${editingMyShopItemId.value}`,
+    {
+      method: "PUT",
+      body: JSON.stringify(buildMyShopItemPayload())
+    }
+  );
+  if (!res?.ok) {
+    myShopStatus.value = t("userGuild.myShop.statusError");
+    return;
+  }
+  resetMyItemForm();
   myShopStatus.value = t("userGuild.myShop.statusOk");
   await loadMyShop();
 };
 
 const removeMyShopItem = async (item) => {
   if (!item?.id) return;
+  if (String(editingMyShopItemId.value) === String(item.id)) {
+    resetMyItemForm();
+  }
   const res = await fetchJson(
     `${config.public.apiBase}/api/user/guilds/${guildId}/user-shops/mine/items/${item.id}`,
     { method: "DELETE" }

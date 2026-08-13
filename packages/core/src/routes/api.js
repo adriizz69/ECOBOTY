@@ -1259,13 +1259,11 @@ apiRouter.delete("/guilds/:id/twitch/linked-users/:discordId", async (req, res) 
     const discordId = String(req.params.discordId || "").trim();
     if (!discordId) return res.status(400).json({ error: "missing_params" });
 
+    const { clearUserTwitchLink } = await import("../services/discord-twitch-link.js");
     const user = await db("users").where({ discord_id: discordId }).first();
     if (!user) return res.status(404).json({ error: "user_not_found" });
 
-    await db("users").where({ discord_id: discordId }).update({
-      twitch_id: null,
-      twitch_login: null
-    });
+    const cleared = await clearUserTwitchLink(discordId, { reason: "admin_unlink" });
 
     if (user.twitch_login) {
       await db("twitch_activity")
@@ -1274,7 +1272,7 @@ apiRouter.delete("/guilds/:id/twitch/linked-users/:discordId", async (req, res) 
         .del();
     }
 
-    return res.json({ ok: true });
+    return res.json({ ok: true, cleared: Boolean(cleared.cleared) });
   } catch (error) {
     return res.status(400).json({ error: error.message || "twitch_unlink_failed" });
   }

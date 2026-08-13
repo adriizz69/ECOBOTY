@@ -5,6 +5,10 @@ import { saveTwitchSettings } from "../services/twitch.js";
 import { startTwitchListener } from "../services/twitch.js";
 import { recordAchievementEvent } from "../services/achievements.js";
 import { insertAdminLog } from "../services/admin.js";
+import {
+  clearUserTwitchLink,
+  syncTwitchLinkFromDiscordConnections
+} from "../services/discord-twitch-link.js";
 
 export const authRouter = Router();
 const jwtTtl = String(process.env.API_JWT_TTL || "30d").trim() || "30d";
@@ -218,6 +222,17 @@ authRouter.get("/discord/callback", async (req, res) => {
       twitchConnection = null;
     }
 
+    // If Discord no longer has the linked Twitch connection, drop EcoBoty binding.
+    if (connectionsFetched && user?.id) {
+      try {
+        await syncTwitchLinkFromDiscordConnections(user.id, twitchConnections, {
+          connectionsFetched: true
+        });
+      } catch (error) {
+        console.warn("[auth] twitch connection sync failed", error?.message || error);
+      }
+    }
+
     const existing = await db("users").where({ discord_id: user.id }).first();
     const previousTwitchId = existing?.twitch_id || null;
     const previousTwitchLogin = existing?.twitch_login || null;
@@ -228,13 +243,15 @@ authRouter.get("/discord/callback", async (req, res) => {
       const hintLogin = String(state.twitchLogin || "").toLowerCase();
       const connectedLogin = twitchLogin ? String(twitchLogin).toLowerCase() : "";
       const previousLogin = previousTwitchLogin ? String(previousTwitchLogin).toLowerCase() : "";
-      const linkedLogin = connectedLogin || previousLogin || hintLogin;
 
       // Already linked → return to steps (Discord Twitch is the source of truth).
-      if (previousLogin && connectedLogin && previousLogin === connectedLogin) {
+      const sameById =
+        previousTwitchId && twitchId && String(previousTwitchId) === String(twitchId);
+      const sameByLogin = previousLogin && connectedLogin && previousLogin === connectedLogin;
+      if (sameById || sameByLogin) {
         const redirected = await redirectTwitchLinkPage(res, {
           guildId: state.guildId,
-          twitchLogin: previousLogin,
+          twitchLogin: connectedLogin || previousLogin,
           done: true
         });
         if (redirected) return;
@@ -246,6 +263,13 @@ authRouter.get("/discord/callback", async (req, res) => {
         );
       }
       if (!twitchConnection) {
+        if (previousTwitchId || previousTwitchLogin) {
+          try {
+            await clearUserTwitchLink(user.id, { reason: "discord_twitch_connection_missing_on_link" });
+          } catch (error) {
+            console.warn("[auth] clear twitch on missing connection failed", error?.message || error);
+          }
+        }
         const redirected = await redirectTwitchLinkPage(res, {
           guildId: state.guildId,
           twitchLogin: hintLogin,
@@ -346,6 +370,9 @@ authRouter.get("/discord/callback", async (req, res) => {
           guilds_sample: savedGuildsSample || null,
           updated_at: new Date()
         };
+        if (tokenData.refresh_token) {
+          payload.discord_refresh_token = String(tokenData.refresh_token);
+        }
         const existingState = await db("user_oauth_state").where({ discord_id: String(user.id) }).first();
         if (existingState) {
           await db("user_oauth_state").where({ discord_id: String(user.id) }).update(payload);
@@ -491,6 +518,9 @@ authRouter.get("/discord/callback", async (req, res) => {
         guilds_sample: savedGuildsSample || null,
         updated_at: new Date()
       };
+      if (tokenData.refresh_token) {
+        payload.discord_refresh_token = String(tokenData.refresh_token);
+      }
       const existingState = await db("user_oauth_state").where({ discord_id: String(user.id) }).first();
       if (existingState) {
         await db("user_oauth_state").where({ discord_id: String(user.id) }).update(payload);

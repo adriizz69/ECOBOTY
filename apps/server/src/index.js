@@ -16,6 +16,7 @@ const {
   startBirthdayScheduler,
   startAllTwitchListeners,
   startBillingCleanupScheduler,
+  startTwitchLinkSyncScheduler,
   setBotGuildIdsProvider
 } = await import("@ecoboty/core");
 const { startBot, getDiscordClient } = await import("./bot/index.js");
@@ -97,6 +98,11 @@ const server = app.listen(port, () => {
       console.error(`[startup] Database not reachable (${probe.code}): ${probe.message}`);
     } else {
       startBirthdayScheduler();
+      try {
+        startTwitchLinkSyncScheduler();
+      } catch (error) {
+        console.warn(`[twitch-link-sync] scheduler failed: ${error?.message || error}`);
+      }
       try {
         startBillingCleanupScheduler();
       } catch (error) {

@@ -1303,8 +1303,57 @@ export const createUserShopItem = async ({ guildId, ownerDiscordId, shopId, data
   });
 };
 
-export const updateUserShopItem = async () => {
-  throw new Error("user_shop_item_readonly");
+export const updateUserShopItem = async ({
+  guildId,
+  ownerDiscordId,
+  shopId,
+  itemId,
+  data = {}
+}) => {
+  await assertUserShopsFeature(guildId, "shop.user.item_update");
+  const settings = await getUserShopsSettings(guildId);
+  if (!settings.enabled) throw new Error("user_shops_disabled");
+
+  const guild = await ensureGuild(guildId, db);
+  const shop = await db("shops")
+    .where({ id: shopId, guild_id: guild.id, owner_discord_id: String(ownerDiscordId) })
+    .first();
+  if (!shop) throw new Error("shop_not_found");
+
+  const item = await db("shop_items").where({ id: itemId, shop_id: shop.id }).first();
+  if (!item) throw new Error("item_not_found");
+
+  const payload = {};
+  if (Object.prototype.hasOwnProperty.call(data, "name")) {
+    const name = String(data.name || "").trim();
+    if (!name) throw new Error("missing_name");
+    payload.name = name;
+  }
+  if (Object.prototype.hasOwnProperty.call(data, "type")) {
+    const itemType = String(data.type || "").toLowerCase();
+    if (!USER_SHOP_TYPE_ALLOWLIST.includes(itemType)) throw new Error("item_type_not_allowed");
+    if (!settings.allowedTypes.includes(itemType)) throw new Error("item_type_not_allowed");
+    payload.type = itemType;
+  }
+  if (Object.prototype.hasOwnProperty.call(data, "price")) {
+    const price = Math.max(0, Number(data.price || 0));
+    if (!Number.isFinite(price) || price <= 0) throw new Error("invalid_price");
+    payload.price = price;
+  }
+  if (Object.prototype.hasOwnProperty.call(data, "stock")) {
+    payload.stock =
+      data.stock === null || data.stock === undefined || data.stock === "" ? null : Number(data.stock);
+  }
+  if (Object.prototype.hasOwnProperty.call(data, "description")) {
+    payload.description = data.description || null;
+  }
+  if (Object.prototype.hasOwnProperty.call(data, "image_url")) {
+    payload.image_url = data.image_url || null;
+  }
+
+  if (!Object.keys(payload).length) throw new Error("nothing_to_update");
+
+  return updateItem(shop.id, itemId, payload);
 };
 
 export const deleteUserShopItem = async ({

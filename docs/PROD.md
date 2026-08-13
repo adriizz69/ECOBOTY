@@ -26,6 +26,7 @@ PORT=4000
 BASE_URL=https://ecoboty.eu
 API_BASE=
 DISCORD_REDIRECT_URI=https://ecoboty.eu/auth/discord/callback
+DISCORD_PUBLIC_KEY=... # Developer Portal → General Information
 TWITCH_REDIRECT_URI=https://ecoboty.eu/auth/twitch/callback
 TWITCH_EVENTSUB_CALLBACK=https://ecoboty.eu/twitch/eventsub
 PREMIUM_FEATURE_ENFORCEMENT_MODE=warn
@@ -36,8 +37,10 @@ Puis `enforce` après validation.
 ## Hors code (une fois)
 
 1. Discord OAuth redirect → `ecoboty.eu`
-2. Twitch OAuth + EventSub → `ecoboty.eu`
-3. Stripe webhook → `https://ecoboty.eu/webhooks/stripe`
+2. Discord Event Webhooks → `https://ecoboty.eu/webhooks/discord` + event `APPLICATION_DEAUTHORIZED` (+ `DISCORD_PUBLIC_KEY` dans `.env`)
+3. Migration `091` + redémarrage API (sync auto des déliaisons Twitch dans Connexions Discord)
+4. Twitch OAuth + EventSub → `ecoboty.eu`
+5. Stripe webhook → `https://ecoboty.eu/webhooks/stripe`
 4. Couper `api.ecoboty.eu` + bot VPS + anciens repos
 
 ## Vérifs smoke

@@ -6,7 +6,7 @@ import {
   getOrCreateTwitchDailySettings
 } from "./economy.js";
 import { getGamesSettings } from "./games.js";
-import { listShops } from "./shop.js";
+import { listShops, getUserShopsSettings } from "./shop.js";
 import { getTwitchSettings, getTwitchAutomationConfig } from "./twitch.js";
 import { getBotSettings } from "./admin.js";
 import { isGuildFeatureEnabled } from "./billing-entitlements.js";
@@ -68,6 +68,8 @@ const i18n = {
     cmdLeaderboard: "/classement",
     cmdGames: "/jeux",
     cmdDaily: "/daily",
+    cmdShopMember: "/boutique @membre",
+    cmdShopMemberHelp: "voir et acheter dans la boutique d'un membre",
     separator: "------------------------------",
     titleUnderline: "------------------------------",
     gamesLine: ":tada: **Mini‑jeux** → gains et pertes selon la mise",
@@ -127,9 +129,9 @@ const i18n = {
     cmdLeaderboard: "/leaderboard",
     cmdGames: "/games",
     cmdDaily: "/daily",
+    cmdShopMember: "/shop @member",
+    cmdShopMemberHelp: "view and buy from a member's shop",
     separator: "------------------------------",
-    titleUnderline: "------------------------------",
-    gamesLine: ":tada: **Mini‑games** → wins/losses based on your bet",
     boostsTitle: ":gem: **Role boosts**",
     boostsNone: "No role boosts",
     channelBoostsTitle: "SERVER TAG",
@@ -186,9 +188,9 @@ const i18n = {
     cmdLeaderboard: "/clasificacion",
     cmdGames: "/juegos",
     cmdDaily: "/diario",
+    cmdShopMember: "/tienda @miembro",
+    cmdShopMemberHelp: "ver y comprar en la tienda de un miembro",
     separator: "------------------------------",
-    titleUnderline: "------------------------------",
-    gamesLine: ":tada: **Mini‑juegos** → ganancias o perdidas segun la apuesta",
     boostsTitle: ":gem: **Boosts de roles**",
     boostsNone: "Sin boosts de roles",
     channelBoostsTitle: "TAG SERVIDOR",
@@ -268,7 +270,8 @@ export const getInfoMessageSettings = async (guildId) => {
       sections: DEFAULT_SECTIONS,
       shop_ids: [],
       include_game_chances: false,
-      include_shop_discounts: true
+      include_shop_discounts: true,
+      include_user_shop_command: false
     };
   }
   const messageIds = normalizeMessageIds(parseJsonField(row.message_ids, []), row.message_id);
@@ -279,7 +282,8 @@ export const getInfoMessageSettings = async (guildId) => {
     sections: normalizeSections(parseJsonField(row.sections, DEFAULT_SECTIONS)),
     shop_ids: normalizeShopIds(parseJsonField(row.shop_ids, [])),
     include_game_chances: row.include_game_chances === true,
-    include_shop_discounts: row.include_shop_discounts !== false
+    include_shop_discounts: row.include_shop_discounts !== false,
+    include_user_shop_command: row.include_user_shop_command === true
   };
 };
 
@@ -295,6 +299,7 @@ export const saveInfoMessageSettings = async (guildId, data = {}) => {
     shop_ids: JSON.stringify(normalizeShopIds(data.shop_ids)),
     include_game_chances: Boolean(data.include_game_chances),
     include_shop_discounts: data.include_shop_discounts !== false,
+    include_user_shop_command: Boolean(data.include_user_shop_command),
     updated_at: new Date()
   };
   if (payload.message_ids === undefined) delete payload.message_ids;
@@ -337,6 +342,7 @@ export const updateInfoMessageMessageIds = async (guildId, messageIds = []) => {
       shop_ids: JSON.stringify([]),
       include_game_chances: false,
       include_shop_discounts: true,
+      include_user_shop_command: false,
       created_at: new Date(),
       ...payload
     });
@@ -607,6 +613,15 @@ export const buildInfoMessage = async ({ guildId, settings, allowLong = false })
     parts.push(`- **\`${dict.cmdDaily}\`** → ${dict.dailyBase}`);
     parts.push(`- **\`${dict.cmdLeaderboard}\`** → classement des plus riches`);
     parts.push(`- **\`${dict.cmdGames}\`** → mini‑jeux de paris`);
+    const userShopsEnabled = await isGuildFeatureEnabled(guildId, "economy_user_shops");
+    const userShopSettings = userShopsEnabled ? await getUserShopsSettings(guildId).catch(() => null) : null;
+    if (
+      settings.include_user_shop_command === true &&
+      userShopsEnabled &&
+      userShopSettings?.enabled
+    ) {
+      parts.push(`- **\`${dict.cmdShopMember}\`** → ${dict.cmdShopMemberHelp}`);
+    }
     parts.push(dict.separator);
   }
 

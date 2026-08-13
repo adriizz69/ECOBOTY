@@ -914,6 +914,16 @@
               <span class="slider"></span>
             </label>
           </div>
+          <div v-if="communityUserShopsAvailable" class="community-command-actions">
+            <span class="muted small">{{ $t("adminGuild.communityMessage.userShopCommandHelp") }}</span>
+            <button
+              type="button"
+              :class="['tab-pill', communityMessageIncludeUserShopCommand && 'active']"
+              @click="toggleCommunityUserShopCommand"
+            >
+              {{ $t("adminGuild.communityMessage.addUserShopCommand") }}
+            </button>
+          </div>
         </div>
 
         <div class="sub-card">
@@ -4543,6 +4553,7 @@ const communityMessageSections = ref(
 const communityMessageShopIds = ref([]);
 const communityMessageIncludeGameChances = ref(false);
 const communityMessageIncludeShopDiscounts = ref(true);
+const communityMessageIncludeUserShopCommand = ref(false);
 const communityMessageMessageId = ref(null);
 const communityMessageMessageIds = ref([]);
 const communityMessagePreview = ref("");
@@ -4566,6 +4577,19 @@ const communitySectionOptions = computed(() => [
   { key: "summary", label: t("adminGuild.communityMessage.sections.summary") }
 ]);
 const communityMessagePreviewHtml = computed(() => formatCommunityPreview(communityMessagePreview.value));
+const communityUserShopsAvailable = computed(
+  () => Boolean(userShopsSettings.enabled && hasBillingFeature("economy_user_shops"))
+);
+
+const toggleCommunityUserShopCommand = () => {
+  communityMessageIncludeUserShopCommand.value = !communityMessageIncludeUserShopCommand.value;
+  if (
+    communityMessageIncludeUserShopCommand.value &&
+    !communityMessageSections.value.includes("commands")
+  ) {
+    communityMessageSections.value = [...communityMessageSections.value, "commands"];
+  }
+};
 const logsHeading = computed(() => {
   if (logsCategoryTab.value === "transactions") return t("adminGuild.logs.headings.transactions");
   if (logsCategoryTab.value === "games") return t("adminGuild.logs.headings.games");
@@ -6229,7 +6253,9 @@ const buildCommunityMessagePayload = () => ({
   sections: communityMessageSections.value || [],
   shop_ids: communityMessageShopIds.value || [],
   include_game_chances: Boolean(communityMessageIncludeGameChances.value),
-  include_shop_discounts: communityMessageIncludeShopDiscounts.value !== false
+  include_shop_discounts: communityMessageIncludeShopDiscounts.value !== false,
+  include_user_shop_command:
+    communityUserShopsAvailable.value && Boolean(communityMessageIncludeUserShopCommand.value)
 });
 
 const applyCommunityMessageSettings = (settings = {}, { missingDetected = false } = {}) => {
@@ -6241,6 +6267,7 @@ const applyCommunityMessageSettings = (settings = {}, { missingDetected = false 
   communityMessageShopIds.value = Array.isArray(settings.shop_ids) ? settings.shop_ids.map(String) : [];
   communityMessageIncludeGameChances.value = Boolean(settings.include_game_chances);
   communityMessageIncludeShopDiscounts.value = settings.include_shop_discounts !== false;
+  communityMessageIncludeUserShopCommand.value = Boolean(settings.include_user_shop_command);
   const messageIds = Array.isArray(settings.message_ids)
     ? settings.message_ids.map(String).filter(Boolean)
     : settings.message_id
@@ -6436,13 +6463,18 @@ watch(
     communityMessageSections,
     communityMessageShopIds,
     communityMessageIncludeGameChances,
-    communityMessageIncludeShopDiscounts
+    communityMessageIncludeShopDiscounts,
+    communityMessageIncludeUserShopCommand
   ],
   () => {
     scheduleCommunityPreview();
   },
   { deep: true }
 );
+
+watch(communityUserShopsAvailable, (available) => {
+  if (!available) communityMessageIncludeUserShopCommand.value = false;
+});
 
 watch(
   () => [billingReady.value, billingFeatures.value.community_message_sections],
@@ -6821,6 +6853,16 @@ const loadShops = async () => {
   if (!newItem.shopId && shops.value.length) {
     newItem.shopId = String(shops.value[0].id);
   }
+};
+
+const loadUserShopsSettingsLight = async () => {
+  const token = getToken();
+  const res = await fetch(`${config.public.apiBase}/api/guilds/${id}/user-shops/settings`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (handleUnauthorized(res) || !res.ok) return;
+  const data = await parseJsonSafe(res, {});
+  userShopsSettings.enabled = Boolean(data.settings?.enabled);
 };
 
 const loadAdminUserShops = async () => {
@@ -8592,6 +8634,7 @@ const loadTabData = async (tab, { force = false } = {}) => {
     if (tab === "communityMessage") {
       await loadChannelsOnce();
       await loadShops();
+      await loadUserShopsSettingsLight();
       await loadCommunityMessage({ force: true });
       loadedTabs.communityMessage = true;
       return;
@@ -10182,6 +10225,14 @@ label {
 }
 
 .tab,
+.community-command-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
 .tab-pill,
 .chip,
 .pill,
