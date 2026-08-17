@@ -270,8 +270,13 @@ export const playGame = async ({ guildId, userId, gameId, bet, choice, cashout }
   if (!game || game.enabled === false) return { ok: false, reason: "game_disabled" };
 
   const betValue = Number(bet || 0);
-  if (betValue < Number(settings.minBet || 0)) return { ok: false, reason: "min_bet" };
-  if (betValue > Number(settings.maxBet || 0)) return { ok: false, reason: "max_bet" };
+  const minBet = Number(settings.minBet || 0);
+  const maxBet = Number(settings.maxBet || 0);
+  if (!Number.isFinite(betValue) || betValue <= 0) {
+    return { ok: false, reason: "invalid_bet", minBet, maxBet };
+  }
+  if (betValue < minBet) return { ok: false, reason: "min_bet", minBet, maxBet };
+  if (maxBet > 0 && betValue > maxBet) return { ok: false, reason: "max_bet", minBet, maxBet };
 
   const key = getCooldownKey(guildId, userId);
   const lastAt = cooldownMap.get(key) || 0;

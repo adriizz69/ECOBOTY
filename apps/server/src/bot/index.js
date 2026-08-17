@@ -1832,7 +1832,28 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const data = await res.json();
       if (!res.ok || !data.ok) {
         const reason = data.reason || data.error || "unknown";
-        return interaction.reply({ content: tr("game.impossible", { reason }), flags: MessageFlags.Ephemeral });
+        const settingsRes = await fetch(`${apiBase}/bot/economy/settings?guildId=${interaction.guildId}`, {
+          headers: { "x-api-key": apiKey }
+        }).catch(() => null);
+        const settingsData = settingsRes ? await settingsRes.json().catch(() => ({})) : {};
+        const currencyEmoji = settingsData?.emoji || "💰";
+        const maxBet = Number(data.maxBet || 0);
+        const minBet = Number(data.minBet || 0);
+        let message = tr("game.impossible", { reason });
+        if (reason === "max_bet") {
+          message = tr("game.maxBet", { max: maxBet || "?", emoji: currencyEmoji });
+        } else if (reason === "min_bet") {
+          message = tr("game.minBet", { min: minBet || "?", emoji: currencyEmoji });
+        } else if (reason === "invalid_bet") {
+          message = tr("game.betInvalid");
+        } else if (reason === "insufficient_funds" || reason === "insufficient_balance") {
+          message = tr("game.insufficientFunds");
+        } else if (reason === "cooldown") {
+          message = tr("game.cooldown");
+        } else if (reason === "games_disabled" || reason === "game_disabled") {
+          message = tr("game.disabled");
+        }
+        return interaction.reply({ content: message, flags: MessageFlags.Ephemeral });
       }
 
       const settingsRes = await fetch(`${apiBase}/bot/economy/settings?guildId=${interaction.guildId}`, {

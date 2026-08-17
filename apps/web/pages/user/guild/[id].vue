@@ -910,8 +910,14 @@
         <div class="grid">
           <label>
             {{ $t("userGuild.games.bet") }}
-            <input v-model.number="gameBet" type="number" min="1" />
+            <input
+              v-model.number="gameBet"
+              type="number"
+              :min="activeGame?.minBet || 1"
+              :max="activeGame?.maxBet || undefined"
+            />
           </label>
+          <p v-if="gameBetStatus" class="warn small" style="grid-column: 1 / -1;">{{ gameBetStatus }}</p>
           <label v-if="activeGame?.choiceType === 'select'">
             {{ $t("userGuild.games.choice") }}
             <EbSelect v-model="gameChoice" :items="gameChoiceItems" :searchable="false" />
@@ -929,7 +935,7 @@
           <UButton color="neutral" variant="outline" @click="closeGameModal">{{ $t("common.cancel") }}</UButton>
           <UButton
             color="primary"
-            :disabled="gamePlaying || gameCooldownRemaining > 0"
+            :disabled="gamePlaying || gameCooldownRemaining > 0 || Boolean(gameBetStatus)"
             @click="playGameAction"
           >
             {{
@@ -945,10 +951,18 @@
     </div>
     <div v-if="gameResultModal" class="modal">
       <UCard class="modal-card">
-        <h3>{{ gameResultData?.win ? $t("userGuild.games.win") : $t("userGuild.games.lose") }}</h3>
+        <h3>
+          {{
+            gameResultData?.error
+              ? $t("userGuild.games.blockedTitle")
+              : gameResultData?.win
+                ? $t("userGuild.games.win")
+                : $t("userGuild.games.lose")
+          }}
+        </h3>
         <p class="muted">
           <span v-if="gameResultData?.label">{{ gameResultData.label }}</span>
-          <span v-if="gameResultData?.amount !== undefined">
+          <span v-if="!gameResultData?.error && gameResultData?.amount !== undefined">
             {{ gameResultData.amount }}
             <img v-if="currencyIconUrl" :src="currencyIconUrl" class="currency-icon" alt="" />
             <span v-else>{{ currencySymbol }}</span>
@@ -1162,6 +1176,48 @@ const gameResultModal = ref(false);
 const gameResultData = ref(null);
 const gameCooldownUntil = ref(null);
 const cooldownTick = ref(0);
+
+const gameBetStatus = computed(() => {
+  if (!activeGame.value) return "";
+  const bet = Number(gameBet.value || 0);
+  const minBet = Number(activeGame.value.minBet || 0);
+  const maxBet = Number(activeGame.value.maxBet || 0);
+  if (!Number.isFinite(bet) || bet <= 0) return t("userGuild.games.betInvalid");
+  if (minBet > 0 && bet < minBet) {
+    return t("userGuild.games.betBelowMin", { min: minBet });
+  }
+  if (maxBet > 0 && bet > maxBet) {
+    return t("userGuild.games.betAboveMax", { max: maxBet });
+  }
+  return "";
+});
+
+const resolveGamePlayError = (payload = {}) => {
+  const reason = String(payload.reason || payload.error || "").trim();
+  if (reason === "max_bet") {
+    return t("userGuild.games.betAboveMax", {
+      max: Number(payload.maxBet || activeGame.value?.maxBet || gamesSettings.value?.maxBet || 0)
+    });
+  }
+  if (reason === "min_bet") {
+    return t("userGuild.games.betBelowMin", {
+      min: Number(payload.minBet || activeGame.value?.minBet || gamesSettings.value?.minBet || 0)
+    });
+  }
+  if (reason === "invalid_bet") {
+    return t("userGuild.games.betInvalid");
+  }
+  if (reason === "insufficient_funds" || reason === "insufficient_balance") {
+    return t("userGuild.games.insufficientFunds");
+  }
+  if (reason === "cooldown") {
+    return t("userGuild.games.cooldownActive");
+  }
+  if (reason === "games_disabled" || reason === "game_disabled") {
+    return t("userGuild.games.disabled");
+  }
+  return t("userGuild.games.playError");
+};
 const rouletteRotation = ref(0);
 const rouletteSpinDurationMs = 4000;
 const coinAudio = ref(null);
@@ -2225,6 +2281,12 @@ const closeGameModal = () => {
 
 const playGameAction = async () => {
   if (!activeGame.value) return;
+  const betError = gameBetStatus.value;
+  if (betError) {
+    gameResultData.value = { win: false, error: true, label: betError };
+    gameResultModal.value = true;
+    return;
+  }
   const defaultCooldownSeconds = Number(gamesSettings.value?.cooldownSeconds || 0);
   gameCooldownUntil.value = defaultCooldownSeconds > 0 ? Date.now() + defaultCooldownSeconds * 1000 : null;
   if (activeGame.value.id === "flip") {
@@ -2259,7 +2321,8 @@ const playGameAction = async () => {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
   });
-  if (res?.ok) {
+  const playOk = Boolean(res?.ok && res.data?.ok);
+  if (playOk) {
     const rawWin = res.data?.win;
     const win =
       rawWin === true ||
@@ -2358,6 +2421,7 @@ const playGameAction = async () => {
     await refreshAll();
   } else {
     gamePlaying.value = false;
+    gameCooldownUntil.value = null;
     if (activeGame.value?.id === "dice") {
       diceResultFace.value = 1;
     }
@@ -2373,26 +2437,20 @@ const playGameAction = async () => {
       doubleSpinning.value = false;
       doubleSpinKey.value += 1;
     }
-    if (res?.reason === "cooldown" || res?.retryIn) {
-      const retrySeconds = Number(res?.retryIn || 0) || Number(gamesSettings.value?.cooldownSeconds || 0);
+    const payloadError = res?.data || {};
+    if (payloadError.reason === "cooldown" || payloadError.retryIn) {
+      const retrySeconds = Number(payloadError.retryIn || 0) || Number(gamesSettings.value?.cooldownSeconds || 0);
       if (retrySeconds > 0) {
         gameCooldownUntil.value = Date.now() + retrySeconds * 1000;
       }
     }
-    const revealPauseMs = activeGame.value?.id === "dice" || activeGame.value?.id === "flip" ? 900 : 0;
-    setTimeout(async () => {
-      gameResultData.value = { win: false, label: t("userGuild.games.playError") };
-      gameModalOpen.value = false;
-      gameResultModal.value = true;
-      try {
-        if (loseAudio.value) {
-          loseAudio.value.currentTime = 0;
-          await loseAudio.value.play();
-        }
-      } catch {
-        // ignore audio errors
-      }
-    }, revealPauseMs);
+    gameResultData.value = {
+      win: false,
+      error: true,
+      label: resolveGamePlayError(payloadError)
+    };
+    gameModalOpen.value = false;
+    gameResultModal.value = true;
   }
 };
 
@@ -2784,6 +2842,13 @@ onBeforeUnmount(() => {
 }
 .small {
   font-size: 12px;
+}
+.warn {
+  color: #f59e0b;
+  margin: 0;
+}
+.warn.small {
+  color: #f59e0b;
 }
 .card {
   background: var(--surface);
@@ -3984,6 +4049,10 @@ textarea:focus {
 :global(body.theme-light) .meta,
 :global(body.theme-light) .small {
   color: var(--text-muted);
+}
+:global(body.theme-light) .warn,
+:global(body.theme-light) .warn.small {
+  color: #d97706;
 }
 :global(body.theme-light) input,
 :global(body.theme-light) select,
