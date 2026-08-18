@@ -23,6 +23,50 @@ const resolveIntervalKeyFromPriceMetadata = (metadata = {}) => {
   return null;
 };
 
+const resolveIntervalKeyFromRecurring = (recurring = null) => {
+  if (!recurring) return null;
+  const interval = String(recurring.interval || "").toLowerCase();
+  const count = Math.max(1, Number(recurring.interval_count || 1));
+  if (interval === "year") return "yearly";
+  if (interval === "month") {
+    if (count >= 12) return "yearly";
+    if (count === 3) return "quarterly";
+    if (count === 1) return "monthly";
+  }
+  return null;
+};
+
+const resolveIntervalKeyFromMetadataInterval = (metadata = {}) => {
+  const raw = String(metadata.ecoboty_interval || "").toLowerCase().trim();
+  if (raw === "yearly" || raw === "year" || raw === "annual") return "yearly";
+  if (raw === "quarterly" || raw === "quarter") return "quarterly";
+  if (raw === "monthly" || raw === "month") return "monthly";
+  return null;
+};
+
+/** Résout monthly | quarterly | yearly depuis le prix Stripe + métadonnées abo. */
+export const resolveSubscriptionIntervalKey = ({ price = null, metadata = {} } = {}) =>
+  resolveIntervalKeyFromRecurring(price?.recurring) ||
+  resolveIntervalKeyFromPriceMetadata(price?.metadata || {}) ||
+  resolveIntervalKeyFromMetadataInterval(metadata) ||
+  resolveIntervalKeyFromPriceMetadata(metadata) ||
+  null;
+
+const resolveSubscriptionPrice = async (subscription) => {
+  let price = subscription?.items?.data?.[0]?.price ?? null;
+  if (!price) return null;
+  if (typeof price === "object" && price.recurring) return price;
+  const priceId = typeof price === "string" ? price : price?.id || null;
+  if (!priceId || !isStripeConfigured()) {
+    return typeof price === "object" ? price : null;
+  }
+  try {
+    return await getStripeClient().prices.retrieve(String(priceId));
+  } catch {
+    return typeof price === "object" ? price : null;
+  }
+};
+
 export const resolveGuildIdFromMetadata = (metadata = {}) =>
   normalizeGuildId(metadata.ecoboty_entity_id || metadata.guild_discord_id);
 
@@ -41,9 +85,24 @@ const ensureSubscriptionGuildMetadata = async (subscription, { guildId, sessionM
       ),
       ecoboty_entity_type: "guild",
       ecoboty_entity_id: guildId,
-      ecoboty_price_key: String(
-        sessionMetadata.ecoboty_price_key || subscription.metadata?.ecoboty_price_key || "premium_monthly"
-      )
+      ...(String(
+        sessionMetadata.ecoboty_price_key || subscription.metadata?.ecoboty_price_key || ""
+      ).trim()
+        ? {
+            ecoboty_price_key: String(
+              sessionMetadata.ecoboty_price_key || subscription.metadata?.ecoboty_price_key
+            )
+          }
+        : {}),
+      ...(String(
+        sessionMetadata.ecoboty_interval || subscription.metadata?.ecoboty_interval || ""
+      ).trim()
+        ? {
+            ecoboty_interval: String(
+              sessionMetadata.ecoboty_interval || subscription.metadata?.ecoboty_interval
+            )
+          }
+        : {})
     }
   });
 };
@@ -99,19 +158,25 @@ export const syncSubscriptionFromStripeObject = async (subscription) => {
   if (!guildId) return null;
 
   const status = String(subscription.status || "free").toLowerCase();
-  const price = subscription.items?.data?.[0]?.price || null;
+  const price = await resolveSubscriptionPrice(subscription);
   const priceMetadata = price?.metadata || {};
   const planKey = ACTIVE_STATUSES.has(status)
     ? String(metadata.ecoboty_plan_key || priceMetadata.ecoboty_plan_key || "premium")
     : "free";
+  const priceId =
+    (typeof subscription?.items?.data?.[0]?.price === "string"
+      ? subscription.items.data[0].price
+      : null) ||
+    price?.id ||
+    null;
 
   return upsertGuildSubscriptionCache({
     guildDiscordId: guildId,
     stripeSubscriptionId: subscription.id || null,
-    stripePriceId: price?.id || null,
+    stripePriceId: priceId,
     planKey: ACTIVE_STATUSES.has(status) ? planKey : "free",
     status,
-    intervalKey: resolveIntervalKeyFromPriceMetadata(priceMetadata) || resolveIntervalKeyFromPriceMetadata(metadata),
+    intervalKey: resolveSubscriptionIntervalKey({ price, metadata }),
     currentPeriodStart: parseDate(subscription.current_period_start),
     currentPeriodEnd: parseDate(subscription.current_period_end),
     cancelAtPeriodEnd: Boolean(subscription.cancel_at_period_end),
@@ -182,7 +247,9 @@ export const handleStripeWebhookEvent = async (event) => {
     case "checkout.session.completed": {
       if (object?.subscription && isStripeConfigured()) {
         const stripe = getStripeClient();
-        let subscription = await stripe.subscriptions.retrieve(String(object.subscription));
+        let subscription = await stripe.subscriptions.retrieve(String(object.subscription), {
+          expand: ["items.data.price"]
+        });
         const checkoutGuildId =
           resolveGuildIdFromMetadata(subscription.metadata) ||
           resolveGuildIdFromMetadata(object.metadata) ||
@@ -200,15 +267,27 @@ export const handleStripeWebhookEvent = async (event) => {
     case "customer.subscription.created":
     case "customer.subscription.updated":
     case "customer.subscription.deleted": {
-      await syncSubscriptionFromStripeObject(object);
+      let subscriptionObject = object;
+      if (eventType !== "customer.subscription.deleted" && object?.id && isStripeConfigured()) {
+        try {
+          subscriptionObject = await getStripeClient().subscriptions.retrieve(String(object.id), {
+            expand: ["items.data.price"]
+          });
+        } catch {
+          subscriptionObject = object;
+        }
+      }
+      await syncSubscriptionFromStripeObject(subscriptionObject);
       if (eventType === "customer.subscription.deleted") {
         const deletedGuildId = resolveGuildIdFromMetadata(object?.metadata || {});
         if (deletedGuildId) {
           await downgradeGuildPremium(deletedGuildId, "subscription_deleted");
         }
       } else {
-        const status = String(object?.status || "").toLowerCase();
-        const updatedGuildId = resolveGuildIdFromMetadata(object?.metadata || {});
+        const status = String(subscriptionObject?.status || object?.status || "").toLowerCase();
+        const updatedGuildId = resolveGuildIdFromMetadata(
+          subscriptionObject?.metadata || object?.metadata || {}
+        );
         if (updatedGuildId && !ACTIVE_STATUSES.has(status)) {
           await upsertDowngradeCleanupJob({
             guildDiscordId: updatedGuildId,
@@ -232,7 +311,9 @@ export const handleStripeWebhookEvent = async (event) => {
       const subscriptionId = invoice?.subscription ? String(invoice.subscription) : null;
       if (!subscriptionId) break;
 
-      const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+      const subscription = await stripe.subscriptions.retrieve(subscriptionId, {
+        expand: ["items.data.price"]
+      });
       const refundedGuildId = resolveGuildIdFromMetadata(subscription?.metadata || {});
       if (!refundedGuildId) break;
 
@@ -250,7 +331,9 @@ export const handleStripeWebhookEvent = async (event) => {
       if (!subscriptionId || !isStripeConfigured()) break;
 
       const stripe = getStripeClient();
-      const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+      const subscription = await stripe.subscriptions.retrieve(subscriptionId, {
+        expand: ["items.data.price"]
+      });
       const voidedGuildId = resolveGuildIdFromMetadata(subscription?.metadata || {});
       if (!voidedGuildId) break;
 
@@ -265,7 +348,9 @@ export const handleStripeWebhookEvent = async (event) => {
       const subscriptionId = object?.subscription ? String(object.subscription) : null;
       if (subscriptionId && isStripeConfigured()) {
         const stripe = getStripeClient();
-        const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+        const subscription = await stripe.subscriptions.retrieve(subscriptionId, {
+          expand: ["items.data.price"]
+        });
         await syncSubscriptionFromStripeObject(subscription);
       }
       break;
@@ -275,7 +360,9 @@ export const handleStripeWebhookEvent = async (event) => {
       let failedGuildId = guildId;
       if (subscriptionId && isStripeConfigured()) {
         const stripe = getStripeClient();
-        const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+        const subscription = await stripe.subscriptions.retrieve(subscriptionId, {
+          expand: ["items.data.price"]
+        });
         await syncSubscriptionFromStripeObject(subscription);
         failedGuildId =
           resolveGuildIdFromMetadata(subscription?.metadata || {}) || failedGuildId;
@@ -338,7 +425,8 @@ export const syncGuildBillingFromStripe = async (guildDiscordId, { payerDiscordI
   const subsList = await stripe.subscriptions.list({
     customer: customerId,
     status: "all",
-    limit: 100
+    limit: 100,
+    expand: ["data.items.data.price"]
   });
 
   for (const sub of subsList.data || []) {
@@ -361,7 +449,9 @@ export const syncGuildBillingFromStripe = async (guildDiscordId, { payerDiscordI
       continue;
     }
 
-    let subscription = await stripe.subscriptions.retrieve(String(session.subscription));
+    let subscription = await stripe.subscriptions.retrieve(String(session.subscription), {
+      expand: ["items.data.price"]
+    });
     subscription = await ensureSubscriptionGuildMetadata(subscription, {
       guildId,
       sessionMetadata: session.metadata || {}

@@ -32,7 +32,15 @@ import {
 } from "../services/billing-checkout.js";
 import { resolveLogsPolicyWindow, getGuildEntitlements, FREE_GAME_MODE_IDS } from "../services/billing-entitlements.js";
 import { isPlatformAdminId } from "../services/platform-admin.js";
-import { maybeRefreshTwitchLinkFromSession } from "../services/twitch-link-sync.js";
+import {
+  bindUserTwitchLink,
+  clearUserTwitchLink,
+  normalizeTwitchLogin
+} from "../services/discord-twitch-link.js";
+import {
+  listDiscordTwitchConnectionsForUser,
+  maybeRefreshTwitchLinkFromSession
+} from "../services/twitch-link-sync.js";
 
 export const userRouter = Router();
 
@@ -244,6 +252,165 @@ userRouter.post("/billing/portal", async (req, res) => {
   } catch (error) {
     const status = Number(error?.status || 400);
     return res.status(status).json({ error: error.message || "user_billing_portal_failed" });
+  }
+});
+
+const getSessionDiscordId = (req) =>
+  String(req.user?.discord_id || req.user?.id || "").replace(/\D/g, "");
+
+const twitchAccountMatches = (account, twitchId, twitchLogin) => {
+  const linkedId = String(twitchId || "").trim();
+  const linkedLogin = normalizeTwitchLogin(twitchLogin);
+  if (linkedId && String(account?.id || "") === linkedId) return true;
+  if (linkedLogin && normalizeTwitchLogin(account?.login) === linkedLogin) return true;
+  return false;
+};
+
+const buildUserTwitchStatus = async (req) => {
+  const discordId = getSessionDiscordId(req);
+  if (!discordId) {
+    const error = new Error("missing_user");
+    error.status = 401;
+    throw error;
+  }
+  if (req.user?.impersonated) {
+    const error = new Error("impersonation_blocked");
+    error.status = 403;
+    throw error;
+  }
+
+  await maybeRefreshTwitchLinkFromSession(req, { force: true, minIntervalMs: 0 }).catch(() => null);
+
+  const user = await db("users").where({ discord_id: discordId }).first();
+  const twitchId = user?.twitch_id ? String(user.twitch_id) : null;
+  const twitchLogin = normalizeTwitchLogin(user?.twitch_login) || null;
+  const linked = Boolean(twitchId || twitchLogin);
+
+  const connections = await listDiscordTwitchConnectionsForUser(discordId, {
+    accessToken: req.user?.access_token || "",
+    refreshToken: req.user?.refresh_token || ""
+  });
+  const discordAccounts = connections.ok ? connections.accounts : [];
+  const discordMatch = linked
+    ? discordAccounts.some((account) => twitchAccountMatches(account, twitchId, twitchLogin))
+    : false;
+
+  return {
+    linked,
+    twitchId,
+    twitchLogin,
+    discordAccounts,
+    discordMatch,
+    discordConnectionsOk: Boolean(connections.ok),
+    needsDiscordReconnect: Boolean(connections.unauthorized),
+    needsSelection: !linked && discordAccounts.length > 1
+  };
+};
+
+userRouter.get("/twitch", async (req, res) => {
+  try {
+    return res.json(await buildUserTwitchStatus(req));
+  } catch (error) {
+    const status = Number(error?.status || 400);
+    return res.status(status).json({ error: error.message || "user_twitch_status_failed" });
+  }
+});
+
+userRouter.post("/twitch/sync", async (req, res) => {
+  try {
+    const discordId = getSessionDiscordId(req);
+    if (!discordId) return res.status(401).json({ error: "missing_user" });
+    if (req.user?.impersonated) return res.status(403).json({ error: "impersonation_blocked" });
+
+    const connections = await listDiscordTwitchConnectionsForUser(discordId, {
+      accessToken: req.user?.access_token || "",
+      refreshToken: req.user?.refresh_token || ""
+    });
+    if (connections.unauthorized) {
+      return res.status(401).json({ error: "discord_reconnect_required" });
+    }
+    if (!connections.ok) {
+      return res.status(400).json({ error: connections.reason || "connections_failed" });
+    }
+
+    const accounts = connections.accounts || [];
+    if (!accounts.length) {
+      return res.status(400).json({ error: "no_twitch" });
+    }
+
+    const requestedId = String(req.body?.twitchId || "").trim();
+    const selected =
+      accounts.find((account) => String(account.id) === requestedId) ||
+      (accounts.length === 1 ? accounts[0] : null);
+
+    if (!selected) {
+      const current = await db("users").where({ discord_id: discordId }).first();
+      const twitchId = current?.twitch_id ? String(current.twitch_id) : null;
+      const twitchLogin = normalizeTwitchLogin(current?.twitch_login) || null;
+      const linked = Boolean(twitchId || twitchLogin);
+      return res.json({
+        ok: true,
+        needsSelection: true,
+        linked,
+        twitchId,
+        twitchLogin,
+        discordAccounts: accounts,
+        discordMatch: linked
+          ? accounts.some((account) => twitchAccountMatches(account, twitchId, twitchLogin))
+          : false,
+        discordConnectionsOk: true,
+        needsDiscordReconnect: false
+      });
+    }
+
+    const bound = await bindUserTwitchLink(discordId, {
+      twitchId: selected.id,
+      twitchLogin: selected.login,
+      reason: "user_account_sync"
+    });
+    if (!bound.ok) {
+      const status = bound.reason === "twitch_already_linked" ? 409 : 400;
+      return res.status(status).json({ error: bound.reason || "twitch_bind_failed" });
+    }
+
+    return res.json({
+      ok: true,
+      needsSelection: false,
+      linked: true,
+      twitchId: bound.twitchId,
+      twitchLogin: bound.twitchLogin,
+      changed: Boolean(bound.changed),
+      discordAccounts: accounts,
+      discordMatch: true,
+      discordConnectionsOk: true,
+      needsDiscordReconnect: false
+    });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "user_twitch_sync_failed" });
+  }
+});
+
+userRouter.delete("/twitch", async (req, res) => {
+  try {
+    const discordId = getSessionDiscordId(req);
+    if (!discordId) return res.status(401).json({ error: "missing_user" });
+    if (req.user?.impersonated) return res.status(403).json({ error: "impersonation_blocked" });
+
+    const cleared = await clearUserTwitchLink(discordId, { reason: "user_unlink" });
+    if (!cleared.ok) {
+      const status = cleared.reason === "user_not_found" ? 404 : 400;
+      return res.status(status).json({ error: cleared.reason || "twitch_unlink_failed" });
+    }
+
+    return res.json({
+      ok: true,
+      cleared: Boolean(cleared.cleared),
+      linked: false,
+      twitchId: null,
+      twitchLogin: null
+    });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "user_twitch_unlink_failed" });
   }
 });
 

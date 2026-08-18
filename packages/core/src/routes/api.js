@@ -78,6 +78,7 @@ import {
 } from "../services/billing-checkout.js";
 import { syncGuildBillingFromStripe } from "../services/billing-webhook.js";
 import { getGuildBillingSummary, resolveLogsPolicyWindow } from "../services/billing-entitlements.js";
+import { getGuildEconomyStats } from "../services/guild-economy-stats.js";
 import {
   applyDowngradeCleanupSelection,
   getLockedPremiumContent
@@ -712,6 +713,23 @@ apiRouter.get("/servers", async (_req, res) => {
   }
 });
 
+apiRouter.get("/guilds/:id/economy-stats", async (req, res) => {
+  try {
+    await assertUserCanManageGuild({
+      accessToken: req.user?.access_token,
+      guildDiscordId: req.params.id,
+      discordId: req.user?.discord_id || req.user?.id
+    });
+    const days = Number(req.query.days || 30);
+    const stats = await getGuildEconomyStats(req.params.id, { days });
+    res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    return res.json({ stats });
+  } catch (error) {
+    const status = Number(error?.status || 400);
+    return res.status(status).json({ error: error?.message || "economy_stats_failed" });
+  }
+});
+
 apiRouter.get("/guilds/:id/billing", async (req, res) => {
   try {
     await assertUserCanManageGuild({
@@ -1056,6 +1074,12 @@ apiRouter.post("/guilds/:id/games/settings", async (req, res) => {
     const settings = await saveGamesSettings(req.params.id, req.body || {});
     return res.json({ settings });
   } catch (error) {
+    if (error.code === "chance_total_under" || error.message === "chance_total_under") {
+      return res.status(400).json({
+        error: "chance_total_under",
+        ...(error.details || {})
+      });
+    }
     return res.status(400).json({ error: error.message || "games_settings_failed" });
   }
 });

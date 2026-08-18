@@ -60,6 +60,115 @@
         <p class="muted profile-hint">{{ $t("accountPage.sharedHint") }}</p>
       </UCard>
 
+      <UCard class="card twitch-card">
+        <div class="twitch-head">
+          <div class="twitch-title-row">
+            <UIcon name="i-simple-icons-twitch" class="twitch-brand" />
+            <h3>{{ $t("accountPage.twitch.title") }}</h3>
+          </div>
+          <UBadge
+            :color="twitchBadgeColor"
+            variant="soft"
+          >
+            {{ twitchBadgeLabel }}
+          </UBadge>
+        </div>
+
+        <div class="twitch-row">
+          <div class="twitch-meta">
+            <div class="profile-name">
+              {{
+                twitch.linked && twitch.twitchLogin
+                  ? $t("accountPage.twitch.loginLabel", { login: twitch.twitchLogin })
+                  : $t("accountPage.twitch.statusUnlinked")
+              }}
+            </div>
+            <p class="muted small">
+              {{ twitch.linked ? $t("accountPage.twitch.linkedHint") : $t("accountPage.twitch.unlinkedHint") }}
+            </p>
+          </div>
+          <div class="twitch-actions">
+            <UButton
+              v-if="!twitch.linked"
+              color="primary"
+              icon="i-simple-icons-twitch"
+              :loading="twitchBusy"
+              @click="connectTwitch"
+            >
+              {{ $t("accountPage.twitch.connect") }}
+            </UButton>
+            <template v-else>
+              <UButton
+                color="neutral"
+                variant="outline"
+                icon="i-lucide-refresh-cw"
+                :loading="twitchBusy"
+                @click="connectTwitch"
+              >
+                {{ twitch.discordMatch ? $t("accountPage.twitch.change") : $t("accountPage.twitch.reconnect") }}
+              </UButton>
+              <UButton
+                color="error"
+                variant="soft"
+                icon="i-lucide-unlink"
+                :loading="twitchBusy"
+                @click="disconnectOpen = true"
+              >
+                {{ $t("accountPage.twitch.disconnect") }}
+              </UButton>
+            </template>
+          </div>
+        </div>
+
+        <UAlert
+          v-if="twitch.linked && twitch.discordConnectionsOk && !twitch.discordMatch"
+          color="warning"
+          variant="subtle"
+          icon="i-lucide-triangle-alert"
+          :title="$t('accountPage.twitch.statusMismatch')"
+          :description="$t('accountPage.twitch.mismatch')"
+        />
+        <UAlert
+          v-else-if="twitch.needsDiscordReconnect"
+          color="info"
+          variant="subtle"
+          icon="i-lucide-info"
+          :description="$t('accountPage.twitch.needsReconnect')"
+        />
+        <p v-else class="muted small twitch-help">
+          {{ $t("accountPage.twitch.discordHelp") }}
+          <a
+            :href="$t('accountPage.twitch.discordHelpHref')"
+            target="_blank"
+            rel="noreferrer"
+          >
+            {{ $t("accountPage.twitch.discordHelpLink") }}
+          </a>
+        </p>
+
+        <div v-if="twitch.needsSelection && twitch.discordAccounts.length" class="twitch-picker">
+          <p class="muted small">{{ $t("accountPage.twitch.selectTitle") }}</p>
+          <label
+            v-for="account in twitch.discordAccounts"
+            :key="account.id"
+            class="twitch-option"
+            :class="{ selected: selectedTwitchId === account.id }"
+          >
+            <input v-model="selectedTwitchId" type="radio" name="compte-twitch" :value="account.id" />
+            <span>@{{ account.login }}</span>
+          </label>
+          <UButton
+            color="primary"
+            size="sm"
+            :disabled="!selectedTwitchId"
+            :loading="twitchBusy"
+            @click="confirmTwitchSelection"
+          >
+            {{ $t("accountPage.twitch.connect") }}
+          </UButton>
+        </div>
+      </UCard>
+
       <div class="billing-columns">
         <UCard class="card billing-column">
           <h3>{{ $t("accountPage.subscriptions") }}</h3>
@@ -127,11 +236,31 @@
         </UCard>
       </div>
     </div>
+
+    <UModal
+      v-model:open="disconnectOpen"
+      :title="$t('accountPage.twitch.confirmDisconnectTitle')"
+      :description="$t('accountPage.twitch.confirmDisconnect')"
+    >
+      <template #body>
+        <div class="twitch-modal-actions">
+          <UButton color="neutral" variant="outline" @click="disconnectOpen = false">
+            {{ $t("common.cancel") }}
+          </UButton>
+          <UButton color="error" :loading="twitchBusy" @click="disconnectTwitch">
+            {{ $t("accountPage.twitch.disconnect") }}
+          </UButton>
+        </div>
+      </template>
+    </UModal>
   </section>
 </template>
 
 <script setup>
 const config = useRuntimeConfig();
+const route = useRoute();
+const router = useRouter();
+const toast = useToast();
 const { getToken, login } = useAuth();
 const { t } = useI18n();
 
@@ -141,6 +270,19 @@ const portalLoading = ref(false);
 const isLoggedIn = ref(false);
 const subscriptions = ref([]);
 const invoices = ref([]);
+const twitchBusy = ref(false);
+const disconnectOpen = ref(false);
+const selectedTwitchId = ref("");
+const twitch = reactive({
+  linked: false,
+  twitchId: null,
+  twitchLogin: null,
+  discordAccounts: [],
+  discordMatch: false,
+  discordConnectionsOk: false,
+  needsDiscordReconnect: false,
+  needsSelection: false
+});
 const summary = reactive({
   managedServers: 0,
   premiumServers: 0,
@@ -151,6 +293,20 @@ const summary = reactive({
 const avatarUrl = computed(() => {
   if (!me.value?.discord_id || !me.value?.avatar) return "";
   return `https://cdn.discordapp.com/avatars/${me.value.discord_id}/${me.value.avatar}.png`;
+});
+
+const twitchBadgeColor = computed(() => {
+  if (!twitch.linked) return "neutral";
+  if (twitch.discordConnectionsOk && !twitch.discordMatch) return "warning";
+  return "success";
+});
+
+const twitchBadgeLabel = computed(() => {
+  if (!twitch.linked) return t("accountPage.twitch.statusUnlinked");
+  if (twitch.discordConnectionsOk && !twitch.discordMatch) {
+    return t("accountPage.twitch.statusMismatch");
+  }
+  return t("accountPage.twitch.statusLinked");
 });
 
 const guildIcon = (subscription) => {
@@ -173,6 +329,149 @@ const formatAmount = (amount, currency = "EUR") => {
     style: "currency",
     currency: String(currency || "EUR").toUpperCase()
   }).format(numeric);
+};
+
+const applyTwitchStatus = (data = {}) => {
+  twitch.linked = Boolean(data.linked);
+  twitch.twitchId = data.twitchId || null;
+  twitch.twitchLogin = data.twitchLogin || null;
+  twitch.discordAccounts = Array.isArray(data.discordAccounts) ? data.discordAccounts : [];
+  twitch.discordMatch = Boolean(data.discordMatch);
+  twitch.discordConnectionsOk = Boolean(data.discordConnectionsOk);
+  twitch.needsDiscordReconnect = Boolean(data.needsDiscordReconnect);
+  twitch.needsSelection = Boolean(data.needsSelection);
+  if (!selectedTwitchId.value && twitch.discordAccounts.length === 1) {
+    selectedTwitchId.value = twitch.discordAccounts[0].id;
+  }
+};
+
+const resetTwitchStatus = () => {
+  applyTwitchStatus({});
+  selectedTwitchId.value = "";
+};
+
+const twitchErrorMessage = (error) => {
+  if (error === "no_twitch") return t("accountPage.twitch.errorNoTwitch");
+  if (error === "twitch_already_linked") return t("accountPage.twitch.errorAlreadyLinked");
+  return t("accountPage.twitch.errorGeneric");
+};
+
+const fetchTwitch = async (token) => {
+  const res = await fetch(`${config.public.apiBase}/api/user/twitch`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    resetTwitchStatus();
+    return;
+  }
+  applyTwitchStatus(data);
+};
+
+const authHeaders = (token) => ({
+  Authorization: `Bearer ${token}`,
+  "Content-Type": "application/json"
+});
+
+const startDiscordReconnect = async () => {
+  const nextQuery = { ...route.query, twitch: "connect" };
+  await router.replace({ query: nextQuery });
+  login();
+};
+
+const syncTwitch = async (twitchId = "") => {
+  const token = getToken();
+  if (!token) {
+    login();
+    return null;
+  }
+  twitchBusy.value = true;
+  try {
+    const res = await fetch(`${config.public.apiBase}/api/user/twitch/sync`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify(twitchId ? { twitchId } : {})
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 401 && data.error === "discord_reconnect_required") {
+      await startDiscordReconnect();
+      return null;
+    }
+    if (!res.ok) {
+      toast.add({
+        title: twitchErrorMessage(data.error),
+        color: "error"
+      });
+      return data;
+    }
+    applyTwitchStatus(data);
+    if (data.needsSelection) {
+      selectedTwitchId.value = data.discordAccounts?.[0]?.id || "";
+      return data;
+    }
+    toast.add({
+      title: data.changed === false
+        ? t("accountPage.twitch.unchanged")
+        : t("accountPage.twitch.connected", { login: data.twitchLogin || "" }),
+      color: "success"
+    });
+    return data;
+  } finally {
+    twitchBusy.value = false;
+  }
+};
+
+const connectTwitch = async () => {
+  if (twitch.needsDiscordReconnect) {
+    await startDiscordReconnect();
+    return;
+  }
+  await syncTwitch();
+};
+
+const confirmTwitchSelection = async () => {
+  if (!selectedTwitchId.value) return;
+  await syncTwitch(selectedTwitchId.value);
+};
+
+const disconnectTwitch = async () => {
+  const token = getToken();
+  if (!token) {
+    login();
+    return;
+  }
+  twitchBusy.value = true;
+  try {
+    const res = await fetch(`${config.public.apiBase}/api/user/twitch`, {
+      method: "DELETE",
+      headers: authHeaders(token)
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      toast.add({ title: twitchErrorMessage(data.error), color: "error" });
+      return;
+    }
+    applyTwitchStatus({
+      ...twitch,
+      linked: false,
+      twitchId: null,
+      twitchLogin: null,
+      discordMatch: false,
+      needsSelection: twitch.discordAccounts.length > 1
+    });
+    disconnectOpen.value = false;
+    toast.add({ title: t("accountPage.twitch.disconnected"), color: "success" });
+  } finally {
+    twitchBusy.value = false;
+  }
+};
+
+const consumeTwitchConnectQuery = async () => {
+  if (String(route.query.twitch || "") !== "connect") return;
+  const nextQuery = { ...route.query };
+  delete nextQuery.twitch;
+  await router.replace({ query: nextQuery });
+  await syncTwitch();
 };
 
 const fetchMe = async (token) => {
@@ -228,12 +527,14 @@ const refresh = async () => {
   if (!token) {
     isLoggedIn.value = false;
     loading.value = false;
+    resetTwitchStatus();
     return;
   }
   isLoggedIn.value = true;
   loading.value = true;
   try {
-    await Promise.all([fetchMe(token), fetchBilling(token)]);
+    await Promise.all([fetchMe(token), fetchBilling(token), fetchTwitch(token)]);
+    await consumeTwitchConnectQuery();
   } finally {
     loading.value = false;
   }
@@ -367,6 +668,79 @@ onMounted(refresh);
 }
 .profile-hint {
   margin: 0;
+}
+.twitch-card {
+  padding: 18px;
+  display: grid;
+  gap: 12px;
+}
+.twitch-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.twitch-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.twitch-title-row h3 {
+  margin: 0;
+}
+.twitch-brand {
+  width: 18px;
+  height: 18px;
+  color: #a78bfa;
+}
+.twitch-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.twitch-meta {
+  min-width: 220px;
+  flex: 1;
+}
+.twitch-meta p {
+  margin: 4px 0 0;
+}
+.twitch-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.twitch-help {
+  margin: 0;
+}
+.twitch-help a {
+  color: var(--ui-primary, #a78bfa);
+  text-decoration: underline;
+}
+.twitch-picker {
+  display: grid;
+  gap: 8px;
+}
+.twitch-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(15, 23, 42, 0.32);
+  cursor: pointer;
+}
+.twitch-option.selected {
+  border-color: rgba(167, 139, 250, 0.55);
+  background: rgba(124, 58, 237, 0.16);
+}
+.twitch-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 .billing-columns {
   display: grid;

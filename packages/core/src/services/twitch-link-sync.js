@@ -1,6 +1,7 @@
 import { db } from "./db.js";
 import {
   clearUserTwitchLink,
+  mapDiscordTwitchConnections,
   syncTwitchLinkFromDiscordConnections
 } from "./discord-twitch-link.js";
 
@@ -208,6 +209,57 @@ export const maybeRefreshTwitchLinkFromSession = async (req, options = {}) => {
     refreshToken: req.user?.refresh_token || "",
     ...options
   });
+};
+
+/**
+ * Read the Twitch accounts currently attached to this Discord user (Connections).
+ * Does not change the EcoBoty binding.
+ */
+export const listDiscordTwitchConnectionsForUser = async (
+  discordId,
+  { accessToken = "", refreshToken = "" } = {}
+) => {
+  const userId = String(discordId || "").replace(/\D/g, "");
+  if (!userId) return { ok: false, reason: "invalid_user" };
+
+  const oauthState = await db("user_oauth_state").where({ discord_id: userId }).first();
+  let token = String(accessToken || "").trim();
+  let nextRefresh = String(refreshToken || oauthState?.discord_refresh_token || "").trim();
+
+  if (!token && nextRefresh) {
+    try {
+      const refreshed = await refreshDiscordOAuthToken(nextRefresh);
+      token = String(refreshed.access_token || "").trim();
+      if (refreshed.refresh_token) {
+        nextRefresh = String(refreshed.refresh_token);
+        await saveDiscordOAuthRefreshToken(userId, nextRefresh);
+      }
+    } catch (error) {
+      const code = String(error?.code || error?.message || "");
+      if (code === "invalid_grant") {
+        await revokeStoredOAuth(userId);
+        return { ok: false, unauthorized: true, reason: "discord_oauth_revoked" };
+      }
+      return { ok: false, reason: code || "refresh_failed" };
+    }
+  }
+
+  if (!token) {
+    return { ok: false, unauthorized: true, reason: "missing_discord_token" };
+  }
+
+  const connectionsRes = await fetchDiscordConnections(token);
+  if (connectionsRes.unauthorized) {
+    return { ok: false, unauthorized: true, reason: "discord_connections_unauthorized" };
+  }
+  if (!connectionsRes.ok) {
+    return { ok: false, reason: connectionsRes.error || "connections_failed" };
+  }
+
+  return {
+    ok: true,
+    accounts: mapDiscordTwitchConnections(connectionsRes.connections)
+  };
 };
 
 export const runTwitchLinkSyncBatch = async () => {

@@ -5,7 +5,7 @@ import {
   getOrCreateSettings,
   getOrCreateTwitchDailySettings
 } from "./economy.js";
-import { getGamesSettings } from "./games.js";
+import { getGamesSettings, theoreticalWinChancePercent } from "./games.js";
 import { listShops, getUserShopsSettings } from "./shop.js";
 import { getTwitchSettings, getTwitchAutomationConfig } from "./twitch.js";
 import { getBotSettings } from "./admin.js";
@@ -493,13 +493,13 @@ const buildGamesDetails = (dict, settings, includeChances) => {
 
   if (includeChances) {
     if (settings.flip?.enabled !== false) {
-      lines.push(`- CoinFlip: ${dict.gameChances} **${formatPercent(settings.flip.winChancePercent)}**`);
+      lines.push(`- CoinFlip: ${dict.gameChances} **${formatPercent(theoreticalWinChancePercent("flip", settings.flip))}**`);
     }
     if (settings.dice?.enabled !== false) {
-      lines.push(`- Dice: ${dict.gameChances} **${formatPercent(settings.dice.winChancePercent)}**`);
+      lines.push(`- Dice: ${dict.gameChances} **${formatPercent(theoreticalWinChancePercent("dice", settings.dice))}**`);
     }
     if (settings.higherLower?.enabled !== false) {
-      lines.push(`- Higher/Lower: ${dict.gameChances} **${formatPercent(settings.higherLower.winChancePercent)}**`);
+      lines.push(`- Higher/Lower: ${dict.gameChances} **${formatPercent(theoreticalWinChancePercent("higherLower", settings.higherLower))}**`);
     }
     if (settings.double?.enabled !== false) {
       lines.push(`- Double: ${dict.gameChances} **${formatPercent(settings.double.winChancePercent)}**`);

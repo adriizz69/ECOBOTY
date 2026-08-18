@@ -60,6 +60,8 @@
               <div class="font-semibold">Accès rapide</div>
             </template>
             <div class="grid grid-cols-1 gap-2">
+              <UButton to="/admin-v2/global-settings" color="neutral" variant="soft" icon="i-lucide-sliders-horizontal" block>Réglages globaux</UButton>
+              <UButton to="/admin-v2/games" color="neutral" variant="soft" icon="i-lucide-dices" block>Jeux</UButton>
               <UButton to="/admin-v2/users" color="neutral" variant="soft" icon="i-lucide-users" block>Utilisateurs</UButton>
               <UButton to="/admin-v2/servers" color="neutral" variant="soft" icon="i-lucide-server" block>Serveurs</UButton>
               <UButton to="/admin-v2/broadcast" color="neutral" variant="soft" icon="i-lucide-send" block>Broadcast</UButton>

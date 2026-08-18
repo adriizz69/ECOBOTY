@@ -30,7 +30,8 @@ export const useAuth = () => {
         ? "/servers"
         : `${window.location.pathname}${window.location.search || ""}`;
     const redirect = encodeURIComponent(path || "/servers");
-    window.location.href = `${config.public.apiBase}/auth/discord/login?redirect=${redirect}`;
+    const apiBase = String(config.public.apiBase || "").replace(/\/$/, "");
+    window.location.href = `${apiBase}/auth/discord/login?redirect=${redirect}`;
   };
 
   const getToken = () => {

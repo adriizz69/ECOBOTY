@@ -3,8 +3,8 @@
     kicker="Documents juridiques"
     title="CGU, CGV, confidentialité et cookies"
     subtitle="Conditions générales d'utilisation et de vente d'EcoBoty, édité par KHAORYS ESPORT. Les textes ci-dessous s'appliquent au site https://ecoboty.eu, au dashboard web et au bot Discord EcoBoty."
-    updated="27 juillet 2026"
-    version="2026-07-27"
+    updated="17 août 2026"
+    version="2026-08-17"
     :toc="toc"
   >
     <template #links>
@@ -145,9 +145,39 @@
     </article>
 
     <article id="cgu-10" class="doc-section">
-      <h2>10. Comportements interdits</h2>
+      <h2>10. Utilisation du bot, monnaie virtuelle et jeux</h2>
+      <p>
+        EcoBoty est un outil d'amusement et de gestion d'une économie de serveur Discord.
+        La monnaie utilisée dans le Service (coins, mises, gains de jeux, boutiques) est une
+        <strong>monnaie virtuelle non convertible</strong> : elle ne peut pas être achetée avec de l'argent réel,
+        ni échangée contre de l'argent réel via EcoBoty.
+      </p>
+      <p>
+        KHAORYS ESPORT <strong>interdit formellement</strong> :
+      </p>
+      <ul>
+        <li>d'utiliser le bot à des fins de contournement financier, de blanchiment, de fraude ou de contournement de la loi du pays d'utilisation ;</li>
+        <li>d'utiliser les jeux mis en place pour parier de l'argent réel ;</li>
+        <li>de convertir de l'argent réel en monnaie virtuelle (et inversement) via le Service ou en dehors, en s'appuyant sur EcoBoty ;</li>
+        <li>d'utiliser le bot à des fins commerciales trompeuses (fausse loterie payante, faux casino en argent réel, publicité mensongère, etc.).</li>
+      </ul>
+      <p>
+        L'utilisation des jeux est autorisée uniquement pour parier une monnaie virtuelle, à des fins d'amusement,
+        au sein d'une communauté Discord. KHAORYS ESPORT <strong>décline toute responsabilité</strong> en cas
+        d'utilisation du bot à des fins malveillantes, illicites, de contournement de la loi applicable dans le
+        pays d'utilisation, ou de mise en place par un administrateur de mécanismes d'argent réel.
+      </p>
+      <p>
+        L'administrateur d'un serveur reste seul responsable de la configuration de son économie et du respect
+        de la réglementation applicable à sa communauté.
+      </p>
+    </article>
+
+    <article id="cgu-11" class="doc-section">
+      <h2>11. Comportements interdits</h2>
       <p>Sont notamment interdits :</p>
       <ul>
+        <li>l'utilisation des jeux ou de la monnaie virtuelle pour parier, convertir ou simuler de l'argent réel ;</li>
         <li>toute tentative d'accès non autorisé, de contournement de sécurité ou d'intrusion ;</li>
         <li>l'utilisation du Service à des fins illicites, frauduleuses ou portant atteinte aux droits de tiers ;</li>
         <li>l'abus de l'économie (exploit, automatisation malveillante, contournement des quotas Free/Premium) ;</li>
@@ -156,8 +186,8 @@
       </ul>
     </article>
 
-    <article id="cgu-11" class="doc-section">
-      <h2>11. Suspension et résiliation</h2>
+    <article id="cgu-12" class="doc-section">
+      <h2>12. Suspension et résiliation</h2>
       <p>
         KHAORYS ESPORT peut suspendre ou restreindre l'accès en cas de violation des CGU/CGV, d'impayé,
         de demande des autorités ou de menace pour la sécurité du Service. La suspension n'ouvre droit à aucun
@@ -165,8 +195,8 @@
       </p>
     </article>
 
-    <article id="cgu-12" class="doc-section">
-      <h2>12. Suppression de compte et données</h2>
+    <article id="cgu-13" class="doc-section">
+      <h2>13. Suppression de compte et données</h2>
       <p>
         L'utilisateur peut demander la suppression de ses données via <strong>contact@khaorys.com</strong>.
         L'administrateur reste responsable de la configuration de son serveur et de la résiliation de
@@ -175,8 +205,8 @@
       </p>
     </article>
 
-    <article id="cgu-13" class="doc-section">
-      <h2>13. Responsabilité</h2>
+    <article id="cgu-14" class="doc-section">
+      <h2>14. Responsabilité</h2>
       <p>KHAORYS ESPORT est soumise à une obligation de moyens. Elle n'est notamment pas responsable :</p>
       <ul>
         <li>des contenus et règles configurés par les administrateurs de serveurs ;</li>
@@ -191,8 +221,8 @@
       </p>
     </article>
 
-    <article id="cgu-14" class="doc-section">
-      <h2>14. Propriété intellectuelle</h2>
+    <article id="cgu-15" class="doc-section">
+      <h2>15. Propriété intellectuelle</h2>
       <p>
         Le Service, sa documentation, son code et sa charte graphique restent la propriété de KHAORYS ESPORT
         ou de ses concédants. L'utilisateur bénéficie d'un droit d'utilisation personnel, non exclusif et
@@ -202,8 +232,8 @@
       </p>
     </article>
 
-    <article id="cgu-15" class="doc-section">
-      <h2>15. Modification des CGU</h2>
+    <article id="cgu-16" class="doc-section">
+      <h2>16. Modification des CGU</h2>
       <p>
         KHAORYS ESPORT peut modifier les présentes CGU. Les utilisateurs seront informés par message sur le
         Site ou par e-mail au moins trente (30) jours avant l'entrée en vigueur des modifications
@@ -212,8 +242,8 @@
       </p>
     </article>
 
-    <article id="cgu-16" class="doc-section">
-      <h2>16. Droit applicable — litiges</h2>
+    <article id="cgu-17" class="doc-section">
+      <h2>17. Droit applicable — litiges</h2>
       <p>
         Les CGU sont soumises au droit français. En cas de litige, les parties rechercheront une solution
         amiable. À défaut, les tribunaux français seront compétents selon les règles de droit commun, sous
@@ -628,7 +658,8 @@ const toc = [
   { id: "cgu-7", label: "7. Plan Free" },
   { id: "cgu-8", label: "8. Plan Premium" },
   { id: "cgu-9", label: "9. Stripe" },
-  { id: "cgu-13", label: "13. Responsabilité" },
+  { id: "cgu-10", label: "10. Bot, monnaie virtuelle et jeux" },
+  { id: "cgu-14", label: "14. Responsabilité" },
   { id: "partie-cgv", label: "Partie II — CGV" },
   { id: "cgv-3", label: "3. Tarifs" },
   { id: "cgv-4", label: "4. Paiement Stripe" },

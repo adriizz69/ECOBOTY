@@ -63,6 +63,7 @@ const primaryLinks = computed(() => [
   { label: "Broadcast", icon: "i-lucide-send", to: "/admin-v2/broadcast" },
   { label: "Bienvenue", icon: "i-lucide-message-square-heart", to: "/admin-v2/welcome" },
   { label: "Réglages globaux", icon: "i-lucide-sliders-horizontal", to: "/admin-v2/global-settings" },
+  { label: "Jeux", icon: "i-lucide-dices", to: "/admin-v2/games" },
   { label: "Serveurs", icon: "i-lucide-server", to: "/admin-v2/servers" },
   { label: "Utilisateurs", icon: "i-lucide-users", to: "/admin-v2/users" },
   { label: "Top.gg", icon: "i-lucide-trophy", to: "/admin-v2/topgg" },

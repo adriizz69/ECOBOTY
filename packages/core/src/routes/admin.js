@@ -45,6 +45,7 @@ import {
 } from "../services/billing-admin.js";
 import { getGuildBillingSummary } from "../services/billing-entitlements.js";
 import { syncGuildBillingFromStripe } from "../services/billing-webhook.js";
+import { simulateGameRounds, GAME_SIM_ROUND_OPTIONS } from "../services/games.js";
 
 export const adminRouter = Router();
 
@@ -593,6 +594,27 @@ adminRouter.post("/billing/guilds/:guildId/sync", async (req, res) => {
     return res.json({ ...result, billing });
   } catch (error) {
     return res.status(400).json({ error: error.message || "billing_guild_sync_failed" });
+  }
+});
+
+adminRouter.post("/games/simulate", async (req, res) => {
+  try {
+    const rounds = Number(req.body?.rounds);
+    if (!GAME_SIM_ROUND_OPTIONS.includes(rounds)) {
+      return res.status(400).json({ error: "invalid_rounds", allowed: GAME_SIM_ROUND_OPTIONS });
+    }
+    const result = simulateGameRounds({
+      configInput: req.body?.settings || {},
+      gameId: req.body?.gameId,
+      rounds,
+      bet: req.body?.bet,
+      choice: req.body?.choice,
+      cashout: req.body?.cashout
+    });
+    if (!result.ok) return res.status(400).json({ error: result.reason || "games_simulate_failed" });
+    return res.json(result);
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "games_simulate_failed" });
   }
 });
 

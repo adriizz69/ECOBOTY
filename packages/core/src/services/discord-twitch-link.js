@@ -1,12 +1,111 @@
 import { db } from "./db.js";
 import { insertAdminLog } from "./admin.js";
 
-const normalizeTwitchLogin = (login) =>
+export const normalizeTwitchLogin = (login) =>
   String(login || "")
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9_]/g, "")
     .slice(0, 25);
+
+const mapTwitchConnection = (connection) => {
+  const id = String(connection?.id || "").trim();
+  const login = normalizeTwitchLogin(connection?.name);
+  if (!id || !login) return null;
+  return {
+    id,
+    login,
+    verified: Boolean(connection?.verified)
+  };
+};
+
+export const mapDiscordTwitchConnections = (connections) => {
+  const list = Array.isArray(connections) ? connections : [];
+  const seen = new Set();
+  const accounts = [];
+  for (const row of list) {
+    if (String(row?.type || "").toLowerCase() !== "twitch") continue;
+    const mapped = mapTwitchConnection(row);
+    if (!mapped || seen.has(mapped.id)) continue;
+    seen.add(mapped.id);
+    accounts.push(mapped);
+  }
+  return accounts;
+};
+
+/**
+ * Bind a Discord user to a Twitch account. The Twitch id must not already belong
+ * to another EcoBoty Discord user.
+ */
+export const bindUserTwitchLink = async (
+  discordId,
+  { twitchId, twitchLogin, reason = "user_bind" } = {}
+) => {
+  const userId = String(discordId || "").replace(/\D/g, "");
+  const nextId = String(twitchId || "").trim();
+  const nextLogin = normalizeTwitchLogin(twitchLogin);
+  if (!userId || !nextId || !nextLogin) {
+    return { ok: false, reason: "invalid_twitch" };
+  }
+
+  const existing = await db("users").where({ discord_id: userId }).first();
+  if (!existing) return { ok: false, reason: "user_not_found" };
+
+  const clash = await db("users")
+    .where(function () {
+      this.where({ twitch_id: nextId }).orWhereRaw("LOWER(twitch_login) = LOWER(?)", [nextLogin]);
+    })
+    .whereNot({ discord_id: userId })
+    .first();
+  if (clash) {
+    return { ok: false, reason: "twitch_already_linked" };
+  }
+
+  const previousTwitchId = existing.twitch_id || null;
+  const previousTwitchLogin = existing.twitch_login || null;
+  const unchanged =
+    String(previousTwitchId || "") === nextId &&
+    normalizeTwitchLogin(previousTwitchLogin) === nextLogin;
+  if (unchanged) {
+    return {
+      ok: true,
+      changed: false,
+      twitchId: nextId,
+      twitchLogin: nextLogin
+    };
+  }
+
+  await db("users").where({ discord_id: userId }).update({
+    twitch_id: nextId,
+    twitch_login: nextLogin
+  });
+
+  try {
+    await insertAdminLog({
+      adminId: userId,
+      action: "twitch_linked",
+      data: {
+        discordId: userId,
+        twitchId: nextId,
+        twitchLogin: nextLogin,
+        previousTwitchId,
+        previousTwitchLogin,
+        reason: String(reason || "user_bind")
+      }
+    });
+  } catch {
+    // ignore audit failures
+  }
+
+  return {
+    ok: true,
+    changed: true,
+    twitchId: nextId,
+    twitchLogin: nextLogin,
+    previousTwitchId,
+    previousTwitchLogin
+  };
+};
 
 /**
  * Clear EcoBoty Twitch↔Discord binding for a user (global on users table).

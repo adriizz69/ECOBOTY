@@ -34,6 +34,10 @@
           <UIcon name="i-lucide-layout-dashboard" class="nav-ico" />
           <span>{{ $t("adminGuild.sidebar.items.overview") }}</span>
         </button>
+          <button :class="['nav-item', 'tab-stats', activeTab === 'stats' && 'active']" @click="selectTab('stats')">
+          <UIcon name="i-lucide-bar-chart-3" class="nav-ico" />
+          <span>{{ $t("adminGuild.sidebar.items.stats") }}</span>
+        </button>
           <button :class="['nav-item', 'tab-daily', activeTab === 'daily' && 'active']" @click="selectTab('daily')">
           <UIcon name="i-lucide-calendar-check" class="nav-ico" />
           <span>{{ $t("adminGuild.sidebar.items.daily") }}</span>
@@ -160,7 +164,7 @@
         <div class="hero-info">
           <span class="eb-kicker">{{ guildDisplayName }}</span>
           <div class="hero-title">{{ adminTabLabel || $t("adminGuild.hero.title") }}</div>
-          <div class="hero-sub">{{ $t("adminGuild.hero.subtitle") }}</div>
+          <div class="hero-sub">{{ adminTabSubtitle }}</div>
           <div class="hero-badges">
             <span class="hero-badge">ID {{ route.params.id }}</span>
             <span class="hero-badge" :class="form.enabled ? 'ok' : 'ko'">
@@ -325,6 +329,10 @@
           </div>
         </div>
       </UCard>
+
+      <div v-show="activeTab === 'stats'">
+        <GuildEconomyStatsPanel :guild-id="String(route.params.id || '')" :active="activeTab === 'stats'" />
+      </div>
 
       <div v-show="activeTab === 'billing'">
         <GuildBillingPanel :guild-id="String(route.params.id || '')" />
@@ -1636,313 +1644,15 @@
       </UCard>
       </div>
 
-      <UCard v-show="activeTab === 'games'" class="card">
-        <div class="card-head">
-          <div>
-            <h3>{{ $t("adminGuild.games.title") }}</h3>
-            <p class="muted">{{ $t("adminGuild.games.subtitle") }}</p>
-          </div>
-          <UButton color="primary" @click="saveGamesSettings">{{ $t("common.save") }}</UButton>
-        </div>
-
-        <div class="sub-card">
-          <h4>{{ $t("adminGuild.games.globalTitle") }}</h4>
-          <p class="muted">
-            {{ $t("adminGuild.games.globalHelp") }}
-          </p>
-          <div class="grid">
-            <div class="switch-field">
-              <span>{{ $t("adminGuild.games.enableAll") }}</span>
-              <label class="switch">
-                <input v-model="gamesConfig.enabled" type="checkbox" />
-                <span class="slider"></span>
-              </label>
-            </div>
-            <label>
-              {{ $t("adminGuild.games.minBet") }}
-              <input v-model.number="gamesConfig.minBet" type="number" />
-            </label>
-            <label>
-              {{ $t("adminGuild.games.maxBet") }}
-              <input v-model.number="gamesConfig.maxBet" type="number" />
-            </label>
-            <label>
-              {{ $t("adminGuild.games.cooldown") }}
-              <input v-model.number="gamesConfig.cooldownSeconds" type="number" />
-            </label>
-            <label>
-              {{ $t("adminGuild.games.houseEdge") }}
-              <input v-model.number="gamesConfig.houseEdgePercent" type="number" />
-            </label>
-          </div>
-        </div>
-
-        <div class="sub-card">
-          <h4>{{ $t("adminGuild.games.commandsTitle") }}</h4>
-          <p class="muted">
-            {{ $t("adminGuild.games.commandsHelp") }}
-          </p>
-          <div class="list">
-            <div class="list-row"><span>{{ $t("adminGuild.games.coinFlip.title") }}</span><span>/jeux → Coin Flip</span></div>
-            <template v-if="hasBillingFeature('games_advanced_modes')">
-              <div class="list-row"><span>{{ $t("adminGuild.games.dice.title") }}</span><span>/jeux → Dice</span></div>
-              <div class="list-row"><span>{{ $t("adminGuild.games.slot.title") }}</span><span>/jeux → Slot</span></div>
-              <div class="list-row"><span>{{ $t("adminGuild.games.roulette.title") }}</span><span>/jeux → Roulette</span></div>
-              <div class="list-row"><span>{{ $t("adminGuild.games.higherLower.title") }}</span><span>/jeux → Higher/Lower</span></div>
-              <div class="list-row"><span>{{ $t("adminGuild.games.crash.title") }}</span><span>/jeux → Crash</span></div>
-              <div class="list-row"><span>{{ $t("adminGuild.games.double.title") }}</span><span>/jeux → Double</span></div>
-              <div class="list-row"><span>{{ $t("adminGuild.games.mystery.title") }}</span><span>/jeux → Mystery</span></div>
-            </template>
-          </div>
-        </div>
-
-        <div class="sub-card">
-          <h4>{{ $t("adminGuild.games.coinFlip.title") }}</h4>
-          <p class="muted">
-            {{ $t("adminGuild.games.coinFlip.help") }}
-          </p>
-          <div class="grid">
-            <div class="switch-field">
-              <span>{{ $t("common.enable") }}</span>
-              <label class="switch">
-                <input v-model="gamesConfig.flip.enabled" type="checkbox" />
-                <span class="slider"></span>
-              </label>
-            </div>
-            <label>
-              {{ $t("adminGuild.games.winChance") }}
-              <input v-model.number="gamesConfig.flip.winChancePercent" type="number" />
-            </label>
-            <label>
-              {{ $t("adminGuild.games.winMultiplier") }}
-              <input v-model.number="gamesConfig.flip.winMultiplier" type="number" />
-            </label>
-            <div class="switch-field">
-              <span>{{ $t("adminGuild.games.jackpotEnabled") }}</span>
-              <label class="switch">
-                <input v-model="gamesConfig.flip.jackpotEnabled" type="checkbox" />
-                <span class="slider"></span>
-              </label>
-            </div>
-            <label>
-              {{ $t("adminGuild.games.jackpotChance") }}
-              <input v-model.number="gamesConfig.flip.jackpotChancePercent" type="number" />
-            </label>
-            <label>
-              {{ $t("adminGuild.games.jackpotMultiplier") }}
-              <input v-model.number="gamesConfig.flip.jackpotMultiplier" type="number" />
-            </label>
-          </div>
-        </div>
-
-        <BillingPremiumGate
-          :locked="!hasBillingFeature('games_advanced_modes')"
-          feature-key="games_advanced_modes"
-          :benefits="gamesGateUnlockItems"
-        >
-        <div class="sub-card">
-          <h4>{{ $t("adminGuild.games.dice.title") }}</h4>
-          <p class="muted">
-            {{ $t("adminGuild.games.dice.help") }}
-          </p>
-          <div class="grid">
-            <div class="switch-field">
-              <span>{{ $t("common.enable") }}</span>
-              <label class="switch">
-                <input v-model="gamesConfig.dice.enabled" type="checkbox" />
-                <span class="slider"></span>
-              </label>
-            </div>
-            <label>
-              {{ $t("adminGuild.games.dice.sides") }}
-              <input v-model.number="gamesConfig.dice.sides" type="number" />
-            </label>
-            <label>
-              {{ $t("adminGuild.games.winChance") }}
-              <input v-model.number="gamesConfig.dice.winChancePercent" type="number" />
-            </label>
-            <label>
-              {{ $t("adminGuild.games.winMultiplier") }}
-              <input v-model.number="gamesConfig.dice.winMultiplier" type="number" />
-            </label>
-          </div>
-        </div>
-
-        <div class="sub-card">
-          <h4>{{ $t("adminGuild.games.slot.title") }}</h4>
-          <p class="muted">
-            {{ $t("adminGuild.games.slot.help") }}
-          </p>
-          <div class="grid">
-            <div class="switch-field">
-              <span>{{ $t("common.enable") }}</span>
-              <label class="switch">
-                <input v-model="gamesConfig.slot.enabled" type="checkbox" />
-                <span class="slider"></span>
-              </label>
-            </div>
-            <label>
-              {{ $t("adminGuild.games.slot.symbols") }}
-              <input v-model="slotSymbolsInput" :placeholder="$t('adminGuild.games.slot.symbolsPlaceholder')" />
-            </label>
-            <label>
-              {{ $t("adminGuild.games.slot.twoKindMultiplier") }}
-              <input v-model.number="gamesConfig.slot.twoOfKindMultiplier" type="number" />
-            </label>
-            <label>
-              {{ $t("adminGuild.games.slot.payouts") }}
-              <textarea v-model="slotPayoutsInput" rows="5" :placeholder="$t('adminGuild.games.slot.payoutsPlaceholder')"></textarea>
-            </label>
-          </div>
-        </div>
-
-        <div class="sub-card">
-          <h4>{{ $t("adminGuild.games.roulette.title") }}</h4>
-          <p class="muted">
-            {{ $t("adminGuild.games.roulette.help") }}
-          </p>
-          <div class="grid">
-            <div class="switch-field">
-              <span>{{ $t("common.enable") }}</span>
-              <label class="switch">
-                <input v-model="gamesConfig.roulette.enabled" type="checkbox" />
-                <span class="slider"></span>
-              </label>
-            </div>
-            <label>
-              {{ $t("adminGuild.games.roulette.red") }}
-              <input v-model.number="gamesConfig.roulette.red.chance" type="number" />
-            </label>
-            <label>
-              {{ $t("adminGuild.games.roulette.redMultiplier") }}
-              <input v-model.number="gamesConfig.roulette.red.multiplier" type="number" />
-            </label>
-            <label>
-              {{ $t("adminGuild.games.roulette.black") }}
-              <input v-model.number="gamesConfig.roulette.black.chance" type="number" />
-            </label>
-            <label>
-              {{ $t("adminGuild.games.roulette.blackMultiplier") }}
-              <input v-model.number="gamesConfig.roulette.black.multiplier" type="number" />
-            </label>
-            <label>
-              {{ $t("adminGuild.games.roulette.green") }}
-              <input v-model.number="gamesConfig.roulette.green.chance" type="number" />
-            </label>
-            <label>
-              {{ $t("adminGuild.games.roulette.greenMultiplier") }}
-              <input v-model.number="gamesConfig.roulette.green.multiplier" type="number" />
-            </label>
-          </div>
-        </div>
-
-        <div class="sub-card">
-          <h4>{{ $t("adminGuild.games.higherLower.title") }}</h4>
-          <p class="muted">
-            {{ $t("adminGuild.games.higherLower.help") }}
-          </p>
-          <div class="grid">
-            <div class="switch-field">
-              <span>{{ $t("common.enable") }}</span>
-              <label class="switch">
-                <input v-model="gamesConfig.higherLower.enabled" type="checkbox" />
-                <span class="slider"></span>
-              </label>
-            </div>
-            <label>
-              {{ $t("adminGuild.games.higherLower.maxNumber") }}
-              <input v-model.number="gamesConfig.higherLower.maxNumber" type="number" />
-            </label>
-            <label>
-              {{ $t("adminGuild.games.winChance") }}
-              <input v-model.number="gamesConfig.higherLower.winChancePercent" type="number" />
-            </label>
-            <label>
-              {{ $t("adminGuild.games.winMultiplier") }}
-              <input v-model.number="gamesConfig.higherLower.winMultiplier" type="number" />
-            </label>
-            <div class="switch-field">
-              <span>{{ $t("adminGuild.games.higherLower.streakBonus") }}</span>
-              <label class="switch">
-                <input v-model="gamesConfig.higherLower.streakBonusEnabled" type="checkbox" />
-                <span class="slider"></span>
-              </label>
-            </div>
-          </div>
-        </div>
-
-        <div class="sub-card">
-          <h4>{{ $t("adminGuild.games.crash.title") }}</h4>
-          <p class="muted">
-            {{ $t("adminGuild.games.crash.help") }}
-          </p>
-          <div class="grid">
-            <div class="switch-field">
-              <span>{{ $t("common.enable") }}</span>
-              <label class="switch">
-                <input v-model="gamesConfig.crash.enabled" type="checkbox" />
-                <span class="slider"></span>
-              </label>
-            </div>
-            <label>
-              {{ $t("adminGuild.games.crash.maxMultiplier") }}
-              <input v-model.number="gamesConfig.crash.maxMultiplier" type="number" />
-            </label>
-            <label>
-              {{ $t("adminGuild.games.crash.crashChance") }}
-              <input v-model.number="gamesConfig.crash.crashChancePerTickPercent" type="number" />
-            </label>
-            <label>
-              {{ $t("adminGuild.games.crash.speed") }}
-              <EbSelect v-model="gamesConfig.crash.speed" :items="crashSpeedItems" :searchable="false" />
-            </label>
-          </div>
-        </div>
-
-        <div class="sub-card">
-          <h4>{{ $t("adminGuild.games.double.title") }}</h4>
-          <p class="muted">{{ $t("adminGuild.games.double.help") }}</p>
-          <div class="grid">
-            <div class="switch-field">
-              <span>{{ $t("common.enable") }}</span>
-              <label class="switch">
-                <input v-model="gamesConfig.double.enabled" type="checkbox" />
-                <span class="slider"></span>
-              </label>
-            </div>
-            <label>
-              {{ $t("adminGuild.games.winChance") }}
-              <input v-model.number="gamesConfig.double.winChancePercent" type="number" />
-            </label>
-            <label>
-              {{ $t("adminGuild.games.multiplier") }}
-              <input v-model.number="gamesConfig.double.multiplier" type="number" />
-            </label>
-          </div>
-        </div>
-
-        <div class="sub-card">
-          <h4>{{ $t("adminGuild.games.mystery.title") }}</h4>
-          <p class="muted">
-            {{ $t("adminGuild.games.mystery.help") }}
-          </p>
-          <div class="grid">
-            <div class="switch-field">
-              <span>{{ $t("common.enable") }}</span>
-              <label class="switch">
-                <input v-model="gamesConfig.mystery.enabled" type="checkbox" />
-                <span class="slider"></span>
-              </label>
-            </div>
-            <label>
-              {{ $t("adminGuild.games.mystery.outcomes") }}
-              <textarea v-model="mysteryOutcomesInput" rows="6" :placeholder="$t('adminGuild.games.mystery.outcomesPlaceholder')"></textarea>
-            </label>
-          </div>
-        </div>
-        </BillingPremiumGate>
-      </UCard>
-
+      <div v-show="activeTab === 'games'">
+        <GamesAdminPanel
+          :games-config="gamesConfig"
+          :guild-id="String(id || '')"
+          :advanced-unlocked="hasBillingFeature('games_advanced_modes')"
+          :games-gate-unlock-items="gamesGateUnlockItems"
+          @save="saveGamesSettings"
+        />
+      </div>
       <UCard v-show="activeTab === 'sensitive'" class="card">
         <div class="card-head">
           <h3>{{ $t("adminGuild.sensitive.title") }}</h3>
@@ -3806,6 +3516,7 @@ const shopRequiredRolesLabel = (shop) => {
 
 const GUILD_TABS = Object.freeze([
   "economy",
+  "stats",
   "daily",
   "shops",
   "userShops",
@@ -3837,6 +3548,7 @@ const mobileMenuOpen = ref(true);
 const adminTabLabel = computed(() => {
   const map = {
     economy: t("adminGuild.sidebar.items.overview"),
+    stats: t("adminGuild.sidebar.items.stats"),
     daily: t("adminGuild.sidebar.items.daily"),
     leaderboard: t("adminGuild.sidebar.items.leaderboard"),
     shops: t("adminGuild.sidebar.items.shops"),
@@ -3854,6 +3566,11 @@ const adminTabLabel = computed(() => {
     billing: t("adminGuild.sidebar.items.billing")
   };
   return map[activeTab.value] || "Administration serveur";
+});
+const adminTabSubtitle = computed(() => {
+  if (activeTab.value === "games") return t("adminGuild.games.subtitleGuided");
+  if (activeTab.value === "stats") return t("adminGuild.stats.subtitle");
+  return t("adminGuild.hero.subtitle");
 });
 const currencyDisplayName = computed(() => String(form.name || "").trim());
 const guildDisplayName = computed(() => resolveCurrentGuildName(route.params.id || id));
@@ -4059,6 +3776,7 @@ const userUiLoaded = ref(false);
 const userUiSaving = ref(false);
 const loadedTabs = reactive({
   economy: false,
+  stats: false,
   daily: false,
   leaderboard: false,
   shops: false,
@@ -7584,12 +7302,22 @@ const saveTwitchPromoSettings = async ({ notify = true } = {}) => {
 
 const saveGamesSettings = async ({ notify = true } = {}) => {
   const token = getToken();
-  const symbols = String(slotSymbolsInput.value || "")
-    .split(" ")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const payouts = parsePayouts(slotPayoutsInput.value);
-  const outcomes = parseOutcomes(mysteryOutcomesInput.value);
+  const symbols = Array.isArray(gamesConfig.slot?.symbols) && gamesConfig.slot.symbols.length
+    ? gamesConfig.slot.symbols
+    : String(slotSymbolsInput.value || "")
+      .split(" ")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  const payouts = Array.isArray(gamesConfig.slot?.payouts) && gamesConfig.slot.payouts.length
+    ? gamesConfig.slot.payouts
+    : parsePayouts(slotPayoutsInput.value);
+  const outcomes = Array.isArray(gamesConfig.mystery?.outcomes) && gamesConfig.mystery.outcomes.length
+    ? gamesConfig.mystery.outcomes
+    : parseOutcomes(mysteryOutcomesInput.value);
+
+  if (Number(gamesConfig.minBet || 0) > Number(gamesConfig.maxBet || 0)) {
+    return false;
+  }
 
   const payload = {
     ...gamesConfig,
@@ -7603,6 +7331,25 @@ const saveGamesSettings = async ({ notify = true } = {}) => {
       outcomes
     }
   };
+
+  const rouletteTotal =
+    Number(payload.roulette?.red?.chance || 0) +
+    Number(payload.roulette?.black?.chance || 0) +
+    Number(payload.roulette?.green?.chance || 0);
+  const mysteryTotal = (payload.mystery?.outcomes || []).reduce(
+    (sum, row) => sum + Number(row.chance || 0),
+    0
+  );
+  const chanceStatus = (total) => {
+    const n = Number(total || 0);
+    if (!Number.isFinite(n) || Math.abs(n - 100) <= 0.05) return "ok";
+    return n > 100 ? "over" : "under";
+  };
+  const rouletteStatus = chanceStatus(rouletteTotal);
+  const mysteryStatus = chanceStatus(mysteryTotal);
+  if (rouletteStatus === "under" || mysteryStatus === "under") return false;
+  if (rouletteStatus === "over" && payload.roulette) payload.roulette.enabled = false;
+  if (mysteryStatus === "over" && payload.mystery) payload.mystery.enabled = false;
 
   const res = await fetch(`${config.public.apiBase}/api/guilds/${id}/games/settings`, {
     method: "POST",
@@ -8613,6 +8360,10 @@ const loadTabData = async (tab, { force = false } = {}) => {
       await loadChannelsOnce();
       loadedTabs.economy = true;
       loadedTabs.daily = true;
+      return;
+    }
+    if (tab === "stats") {
+      loadedTabs.stats = true;
       return;
     }
     if (tab === "leaderboard") {
@@ -11369,6 +11120,7 @@ label {
 
 /* Tab color tokens — distinct by purpose */
 .tab-economy { --tab-c: 45 212 160; }
+.tab-stats { --tab-c: 96 165 250; }
 .tab-daily { --tab-c: 56 189 248; }
 .tab-shops { --tab-c: 251 146 60; }
 .tab-user-shops { --tab-c: 251 113 133; }

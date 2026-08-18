@@ -3,16 +3,14 @@ import { fileURLToPath } from "node:url";
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const isProd = process.env.NODE_ENV === "production";
+const isProdSpaBuild = isProd || process.env.NUXT_BUILD_TARGET === "production";
+const localApi = "http://127.0.0.1:4000";
 
-// Never bake localhost into production SPA builds.
+// Production SPA is same-origin (empty). `nuxt dev` talks to the API+bot on :4000.
 const resolvedApiBase = (() => {
+  if (isProdSpaBuild) return "";
   const raw = String(process.env.API_BASE || "").trim();
-  if (isProd) return "";
-  if (!raw) return "";
-  if (/localhost|127\.0\.0\.1/i.test(raw) && process.env.NUXT_PUBLIC_ALLOW_LOCAL_API !== "1") {
-    // Local HMR (`nuxt dev`) still needs API_BASE; `nuxt generate` for deploy should use empty.
-    if (process.env.NUXT_BUILD_TARGET === "production") return "";
-  }
+  if (!raw || /localhost|127\.0\.0\.1/i.test(raw)) return localApi;
   return raw;
 })();
 
@@ -29,7 +27,12 @@ export default defineNuxtConfig({
     }
   },
   nitro: {
-    preset: "static"
+    preset: "static",
+    devProxy: {
+      "/api": { target: localApi, changeOrigin: true },
+      "/auth": { target: localApi, changeOrigin: true },
+      "/bot": { target: localApi, changeOrigin: true }
+    }
   },
   runtimeConfig: {
     public: {

@@ -3,6 +3,7 @@ import { getPlanByKey, BILLING_INTERVALS } from "./billing-catalog.js";
 import { getStripeClient, isStripeConfigured } from "./stripe-client.js";
 import {
   downgradeGuildPremium,
+  resolveSubscriptionIntervalKey,
   syncGuildBillingFromStripe,
   syncSubscriptionFromStripeObject
 } from "./billing-webhook.js";
@@ -196,7 +197,7 @@ export const listAdminBillingAccounts = async () => {
       entityType: "guild",
       planKey: isPremium ? "premium" : "free",
       status,
-      intervalKey: subscription?.interval_key || null,
+      intervalKey: metrics?.intervalKey || subscription?.interval_key || null,
       currentPeriodEnd: subscription?.current_period_end || null,
       cancelAtPeriodEnd: Boolean(subscription?.cancel_at_period_end),
       stripeCustomerId: account?.stripe_customer_id || null,
@@ -319,19 +320,51 @@ const formatMoney = (amountCents, currency = "eur") =>
     currency: String(currency || "eur").toUpperCase()
   }).format(Number(amountCents || 0) / 100);
 
-const getIntervalMonths = ({ intervalKey = null, recurring = null } = {}) => {
-  const interval = String(recurring?.interval || intervalKey || "month").toLowerCase();
-  const count = Math.max(1, Number(recurring?.interval_count || 1));
-  if (interval === "year" || interval === "yearly") return 12 * count;
-  if (interval === "quarter" || interval === "quarterly") return 3 * count;
-  if (interval === "month" || interval === "monthly") return count;
-  if (interval === "week" || interval === "weekly") return Math.max(1, Math.round(count / 4.345));
-  if (interval === "day" || interval === "daily") return Math.max(1, Math.round(count / 30.4375));
+const getIntervalMonths = ({ intervalKey = null, recurring = null, subscription = null } = {}) => {
+  const fromRecurring = (() => {
+    if (!recurring?.interval) return null;
+    const interval = String(recurring.interval).toLowerCase();
+    const count = Math.max(1, Number(recurring.interval_count || 1));
+    if (interval === "year") return 12 * count;
+    if (interval === "month") return count;
+    if (interval === "week") return Math.max(1, Math.round(count / 4.345));
+    if (interval === "day") return Math.max(1, Math.round(count / 30.4375));
+    return null;
+  })();
+  if (fromRecurring) return fromRecurring;
+
+  // Fallback fiable : durée réelle de la période Stripe (évite de compter un annuel comme 1 mois).
+  const periodStart = Number(subscription?.current_period_start || 0);
+  const periodEnd = Number(subscription?.current_period_end || 0);
+  if (periodStart > 0 && periodEnd > periodStart) {
+    const days = (periodEnd - periodStart) / 86400;
+    if (days >= 300) return 12;
+    if (days >= 80) return 3;
+    if (days >= 20) return 1;
+  }
+
+  const key = String(intervalKey || "").toLowerCase();
+  if (key === "year" || key === "yearly" || key === "annual") return 12;
+  if (key === "quarter" || key === "quarterly") return 3;
+  if (key === "month" || key === "monthly") return 1;
+  if (key === "week" || key === "weekly") return 1;
   return 1;
 };
 
 const annualizeToMonthlyCents = (amountCents, months) =>
   Math.round(Number(amountCents || 0) / Math.max(1, Number(months || 1)));
+
+const resolvePriceObject = async (stripe, price) => {
+  if (!price) return null;
+  if (typeof price === "object" && price.recurring) return price;
+  const priceId = typeof price === "string" ? price : price?.id || null;
+  if (!priceId) return typeof price === "object" ? price : null;
+  try {
+    return await stripe.prices.retrieve(String(priceId));
+  } catch {
+    return typeof price === "object" ? price : null;
+  }
+};
 
 const getInvoiceNetBeforeTaxCents = (invoice) => {
   if (!invoice) return 0;
@@ -469,11 +502,18 @@ const resolveSubscriptionMetrics = async (stripeSubscriptionId, fallbackInterval
     subscription?.items?.data?.[0]?.price?.currency || latestInvoice?.currency || charge?.currency || "eur"
   ).toLowerCase();
 
-  const price = subscription?.items?.data?.[0]?.price || null;
+  const rawPrice = subscription?.items?.data?.[0]?.price || null;
+  const price = await resolvePriceObject(stripe, rawPrice);
   const recurring = price?.recurring || null;
+  const resolvedIntervalKey =
+    resolveSubscriptionIntervalKey({
+      price,
+      metadata: subscription?.metadata || {}
+    }) || fallbackIntervalKey;
   const intervalMonths = getIntervalMonths({
-    intervalKey: fallbackIntervalKey,
-    recurring
+    intervalKey: resolvedIntervalKey,
+    recurring,
+    subscription
   });
 
   // Prix catalogue du cycle (mensuel 4,99 / 3 mois 13,47 / annuel 47,90), hors coupon.
@@ -503,6 +543,7 @@ const resolveSubscriptionMetrics = async (stripeSubscriptionId, fallbackInterval
     latestInvoice,
     charge,
     currency,
+    intervalKey: resolvedIntervalKey,
     intervalMonths,
     catalogCycleCents,
     grossCycleCents: catalogCycleCents,

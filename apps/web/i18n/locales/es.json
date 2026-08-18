@@ -983,7 +983,7 @@
   "accountPage": {
     "kicker": "Cuenta",
     "title": "Mi cuenta",
-    "subtitle": "Perfil Discord, suscripciones Premium de todos tus servidores y facturas Stripe en un solo lugar.",
+    "subtitle": "Perfil Discord, vínculo de Twitch, suscripciones Premium de todos tus servidores y facturas Stripe en un solo lugar.",
     "loginRequired": "Inicio de sesión requerido",
     "loginHint": "Inicia sesión con Discord para gestionar tu cuenta y tus facturas.",
     "managedServers": "Servidores gestionados",
@@ -1000,7 +1000,34 @@
     "noInvoices": "No hay facturas ni notas de crédito disponibles para esta cuenta.",
     "creditNoteStatus": "NOTA DE CRÉDITO",
     "serverId": "ID del servidor: {id}",
-    "renewal": "Renovación {date}"
+    "renewal": "Renovación {date}",
+    "twitch": {
+      "title": "Cuenta de Twitch",
+      "linkedHint": "Esta cuenta de Twitch es la que EcoBoty usa para acumular moneda en todos los streamers.",
+      "unlinkedHint": "Twitch debe estar vinculado primero en Discord (Ajustes → Conexiones) y luego confirmarse aquí.",
+      "statusLinked": "Vinculado a Discord",
+      "statusUnlinked": "No vinculado",
+      "statusMismatch": "Ya no está en Discord",
+      "loginLabel": "{'@'}{login}",
+      "discordHelp": "Abre Discord → Ajustes → Conexiones y vincula la cuenta de Twitch correcta.",
+      "discordHelpLink": "Guía de Discord",
+      "discordHelpHref": "https://support.discord.com/hc/es/articles/212112068",
+      "mismatch": "La cuenta de Twitch guardada en EcoBoty ya no aparece en tus conexiones de Discord. Desconéctala aquí, vincula la cuenta correcta en Discord y vuelve a conectar.",
+      "needsReconnect": "EcoBoty debe volver a leer tus conexiones de Discord para vincular Twitch.",
+      "selectTitle": "Hay varias cuentas de Twitch vinculadas a Discord. Elige la que debe usar EcoBoty.",
+      "connect": "Conectar Twitch",
+      "reconnect": "Reconectar desde Discord",
+      "change": "Cambiar de cuenta",
+      "disconnect": "Desconectar",
+      "confirmDisconnectTitle": "¿Desconectar Twitch?",
+      "confirmDisconnect": "Se eliminará el vínculo de EcoBoty. Podrás conectar otra cuenta de Twitch si está vinculada en Discord.",
+      "connected": "Twitch conectado: {'@'}{login}",
+      "disconnected": "Twitch desconectado.",
+      "unchanged": "Esta cuenta de Twitch ya está vinculada.",
+      "errorNoTwitch": "No se encontró ninguna cuenta de Twitch en Discord. Vínculala en Ajustes → Conexiones y vuelve a intentarlo.",
+      "errorAlreadyLinked": "Esta cuenta de Twitch ya está vinculada a otro Discord de EcoBoty.",
+      "errorGeneric": "No se pudo actualizar el vínculo de Twitch por ahora."
+    }
   },
   "userGuild": {
     "serverLabel": "Servidor",
@@ -1149,10 +1176,19 @@
     },
     "games": {
       "title": "Juegos",
-      "help": "Juega para intentar ganar ganancias extra.",
+      "help": "Minijuegos de apuestas con la moneda virtual del servidor. Abre un juego para leer las reglas. Nada se compra con dinero real.",
       "empty": "No hay juegos activados para este servidor.",
+      "mute": "Silenciar",
+      "unmute": "Activar sonido",
+      "soundOn": "Sonido activado",
+      "soundOff": "Sonido silenciado",
+      "virtualNotice": "Apuestas en moneda virtual únicamente.",
+      "cashoutHint": "Cobra antes del crash. Cuanto más alto apuntas, más arriesgado es.",
+      "choiceHint": "Elige antes de lanzar.",
+      "betHint": "Tu apuesta se bloquea al lanzar. Mín {min} · Máx {max}.",
       "minBet": "Apuesta mín",
       "maxBet": "Apuesta máx",
+      "presetMid": "Medio",
       "play": "Jugar",
       "playing": "Jugando...",
       "cooldown": "Cooldown",
@@ -1163,6 +1199,17 @@
       "lose": "Perdiste",
       "result": "Resultado",
       "replay": "Volver a jugar",
+      "yourChoice": "Tu elección",
+      "landedOn": "Resultado",
+      "crashedAt": "Crash en",
+      "jackpot": "¡Jackpot!",
+      "jackpotBadge": "Jackpot {multiplier}",
+      "jackpotCard": "Tras una victoria: {chance} de jackpot · {jpMult} en lugar de {winMult}.",
+      "jackpotCalloutTitle": "Jackpot",
+      "jackpotCallout": "Si ganas, un segundo sorteo tiene {chance} de pagar {jpMult} en lugar de {winMult}. Una derrota nunca activa el jackpot. Probabilidad real por ronda: {realChance}.",
+      "jackpotHitTitle": "Jackpot",
+      "jackpotHit": "El segundo sorteo ha sustituido el premio normal: recibes {jpMult} en lugar de {winMult}.",
+      "tieLose": "Empate: has perdido.",
       "doubleWin": "Doble",
       "doubleLose": "Nada",
       "doubleTitle": "Doble o nada",
@@ -1184,14 +1231,15 @@
       "double": "Doble",
       "slot": "Tragamonedas",
       "mystery": "Misterio",
-      "flipDesc": "Elige cara o cruz. Si aciertas, ganas tu apuesta × multiplicador.",
-      "diceDesc": "Elige un número. Si el dado cae en él, ganas.",
-      "rouletteDesc": "Apuesta a rojo, negro o verde. El verde paga más.",
-      "higherLowerDesc": "Apuesta si el siguiente número es mayor o menor.",
-      "crashDesc": "Cobras antes del crash para ganar.",
-      "doubleDesc": "50/50: doble o nada.",
-      "slotDesc": "Alinea símbolos para ganar.",
-      "mysteryDesc": "Resultado aleatorio con multiplicadores variables.",
+      "flipDesc": "Moneda justa 50/50. Acierta cara o cruz para ganar tu apuesta multiplicada.",
+      "diceDesc": "Elige una cara. El dado es real: 1 posibilidad entre el número de caras.",
+      "rouletteDesc": "Apuesta a un color. El verde sale menos, pero paga más.",
+      "higherLowerDesc": "Dos números independientes. Apuesta más o menos. Un empate se pierde.",
+      "crashDesc": "El multiplicador sube y luego crashea. Cobra antes, o lo pierdes todo.",
+      "doubleDesc": "Una posibilidad entre dos: multiplicas tu apuesta, o la pierdes.",
+      "slotDesc": "3 rodillos. Una combinación de la tabla paga. A veces 2 símbolos iguales también.",
+      "slotPayline": "Solo cuenta la línea del medio.",
+      "mysteryDesc": "El cofre saca un multiplicador. ×0 = pierdes la apuesta; los premios altos son más raros.",
       "choicePile": "Cara",
       "choiceFace": "Cruz",
       "choicePlus": "Más",
@@ -1200,7 +1248,100 @@
       "choiceBlack": "Negro",
       "choiceGreen": "Verde",
       "winLabel": "Ganancia:",
-      "loseLabel": "Pérdida:"
+      "loseLabel": "Pérdida:",
+      "bestPayoutTitle": "Mayores premios posibles",
+      "bestPayoutHelp": "Clasificación según el premio máximo con una apuesta de {bet}. No es el juego más fácil, solo el que puede pagar más.",
+      "bestPayoutNote": "Esta cantidad solo se alcanza con el mejor resultado (jackpot, verde, cobro máximo, mejor combinación, etc.).",
+      "topPayout": "Mayor premio posible",
+      "maxPayout": "Premio máx.",
+      "maxPayoutValue": "Hasta {payout}",
+      "maxPayoutFact": "Premio máximo (apuesta máx.)",
+      "payoutReason": {
+        "win": "victoria",
+        "jackpot": "jackpot",
+        "red": "rojo",
+        "black": "negro",
+        "green": "verde",
+        "cashoutMax": "cobro máximo",
+        "bestCombo": "mejor combinación",
+        "bestChest": "mejor resultado del cofre"
+      },
+      "rules": {
+        "title": "Reglas del juego",
+        "chance": "Probabilidad",
+        "payout": "Premio",
+        "beforeCommission": "antes de comisión",
+        "jackpotChance": "Jackpot",
+        "jackpotPayout": "Pago del jackpot",
+        "afterWin": "tras una victoria",
+        "replacesWin": "en lugar del premio normal",
+        "youLose": "Si pierdes, se descuenta tu apuesta.",
+        "commission": "El servidor retiene un {edge}% de comisión sobre las ganancias.",
+        "example": "Ejemplo: una apuesta de {bet} te da {payout} si ganas.",
+        "exampleCrash": "Ejemplo: apuesta {bet} cobrada a {cashout} → recibes {payout}.",
+        "combo": "Combinación",
+        "twoKind": "2 símbolos iguales",
+        "colorOdds": "{chance} · {multiplier}",
+        "flip": {
+          "goal": "Adivina si la moneda cae en cara o cruz.",
+          "step1": "Elige cara o cruz antes de lanzar.",
+          "step2": "La moneda es justa: 50 % cara, 50 % cruz.",
+          "step3": "Si aciertas, ganas tu apuesta {multiplier}.",
+          "jackpot": "Solo tras una victoria, un segundo sorteo tiene {chance} de probabilidad: te pagan {multiplier} en lugar del premio normal, no además.",
+          "jackpotReal": "Probabilidad real de jackpot por ronda: {realChance} (50 % de victorias × {chance}).",
+          "choiceHelp": "Pulsa el lado al que apuntas."
+        },
+        "dice": {
+          "goal": "Adivina la cara que va a salir.",
+          "step1": "Elige un número del 1 al {sides}.",
+          "step2": "El dado es real: 1 posibilidad entre {sides} ({chance}).",
+          "step3": "Si sale tu número, ganas tu apuesta {multiplier}.",
+          "choiceHelp": "1 posibilidad entre {sides} ({chance}). Elige la cara antes de lanzar."
+        },
+        "roulette": {
+          "goal": "Apuesta al color que va a salir.",
+          "step1": "Elige rojo, negro o verde.",
+          "step2": "La rueda saca un color según las probabilidades de abajo.",
+          "step3": "Si aciertas el color, ganas tu apuesta × el multiplicador de ese color.",
+          "choiceHelp": "El verde es más raro, por eso paga más."
+        },
+        "higherLower": {
+          "goal": "Apuesta si el siguiente número será mayor o menor.",
+          "step1": "Se saca un primer número entre 1 y {max}.",
+          "step2": "Elige más (mayor) o menos (menor).",
+          "step3": "Se saca un segundo número independiente. Si va a tu favor, ganas tu apuesta {multiplier}.",
+          "step4": "Si los dos números son iguales, has perdido.",
+          "choiceHelp": "Los números van de 1 a {max}. Un empate cuenta como derrota."
+        },
+        "crash": {
+          "goal": "Cobra antes de que el multiplicador crashee.",
+          "step1": "Elige tu cobro, por ejemplo 2×.",
+          "step2": "El multiplicador sube hasta un crash aleatorio (tope {max}).",
+          "step3": "Si tu cobro se alcanza antes del crash, ganas apuesta × cobro.",
+          "step4": "Si crashea antes, pierdes toda la apuesta.",
+          "choiceHelp": "Cuanto más alto el cobro, mayor el premio y el riesgo. Tope {max}."
+        },
+        "double": {
+          "goal": "Doble o nada: una posibilidad entre dos.",
+          "step1": "Nada que elegir: el sorteo es 50/50.",
+          "step2": "Victoria: recibes tu apuesta {multiplier}.",
+          "step3": "Derrota: pierdes toda la apuesta."
+        },
+        "slot": {
+          "goal": "Gira 3 rodillos y busca una combinación que pague.",
+          "step1": "Cada rodillo saca un símbolo de: {symbols}.",
+          "step2": "Una combinación exacta de la tabla paga su multiplicador.",
+          "step3": "Dos símbolos iguales pagan {multiplier}.",
+          "step4": "Si no, pierdes la apuesta."
+        },
+        "mystery": {
+          "goal": "Abre el cofre: se saca un multiplicador al azar.",
+          "step1": "Cada resultado tiene un peso: cuanto más alto, más a menudo sale.",
+          "step2": "Recibes apuesta × el multiplicador sacado.",
+          "step3": "Un multiplicador ×0 significa que pierdes la apuesta.",
+          "lose": "pierdes la apuesta"
+        }
+      }
     }
   },
   "adminGuild": {
@@ -1216,6 +1357,7 @@
       },
       "items": {
         "overview": "Vista general",
+        "stats": "Estadísticas",
         "daily": "Daily",
         "shops": "Tienda",
         "userShops": "Tiendas de miembros",
@@ -1229,6 +1371,99 @@
         "bot": "Ajustes del bot",
         "sensitive": "Ajustes sensibles",
         "billing": "Premium"
+      }
+    },
+    "stats": {
+      "title": "Estadísticas de la moneda",
+      "subtitle": "Ganancias, pérdidas, tiendas, juegos y actividad detallada del periodo elegido.",
+      "days": "{n} d",
+      "historyHint": "Los datos mostrados siguen el historial disponible ({days} días máx. según el plan).",
+      "error": "No se pudieron cargar las estadísticas.",
+      "empty": "No hay datos en este periodo.",
+      "sections": {
+        "sources": "Orígenes",
+        "shops": "Tiendas",
+        "games": "Juegos",
+        "activity": "Actividad"
+      },
+      "kpis": {
+        "circulating": "En circulación",
+        "gained": "Creada",
+        "lost": "Perdida (sumideros)",
+        "net": "Saldo neto",
+        "avgLost": "Perdida / día",
+        "holders": "Jugadores con saldo"
+      },
+      "chart": {
+        "title": "Evolución diaria",
+        "help": "Moneda creada (mensajes, daily, Twitch…) frente a moneda perdida (tienda oficial + juegos).",
+        "gained": "Creada",
+        "lost": "Perdida",
+        "net": "Neto"
+      },
+      "sources": {
+        "title": "Orígenes de los movimientos",
+        "help": "Cada fuente de EcoBoty: recompensas, compras, juegos, Twitch, lootbox, votos.",
+        "source": "Fuente",
+        "gained": "Ganado",
+        "spent": "Gastado",
+        "count": "Acciones",
+        "keys": {
+          "message": "Mensajes de Discord",
+          "voice": "Voz de Discord",
+          "manual": "Añadido manual",
+          "reset": "Reset de saldos",
+          "purchase": "Compras de tienda",
+          "sale": "Reventas del mercado",
+          "daily": "Daily",
+          "achievement": "Logros",
+          "twitch_message": "Mensajes de Twitch",
+          "twitch_watch": "Watch de Twitch",
+          "twitch_sub": "Sub de Twitch",
+          "twitch_subgift": "Subgift de Twitch",
+          "twitch_bits": "Bits de Twitch",
+          "twitch_daily": "Daily de Twitch",
+          "game": "Premios de juegos",
+          "lootbox": "Lootbox",
+          "topgg": "Voto Top.gg"
+        }
+      },
+      "shops": {
+        "official": "Tienda del servidor",
+        "user": "Tiendas de miembros",
+        "market": "Mercado / reventas",
+        "summary": "{n} compras · {amount}",
+        "marketSummary": "{n} ventas · {amount}"
+      },
+      "games": {
+        "title": "Juegos",
+        "summary": "{rounds} partidas · apuestas {bets} · pagos {payouts} · retenido {house}",
+        "game": "Juego",
+        "rounds": "Partidas",
+        "bets": "Apuestas",
+        "house": "Perdida por los jugadores",
+        "wins": "ganadas",
+        "keys": {
+          "flip": "Cara o cruz",
+          "dice": "Dado",
+          "roulette": "Ruleta",
+          "higherLower": "Mayor o menor",
+          "crash": "Crash",
+          "double": "Double",
+          "slot": "Tragaperras",
+          "mystery": "Misterio"
+        }
+      },
+      "more": {
+        "twitch": "Twitch",
+        "daily": "Daily reclamados",
+        "lootboxes": "Lootbox (moneda)",
+        "inventories": "Inventarios",
+        "inventorySummary": "{members} jugadores · {items} objetos"
+      },
+      "users": {
+        "earners": "Mayores ganancias",
+        "spenders": "Mayores gastos"
       }
     },
     "ban": {
@@ -1662,6 +1897,7 @@
     "games": {
       "title": "Juegos",
       "subtitle": "Configura mini-juegos de apuestas",
+      "subtitlePlatform": "Config ficticia para probar las probabilidades. No se guarda nada en los servidores.",
       "globalTitle": "Ajustes globales",
       "globalHelp": "Activa/desactiva todos los juegos, fija apuestas min/máx, cooldown global y house edge.",
       "enableAll": "Activar juegos",
@@ -1677,9 +1913,26 @@
       "jackpotEnabled": "Jackpot activado",
       "jackpotChance": "Probabilidad de jackpot (%)",
       "jackpotMultiplier": "Multiplicador de jackpot",
+      "jackpotBox": {
+        "title": "Jackpot de cara o cruz",
+        "lead": "El jackpot existe solo en este juego. No cambia el 50/50 de la moneda.",
+        "step1": "La moneda es siempre 50/50. Ni más, ni menos.",
+        "step2": "Si el jugador pierde, el jackpot no se sortea. Pierde su apuesta.",
+        "step3": "Si gana, hay un segundo sorteo con el porcentaje de abajo.",
+        "step4": "Si ese segundo sorteo acierta, se paga con el multiplicador jackpot en lugar del multiplicador normal — no se suma.",
+        "recommend": "Ajuste recomendado: 1 % y ×10. Por encima, el jackpot sale demasiado o paga demasiado.",
+        "warnHighTitle": "Jackpot demasiado generoso",
+        "warnHigh": "Este ajuste es demasiado generoso: el jackpot sustituye demasiado a menudo el premio normal, o paga demasiado. Quédate cerca de 1 % y ×10, o sube la comisión.",
+        "warnUselessTitle": "Jackpot sin efecto",
+        "warnUseless": "El multiplicador jackpot debe ser mayor que el multiplicador de victoria. Si no, el jackpot no sirve, o paga menos que una victoria normal.",
+        "realChance": "Probabilidad real de jackpot por ronda: {value}% (50 % de victorias × {chance} %).",
+        "example": "Con una apuesta de {bet}: victoria normal → {normal} (×{winMult}). Jackpot → {jackpot} (×{jpMult}), en lugar del premio normal. Cifras tras comisión. Probabilidad real por ronda: {realChance}%."
+      },
       "coinFlip": {
         "title": "Coin Flip",
-        "help": "Elección cara/cruz. Si ganas, pago = apuesta × multiplicador. Con jackpot, una segunda oportunidad puede multiplicar la ganancia."
+        "short": "Cara o cruz, tensión inmediata.",
+        "help": "Elección cara/cruz. Si ganas, pago = apuesta × multiplicador. El jackpot, si está activado, es un segundo sorteo solo tras una victoria: sustituye el multiplicador normal.",
+        "how": "El jugador elige cara o cruz. Una moneda justa (50/50) se lanza. Una victoria paga el multiplicador de victoria. Si el jackpot está activado, un segundo sorteo ocurre solo tras esa victoria: si acierta, el multiplicador jackpot sustituye al normal, no se suma."
       },
       "dice": {
         "title": "Dice",
@@ -1730,6 +1983,61 @@
         "help": "Se sortea un multiplicador según la tabla. Pago = apuesta × multiplicador.",
         "outcomes": "Multiplicadores y probabilidades (multiplier:chance)",
         "outcomesPlaceholder": "0:20\n0.5:15\n1:25\n2:20\n5:15\n10:5"
+      },
+      "warnings": {
+        "houseEdgeHighTitle": "Comisión demasiado alta",
+        "houseEdgeHigh": "La comisión retiene una parte importante de las ganancias. Los jugadores rara vez recuperan más que su apuesta.",
+        "houseEdgeZeroTitle": "Sin comisión",
+        "houseEdgeZero": "Las ganancias se pagan íntegras. Con muchas partidas, la cantidad de moneda en circulación puede subir demasiado rápido.",
+        "rtpHighTitle": "Cara o cruz demasiado generoso",
+        "rtpHigh": "Cara o cruz tiene un retorno medio de {rtp}%. Suele ser el juego más usado. Por encima del 100%, los jugadores recuperan de media más de lo apostado y los saldos del servidor suben. Baja el multiplicador o el jackpot, o sube la comisión.",
+        "rouletteSum": "Las probabilidades de la ruleta no suman 100%.",
+        "rouletteOverTitle": "Ruleta por encima del 100 %",
+        "rouletteOver": "El total es {total} %. Se puede guardar, pero la ruleta permanece desactivada hasta que registres un total del 100 %.",
+        "mysterySum": "Los pesos de la caja misteriosa no suman 100%.",
+        "mysteryOverTitle": "Misterio por encima del 100 %",
+        "mysteryOver": "El total es {total} %. Se puede guardar, pero el juego misterio permanece desactivado hasta que registres un total del 100 %.",
+        "slotSymbols": "Añade al menos un símbolo o el juego se rompe.",
+        "gameRtpHighTitle": "Este juego es demasiado generoso",
+        "gameRtpHigh": "El retorno medio teórico es del {rtp}%. Por encima del 100%, cada partida devuelve de media más que la apuesta. Con mucho volumen, los saldos del servidor crecen más rápido de lo que se gasta la moneda. Para corregirlo: baja los multiplicadores, el jackpot o los premios raros, o sube la comisión.",
+        "gameRtpLowTitle": "Este juego es demasiado desfavorable",
+        "gameRtpLow": "El retorno medio teórico es del {rtp}%. Los jugadores pierden casi todas las apuestas. El juego sigue funcionando, pero se percibirá como demasiado punitivo. Para corregirlo: sube un poco el multiplicador o baja la comisión."
+      },
+      "errors": {
+        "rouletteUnderTitle": "Ruleta: total inferior al 100 %",
+        "rouletteUnder": "Rojo + negro + verde suman {total} %. Debe llegar al 100 % para guardar. Mientras tanto, la ruleta está desactivada.",
+        "mysteryUnderTitle": "Misterio: total inferior al 100 %",
+        "mysteryUnder": "Los pesos suman {total} %. Debe llegar al 100 % para guardar. Mientras tanto, el juego misterio está desactivado."
+      },
+      "realChance": "Probabilidad real de victoria",
+      "expectedRtp": "Retorno medio a los jugadores",
+      "expectedRtpHelp": "Tras comisión. Ej. 98,8 % = por cada 100 apostados, unos 98,8 vuelven en premios. Por encima del 100 %, la economía del servidor crece.",
+      "chanceLockedHint": "Esta probabilidad sale de un sorteo real, no está forzada.",
+      "flipChanceHint": "Moneda justa: 50 % cara, 50 % cruz. El jackpot, si está activado, es un segundo sorteo solo tras una victoria, y sustituye el multiplicador normal.",
+      "diceChanceLockedHint": "Un dado de {sides} caras: 1 entre {sides} ({chance}%).",
+      "higherLowerChanceHint": "Dos números independientes de 1 a {max}. Empate = pérdida, así ≈ {chance}%.",
+      "sim": {
+        "title": "Probar las probabilidades",
+        "help": "Lanza partidas ficticias. No se descuenta moneda y no se modifica ningún servidor.",
+        "noticeTitle": "Herramienta interna",
+        "noticeBody": "Estas pruebas se quedan aquí. No se aplican a ningún servidor y no descuentan moneda.",
+        "choice": "Elección de prueba",
+        "cashout": "Cashout de prueba",
+        "error": "No se ha podido lanzar la prueba.",
+        "wins": "Victorias",
+        "losses": "Derrotas",
+        "jackpots": "Jackpots",
+        "observedWin": "Victorias observadas",
+        "expectedWin": "Victorias esperadas",
+        "observedRtp": "Retorno medio observado",
+        "expectedRtp": "Retorno medio esperado",
+        "net": "Balance (pagos − apuestas)",
+        "verdictOk": "Las probabilidades observadas se mantienen en un rango aceptable.",
+        "verdictGenerous": "Las partidas simuladas devuelven más que las apuestas. Con estos ajustes, los saldos del servidor subirán con el tiempo.",
+        "verdictHarsh": "Las partidas simuladas dejan demasiado poco a los jugadores. El juego es demasiado desfavorable.",
+        "sampleSmall": "Con {n} partidas, el desvío es normal. Lanza 1.000 o 5.000 para confirmar.",
+        "sampleMatch": "El sorteo encaja con la teoría.",
+        "sampleOff": "La muestra aún se desvía. Lanza un test más grande."
       }
     },
     "sensitive": {
