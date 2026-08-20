@@ -40,14 +40,18 @@ export const listEventLogs = async ({ guildId, category, limit = 100 }) => {
 
 export const sendLogMessage = async ({ guildId, content }) => {
   const token = getBotToken();
-  if (!token) return;
+  if (!token || !content) return;
   const settings = await getOrCreateSettings(guildId, db);
-  const channelId = settings?.log_channel_id;
+  let channelId = settings?.log_channel_id;
+  if (!channelId) {
+    const guild = await ensureGuild(guildId, db);
+    const botSettings = await db("bot_settings").where({ guild_id: guild.id }).first();
+    channelId = botSettings?.log_channel_id;
+  }
   if (!channelId) return;
-  if (!content) return;
 
   try {
-    await fetch(`https://discord.com/api/channels/${channelId}/messages`, {
+    const res = await fetch(`https://discord.com/api/channels/${channelId}/messages`, {
       method: "POST",
       headers: {
         Authorization: `Bot ${token}`,
@@ -55,7 +59,11 @@ export const sendLogMessage = async ({ guildId, content }) => {
       },
       body: JSON.stringify({ content })
     });
-  } catch {
-    // ignore logging failures
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      console.error("[logs] sendLogMessage failed", res.status, body);
+    }
+  } catch (error) {
+    console.error("[logs] sendLogMessage error", error);
   }
 };

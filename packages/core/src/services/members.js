@@ -63,80 +63,84 @@ export const handleMemberLeave = async ({
 
   const inventoryTotalQty = inventory.reduce((sum, row) => sum + Number(row.quantity || 0), 0);
 
-  await db.transaction(async (trx) => {
-    await insertEventLog({
-      trx,
-      guildId: discordGuildId,
-      category: "member",
-      type: "left_server",
-      userId: discordUserId,
-      amount: balance,
-      data: {
-        displayName: name,
-        username: String(username || "").trim() || null,
-        balance,
-        dailyStreak,
-        inventory,
-        inventoryTotalQty,
-        inventoryItemCount: inventory.length
-      }
-    });
+  try {
+    await db.transaction(async (trx) => {
+      await insertEventLog({
+        trx,
+        guildId: discordGuildId,
+        category: "member",
+        type: "left_server",
+        userId: discordUserId,
+        amount: balance,
+        data: {
+          displayName: name,
+          username: String(username || "").trim() || null,
+          balance,
+          dailyStreak,
+          inventory,
+          inventoryTotalQty,
+          inventoryItemCount: inventory.length
+        }
+      });
 
-    await safeDelete(trx, "balances", { guild_id: guild.id, user_discord_id: discordUserId });
-    await safeDelete(trx, "inventory", { guild_id: guild.id, user_discord_id: discordUserId });
-    await safeDelete(trx, "inventory_sales", {
-      guild_id: guild.id,
-      seller_discord_id: discordUserId
+      await safeDelete(trx, "balances", { guild_id: guild.id, user_discord_id: discordUserId });
+      await safeDelete(trx, "inventory", { guild_id: guild.id, user_discord_id: discordUserId });
+      await safeDelete(trx, "inventory_sales", {
+        guild_id: guild.id,
+        seller_discord_id: discordUserId
+      });
+      await safeDelete(trx, "economy_activity", {
+        guild_id: guild.id,
+        user_discord_id: discordUserId
+      });
+      await safeDelete(trx, "twitch_daily_states", {
+        guild_id: guild.id,
+        user_discord_id: discordUserId
+      });
+      await safeDelete(trx, "twitch_activity", {
+        guild_id: guild.id,
+        user_discord_id: discordUserId
+      });
+      await safeDelete(trx, "temp_role_assignments", {
+        guild_id: guild.id,
+        user_discord_id: discordUserId
+      });
+      await safeDelete(trx, "birthday_entries", {
+        guild_id: guild.id,
+        user_discord_id: discordUserId
+      });
+      await safeDelete(trx, "birthday_role_assignments", {
+        guild_id: guild.id,
+        user_discord_id: discordUserId
+      });
+      await safeDelete(trx, "achievement_progress", {
+        guild_id: guild.id,
+        user_discord_id: discordUserId
+      });
+      await safeDelete(trx, "achievement_event_marks", {
+        guild_id: guild.id,
+        user_discord_id: discordUserId
+      });
+      await safeDelete(trx, "achievement_shop_view_cooldowns", {
+        guild_id: guild.id,
+        user_discord_id: discordUserId
+      });
+      await safeDelete(trx, "user_guilds", {
+        guild_id: discordGuildId,
+        discord_id: discordUserId
+      });
+      await safeDelete(trx, "giveaway_entries", {
+        guild_id: guild.id,
+        user_discord_id: discordUserId
+      });
+      await safeDelete(trx, "giveaway_message_counts", {
+        guild_id: guild.id,
+        user_discord_id: discordUserId
+      });
     });
-    await safeDelete(trx, "economy_activity", {
-      guild_id: guild.id,
-      user_discord_id: discordUserId
-    });
-    await safeDelete(trx, "twitch_daily_states", {
-      guild_id: guild.id,
-      user_discord_id: discordUserId
-    });
-    await safeDelete(trx, "twitch_activity", {
-      guild_id: guild.id,
-      user_discord_id: discordUserId
-    });
-    await safeDelete(trx, "temp_role_assignments", {
-      guild_id: guild.id,
-      user_discord_id: discordUserId
-    });
-    await safeDelete(trx, "birthday_entries", {
-      guild_id: guild.id,
-      user_discord_id: discordUserId
-    });
-    await safeDelete(trx, "birthday_role_assignments", {
-      guild_id: guild.id,
-      user_discord_id: discordUserId
-    });
-    await safeDelete(trx, "achievement_progress", {
-      guild_id: guild.id,
-      user_discord_id: discordUserId
-    });
-    await safeDelete(trx, "achievement_event_marks", {
-      guild_id: guild.id,
-      user_discord_id: discordUserId
-    });
-    await safeDelete(trx, "achievement_shop_view_cooldowns", {
-      guild_id: guild.id,
-      user_discord_id: discordUserId
-    });
-    await safeDelete(trx, "user_guilds", {
-      guild_id: discordGuildId,
-      discord_id: discordUserId
-    });
-    await safeDelete(trx, "giveaway_entries", {
-      guild_id: guild.id,
-      user_discord_id: discordUserId
-    });
-    await safeDelete(trx, "giveaway_message_counts", {
-      guild_id: guild.id,
-      user_discord_id: discordUserId
-    });
-  });
+  } catch (error) {
+    console.error("[members] leave cleanup failed", error);
+  }
 
   try {
     const { deleteUserShopsForOwner } = await import("./shop.js");

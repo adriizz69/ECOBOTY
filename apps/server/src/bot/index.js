@@ -53,7 +53,7 @@ const client = new Client({
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.MessageContent
   ],
-  partials: [Partials.Channel, Partials.Message, Partials.Reaction, Partials.User]
+  partials: [Partials.Channel, Partials.Message, Partials.Reaction, Partials.User, Partials.GuildMember]
 });
 
 client.commands = new Collection();
@@ -1976,24 +1976,32 @@ client.on(Events.ThreadCreate, async (thread) => {
 });
 
 client.on(Events.GuildMemberRemove, async (member) => {
-  if (!member?.guild?.id || member.user?.bot) return;
+  if (!member?.guild?.id) return;
+  const user =
+    member.user ||
+    (await member.client.users.fetch(member.id).catch(() => null));
+  if (user?.bot) return;
   const guildId = member.guild.id;
   const userId = member.id;
   stopVoiceInterval(`${guildId}:${userId}`);
   try {
     const { apiBase, apiKey } = getApiConfig();
-    await fetch(`${apiBase}/bot/members/leave`, {
+    const res = await fetch(`${apiBase}/bot/members/leave`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-api-key": apiKey },
       body: JSON.stringify({
         guildId,
         userId,
-        displayName: member.displayName || member.user?.globalName || member.user?.username || "",
-        username: member.user?.username || ""
+        displayName: member.displayName || user?.globalName || user?.username || "",
+        username: user?.username || ""
       })
     });
-  } catch {
-    // ignore
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      console.error("Member leave log failed", res.status, body);
+    }
+  } catch (error) {
+    console.error("Member leave log failed", error);
   }
 });
 
